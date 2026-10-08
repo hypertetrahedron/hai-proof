@@ -1,0 +1,16 @@
+id = "F1"
+kind = "feature"
+level = 1
+origin = "authored"
+timeout_s = 1200
+budget_usd = 3.0
+max_turns = 40
+install = "uv pip install --python /opt/venv/bin/python -e . pytest"
+acceptance = ["tests/hai_proof/test_f1.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests --ignore=tests/test_utils/test_echo_via_pager.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/pallets/click.git"
+# tag 8.5.0
+base = "8b19813f2bfca99f1018a587a8cf54fc959f2e5d"

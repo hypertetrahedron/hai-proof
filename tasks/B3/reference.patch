@@ -1,0 +1,120 @@
+diff --git a/rich/_ratio.py b/rich/_ratio.py
+index 7623349..5fd5a38 100644
+--- a/rich/_ratio.py
++++ b/rich/_ratio.py
+@@ -1,6 +1,6 @@
+ from fractions import Fraction
+ from math import ceil
+-from typing import cast, Dict, List, Optional, Sequence, Tuple, Protocol
++from typing import cast, List, Optional, Sequence, Protocol
+ 
+ 
+ class Edge(Protocol):
+@@ -11,11 +11,6 @@ class Edge(Protocol):
+     minimum_size: int = 1
+ 
+ 
+-# Layouts are re-resolved on every refresh with identical inputs, so remember recent results.
+-_RESOLVE_CACHE: Dict[Tuple[int, Tuple[Edge, ...]], List[int]] = {}
+-_RESOLVE_CACHE_SIZE = 256
+-
+-
+ def ratio_resolve(total: int, edges: Sequence[Edge]) -> List[int]:
+     """Divide total space to satisfy size, ratio, and minimum_size, constraints.
+ 
+@@ -32,18 +27,6 @@ def ratio_resolve(total: int, edges: Sequence[Edge]) -> List[int]:
+     Returns:
+         List[int]: Number of characters for each edge.
+     """
+-    key = (total, tuple(edges))
+-    cached = _RESOLVE_CACHE.get(key)
+-    if cached is not None:
+-        return cached[:]
+-    sizes = _ratio_resolve(total, edges)
+-    if len(_RESOLVE_CACHE) >= _RESOLVE_CACHE_SIZE:
+-        _RESOLVE_CACHE.clear()
+-    _RESOLVE_CACHE[key] = sizes[:]
+-    return sizes
+-
+-
+-def _ratio_resolve(total: int, edges: Sequence[Edge]) -> List[int]:
+     # Size of edge or None for yet to be determined
+     sizes = [(edge.size or None) for edge in edges]
+ 
+diff --git a/rich/layout.py b/rich/layout.py
+index 165d241..7fa2852 100644
+--- a/rich/layout.py
++++ b/rich/layout.py
+@@ -1,5 +1,6 @@
+ from abc import ABC, abstractmethod
+ from itertools import islice
++from operator import itemgetter
+ from threading import RLock
+ from typing import (
+     TYPE_CHECKING,
+@@ -358,9 +359,7 @@ class Layout:
+ 
+         region_map = {
+             layout: region
+-            for layout, region in sorted(
+-                layout_regions, key=lambda item: (item[1].y, item[1].x)
+-            )
++            for layout, region in sorted(layout_regions, key=itemgetter(1))
+         }
+         return region_map
+ 
+diff --git a/rich/table.py b/rich/table.py
+index 9984ed0..1e2eb2b 100644
+--- a/rich/table.py
++++ b/rich/table.py
+@@ -1,7 +1,6 @@
+ from dataclasses import dataclass, field, replace
+ from typing import (
+     TYPE_CHECKING,
+-    Any,
+     Dict,
+     Iterable,
+     List,
+@@ -114,14 +113,9 @@ class Column:
+ 
+     _cells: List["RenderableType"] = field(default_factory=list)
+ 
+-    _measurements: Dict[Tuple[Any, ...], Measurement] = field(
+-        default_factory=dict, repr=False, compare=False
+-    )
+-    """Measurements of this column, by available width and table layout."""
+-
+     def copy(self) -> "Column":
+         """Return a copy of this Column."""
+-        return replace(self, _cells=[], _measurements={})
++        return replace(self, _cells=[])
+ 
+     @property
+     def cells(self) -> Iterable["RenderableType"]:
+@@ -738,18 +732,6 @@ class Table(JupyterMixin):
+                 column.width + padding_width, column.width + padding_width
+             ).with_maximum(max_width)
+         # Flexible column, we need to measure contents
+-        cache_key = (
+-            max_width,
+-            len(column._cells),
+-            self.show_header,
+-            self.show_footer,
+-            self.padding,
+-            self.collapse_padding,
+-            self.pad_edge,
+-        )
+-        cached_measurement = column._measurements.get(cache_key)
+-        if cached_measurement is not None:
+-            return cached_measurement
+         min_widths: List[int] = []
+         max_widths: List[int] = []
+         append_min = min_widths.append
+@@ -768,7 +750,6 @@ class Table(JupyterMixin):
+             None if column.min_width is None else column.min_width + padding_width,
+             None if column.max_width is None else column.max_width + padding_width,
+         )
+-        column._measurements[cache_key] = measurement
+         return measurement
+ 
+     def _render(

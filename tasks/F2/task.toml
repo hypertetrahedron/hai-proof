@@ -1,0 +1,15 @@
+id = "F2"
+kind = "feature"
+level = 2
+origin = "authored"
+timeout_s = 1200
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest simplejson tzdata"
+acceptance = ["tests/hai_proof/test_f2.py"]
+
+[source]
+kind = "git"
+url  = "https://github.com/marshmallow-code/marshmallow.git"
+# tag 4.3.1
+base = "c7b559a1fa3aba57ca6dba0ab336841c5038a782"

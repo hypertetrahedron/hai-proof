@@ -1,0 +1,62 @@
+diff --git a/src/click/types.py b/src/click/types.py
+index 0eb8462..209d106 100644
+--- a/src/click/types.py
++++ b/src/click/types.py
+@@ -1067,6 +1067,14 @@ class Path(ParamType[str | bytes | os.PathLike[str]]):
+     :param path_type: Convert the incoming path value to this type. If
+         ``None``, keep Python's default, which is ``str``. Useful to
+         convert to :class:`pathlib.Path`.
++    :param suffixes: A suffix or a sequence of suffixes (for example
++        ``".txt"`` or ``(".yml", ".yaml")``) that the value must end
++        with. The comparison is case-insensitive. The check applies
++        whether or not the path exists, but is skipped for ``-`` when
++        ``allow_dash`` is enabled.
++
++    .. versionchanged:: 8.6
++        Added the ``suffixes`` parameter.
+ 
+     .. versionchanged:: 8.1
+         Added the ``executable`` parameter.
+@@ -1101,6 +1109,7 @@ class Path(ParamType[str | bytes | os.PathLike[str]]):
+         allow_dash: bool = False,
+         path_type: type | None = None,
+         executable: bool = False,
++        suffixes: str | cabc.Sequence[str] | None = None,
+     ) -> None:
+         self.exists = exists
+         self.file_okay = file_okay
+@@ -1112,6 +1121,13 @@ class Path(ParamType[str | bytes | os.PathLike[str]]):
+         self.allow_dash = allow_dash
+         self.type: type | None = path_type
+ 
++        if isinstance(suffixes, str):
++            suffixes = (suffixes,)
++
++        self.suffixes: tuple[str, ...] | None = (
++            tuple(suffixes) if suffixes is not None else None
++        )
++
+         if self.file_okay and not self.dir_okay:
+             self.name = _("file")
+         elif self.dir_okay and not self.file_okay:
+@@ -1158,6 +1174,20 @@ class Path(ParamType[str | bytes | os.PathLike[str]]):
+             if self.resolve_path:
+                 rv = os.path.realpath(rv)
+ 
++            if self.suffixes is not None:
++                lowered = os.fsdecode(rv).lower()
++
++                if not lowered.endswith(tuple(s.lower() for s in self.suffixes)):
++                    self.fail(
++                        _("{name} {filename!r} must end with {suffixes}.").format(
++                            name=self.name.title(),
++                            filename=format_filename(value),
++                            suffixes=", ".join(self.suffixes),
++                        ),
++                        param,
++                        ctx,
++                    )
++
+             try:
+                 st = os.stat(rv)
+             except OSError:

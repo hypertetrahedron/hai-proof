@@ -1,0 +1,16 @@
+id = "B3"
+kind = "bug"
+level = 3
+origin = "injected"
+timeout_s = 2400
+budget_usd = 8.0
+max_turns = 80
+# pygments pinned: newer releases change token colours and break upstream syntax/card tests.
+install = "uv pip install --python /opt/venv/bin/python -e . pytest attrs typing-extensions pygments==2.19.2"
+acceptance = ["tests/hai_proof/test_b3.py"]
+
+[source]
+kind = "git"
+url  = "https://github.com/Textualize/rich.git"
+# tag v15.0.0
+base = "6ac483cbea39cab124dfd3483bba70ffafb71050"

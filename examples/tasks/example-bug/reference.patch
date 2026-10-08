@@ -1,0 +1,12 @@
+diff --git a/src/inventory/store.py b/src/inventory/store.py
+--- a/src/inventory/store.py
++++ b/src/inventory/store.py
+@@ -51,7 +51,7 @@ class Inventory:
+     def low_stock(self) -> list[str]:
+         """SKUs whose quantity is at or below their reorder level, sorted by name."""
+         return sorted(
+-            sku for sku, e in self._items.items() if e.quantity < e.reorder_level
++            sku for sku, e in self._items.items() if e.quantity <= e.reorder_level
+         )
+ 
+     def _entry(self, sku: str) -> _Entry:

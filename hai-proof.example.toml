@@ -1,0 +1,20 @@
+# Copy to hai-proof.toml and adjust.
+default_host = "local"            # or an alias from ~/.ssh/config (see `hai-proof hosts list`)
+model = "claude-sonnet-5-5"       # REQUIRED: full model id, pinned for both arms and subagents
+# effort = "high"
+cli_version = "latest"            # resolved to a concrete version at run start and pinned in the image
+
+tasks_dir = "tasks"
+treatments_dir = "treatments"
+analyses_dir = "analyses"
+results_dir = "results"
+ssh_binary = "ssh"
+analyses = []                     # analyses attached to every run, e.g. ["non-code-changes"]
+egress = "proxy"                  # "proxy" = allowlist sidecar (API + treatment hosts); "open" = no restriction
+
+[limits]
+cpus = 4
+memory = "8g"
+
+[probe]
+runs = 5                          # context-tax probe runs per arm; 0 disables

@@ -1,0 +1,9 @@
+id = "EX1"
+kind = "bug"
+level = 1
+origin = "synthetic"
+timeout_s = 900
+budget_usd = 2.0
+max_turns = 40
+install = "uv pip install --python /opt/venv/bin/python -e '.[test]'"
+acceptance = ["tests/hidden/test_example_bug.py"]

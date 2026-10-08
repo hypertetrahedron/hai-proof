@@ -1,0 +1,4 @@
+name        = "non-code-changes"
+scope       = "trial"
+prompt_file = "non-code-changes.md"
+budget_usd  = 1.00

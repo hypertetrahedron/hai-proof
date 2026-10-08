@@ -1,0 +1,35 @@
+diff --git b/src/marshmallow/fields.py a/src/marshmallow/fields.py
+index 4b00e70..c6e71f7 100644
+--- b/src/marshmallow/fields.py
++++ a/src/marshmallow/fields.py
+@@ -630,7 +630,7 @@ class Nested(Field):
+         return schema.dump(nested_obj, many=many)
+ 
+     def _test_collection(self, value: typing.Any) -> None:
+-        many = self.schema.many and self.many
++        many = self.schema.many or self.many
+         if many and not utils.is_collection(value):
+             raise self.make_error("type", input=value, type=value.__class__.__name__)
+ 
+@@ -2023,7 +2023,7 @@ class Method(Field):
+     ):
+         # Set dump_only and load_only based on arguments
+         kwargs["dump_only"] = bool(serialize) and not bool(deserialize)
+-        kwargs["load_only"] = bool(deserialize) or not bool(serialize)
++        kwargs["load_only"] = bool(deserialize) and not bool(serialize)
+         super().__init__(**kwargs)
+         self.serialize_method_name = serialize
+         self.deserialize_method_name = deserialize
+diff --git b/src/marshmallow/schema.py a/src/marshmallow/schema.py
+index 1d22faf..8024dfe 100644
+--- b/src/marshmallow/schema.py
++++ a/src/marshmallow/schema.py
+@@ -1145,7 +1145,7 @@ class Schema(metaclass=SchemaMeta):
+                         try:
+                             value = item[field_obj.attribute or field_name]
+                         except KeyError:
+-                            break
++                            pass
+                         else:
+                             validated_value = self._call_and_store(
+                                 getter_func=do_validate,

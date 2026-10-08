@@ -1,0 +1,567 @@
+diff --git a/rich/linelimit.py b/rich/linelimit.py
+new file mode 100644
+index 00000000..43145f27
+--- /dev/null
++++ b/rich/linelimit.py
+@@ -0,0 +1,86 @@
++from typing import TYPE_CHECKING, Optional
++
++from .cells import cell_len, set_cell_size
++from .jupyter import JupyterMixin
++from .measure import Measurement
++from .segment import Segment
++
++if TYPE_CHECKING:
++    from .console import Console, ConsoleOptions, RenderableType, RenderResult
++
++
++def validate_max_lines(max_lines: Optional[int]) -> None:
++    """Check a ``max_lines`` value is ``None`` or an integer >= 1.
++
++    Raises:
++        ValueError: If the value is not valid.
++    """
++    if max_lines is not None and (
++        isinstance(max_lines, bool) or not isinstance(max_lines, int) or max_lines < 1
++    ):
++        raise ValueError(
++            f"max_lines must be None or an integer >= 1 (not {max_lines!r})"
++        )
++
++
++class LineLimit(JupyterMixin):
++    """Renders a renderable, truncating it to a maximum number of lines.
++
++    If lines are removed, the last remaining line has its trailing whitespace stripped,
++    is cropped (if required) to leave room for the marker, and the marker is appended.
++    The text ``{hidden}`` in the marker is replaced with the number of lines removed.
++
++    Args:
++        renderable (RenderableType): A console renderable.
++        max_lines (int, optional): Maximum number of lines, or ``None`` for no limit.
++        more_marker (str, optional): Marker to show when lines have been removed. Defaults to "\u2026".
++    """
++
++    def __init__(
++        self,
++        renderable: "RenderableType",
++        max_lines: Optional[int],
++        more_marker: str = "\u2026",
++    ) -> None:
++        validate_max_lines(max_lines)
++        self.renderable = renderable
++        self.max_lines = max_lines
++        self.more_marker = more_marker
++        # Table cells use this to pick their vertical alignment.
++        self.vertical = getattr(renderable, "vertical", None)
++
++    def __rich_measure__(
++        self, console: "Console", options: "ConsoleOptions"
++    ) -> Measurement:
++        return Measurement.get(console, options, self.renderable)
++
++    def __rich_console__(
++        self, console: "Console", options: "ConsoleOptions"
++    ) -> "RenderResult":
++        width = options.max_width
++        lines = console.render_lines(
++            self.renderable, options.update(height=None), pad=False
++        )
++        new_line = Segment.line()
++        max_lines = self.max_lines
++        if max_lines is not None and len(lines) > max_lines:
++            hidden = len(lines) - max_lines
++            lines = lines[:max_lines]
++            last = list(lines[-1])
++            while last and (last[-1].is_control or not last[-1].text.rstrip()):
++                last.pop()
++            if last:
++                last[-1] = Segment(last[-1].text.rstrip(), last[-1].style)
++            marker = self.more_marker.replace("{hidden}", str(hidden))
++            if cell_len(marker) > width:
++                marker = set_cell_size(marker, width)
++            limit = width - cell_len(marker)
++            if Segment.get_line_length(last) > limit:
++                last = Segment.adjust_line_length(last, limit)
++            if marker:
++                style = last[-1].style if last else None
++                last.append(Segment(marker, style))
++            lines[-1] = last
++        for line in lines:
++            yield from line
++            yield new_line
+diff --git a/rich/panel.py b/rich/panel.py
+index 07587e3b..0d9b44d0 100644
+--- a/rich/panel.py
++++ b/rich/panel.py
+@@ -4,6 +4,7 @@ from .align import AlignMethod
+ from .box import ROUNDED, Box
+ from .cells import cell_len
+ from .jupyter import JupyterMixin
++from .linelimit import LineLimit, validate_max_lines
+ from .measure import Measurement, measure_renderables
+ from .padding import Padding, PaddingDimensions
+ from .segment import Segment
+@@ -35,6 +36,8 @@ class Panel(JupyterMixin):
+         height (Optional[int], optional): Optional height of panel. Defaults to None to auto-detect.
+         padding (Optional[PaddingDimensions]): Optional padding around renderable. Defaults to 0.
+         highlight (bool, optional): Enable automatic highlighting of panel title (if str). Defaults to False.
++        max_lines (Optional[int], optional): Maximum number of lines of content to show (not including padding), or None for no limit. Defaults to None.
++        more_marker (str, optional): Marker shown at the end of the content if it was truncated. Defaults to "\u2026".
+     """
+ 
+     def __init__(
+@@ -54,7 +57,10 @@ class Panel(JupyterMixin):
+         height: Optional[int] = None,
+         padding: PaddingDimensions = (0, 1),
+         highlight: bool = False,
++        max_lines: Optional[int] = None,
++        more_marker: str = "\u2026",
+     ) -> None:
++        validate_max_lines(max_lines)
+         self.renderable = renderable
+         self.box = box
+         self.title = title
+@@ -69,6 +75,8 @@ class Panel(JupyterMixin):
+         self.height = height
+         self.padding = padding
+         self.highlight = highlight
++        self.max_lines = max_lines
++        self.more_marker = more_marker
+ 
+     @classmethod
+     def fit(
+@@ -87,6 +95,8 @@ class Panel(JupyterMixin):
+         height: Optional[int] = None,
+         padding: PaddingDimensions = (0, 1),
+         highlight: bool = False,
++        max_lines: Optional[int] = None,
++        more_marker: str = "\u2026",
+     ) -> "Panel":
+         """An alternative constructor that sets expand=False."""
+         return cls(
+@@ -103,6 +113,8 @@ class Panel(JupyterMixin):
+             height=height,
+             padding=padding,
+             highlight=highlight,
++            max_lines=max_lines,
++            more_marker=more_marker,
+             expand=False,
+         )
+ 
+@@ -142,9 +154,10 @@ class Panel(JupyterMixin):
+         self, console: "Console", options: "ConsoleOptions"
+     ) -> "RenderResult":
+         _padding = Padding.unpack(self.padding)
+-        renderable = (
+-            Padding(self.renderable, _padding) if any(_padding) else self.renderable
+-        )
++        content = self.renderable
++        if self.max_lines is not None:
++            content = LineLimit(content, self.max_lines, self.more_marker)
++        renderable = Padding(content, _padding) if any(_padding) else content
+         style = console.get_style(self.style)
+         border_style = style + console.get_style(self.border_style)
+         width = (
+diff --git a/rich/table.py b/rich/table.py
+index 1e2eb2b4..8e2af0e9 100644
+--- a/rich/table.py
++++ b/rich/table.py
+@@ -17,6 +17,7 @@ from ._pick import pick_bool
+ from ._ratio import ratio_distribute, ratio_reduce
+ from .align import VerticalAlignMethod
+ from .jupyter import JupyterMixin
++from .linelimit import LineLimit, validate_max_lines
+ from .measure import Measurement
+ from .padding import Padding, PaddingDimensions
+ from .protocol import is_renderable
+@@ -108,6 +109,12 @@ class Column:
+     highlight: bool = False
+     """bool: Apply highlighter to column. Defaults to ``False``."""
+ 
++    max_lines: Optional[int] = None
++    """Optional[int]: Maximum number of lines per cell, or ``None`` to use the table setting."""
++
++    more_marker: Optional[str] = None
++    """Optional[str]: Marker shown when a cell is truncated, or ``None`` to use the table setting."""
++
+     _index: int = 0
+     """Index of column."""
+ 
+@@ -138,6 +145,9 @@ class Row:
+     end_section: bool = False
+     """Indicated end of section, which will force a line beneath the row."""
+ 
++    max_lines: Optional[int] = None
++    """Maximum number of lines for each cell in this row, or None to use the column / table setting."""
++
+ 
+ class _Cell(NamedTuple):
+     """A single cell in a table."""
+@@ -213,7 +223,13 @@ class Table(JupyterMixin):
+         title_justify: "JustifyMethod" = "center",
+         caption_justify: "JustifyMethod" = "center",
+         highlight: bool = False,
++        max_lines: Optional[int] = None,
++        more_marker: str = "…",
++        max_rows: Optional[int] = None,
++        rows_marker: str = "… {hidden} more",
+     ) -> None:
++        validate_max_lines(max_lines)
++        validate_max_lines(max_rows)
+         self.columns: List[Column] = []
+         self.rows: List[Row] = []
+         self.title = title
+@@ -240,6 +256,10 @@ class Table(JupyterMixin):
+         self.title_justify: "JustifyMethod" = title_justify
+         self.caption_justify: "JustifyMethod" = caption_justify
+         self.highlight = highlight
++        self.max_lines = max_lines
++        self.more_marker = more_marker
++        self.max_rows = max_rows
++        self.rows_marker = rows_marker
+         self.row_styles: Sequence[StyleType] = list(row_styles or [])
+         append_column = self.columns.append
+         for header in headers:
+@@ -307,12 +327,31 @@ class Table(JupyterMixin):
+         """Get the current number of rows."""
+         return len(self.rows)
+ 
++    def _get_render_rows(self) -> List[Row]:
++        """Get the rows to render: the first ``max_rows`` rows, then a marker row if rows are hidden."""
++        rows = self.rows
++        max_rows = self.max_rows
++        if max_rows is None or len(rows) <= max_rows:
++            return rows
++        return [*rows[:max_rows], Row(style="dim")]
++
++    def _get_marker_text(self) -> str:
++        """Get the text of the marker row."""
++        assert self.max_rows is not None
++        hidden = len(self.rows) - self.max_rows
++        return self.rows_marker.replace("{hidden}", str(hidden))
++
+     def get_row_style(self, console: "Console", index: int) -> StyleType:
+         """Get the current row style."""
++        return self._get_row_style(console, index, self.rows)
++
++    def _get_row_style(
++        self, console: "Console", index: int, rows: List[Row]
++    ) -> StyleType:
+         style = Style.null()
+         if self.row_styles:
+             style += console.get_style(self.row_styles[index % len(self.row_styles)])
+-        row_style = self.rows[index].style
++        row_style = rows[index].style
+         if row_style is not None:
+             style += console.get_style(row_style)
+         return style
+@@ -378,6 +417,8 @@ class Table(JupyterMixin):
+         max_width: Optional[int] = None,
+         ratio: Optional[int] = None,
+         no_wrap: bool = False,
++        max_lines: Optional[int] = None,
++        more_marker: Optional[str] = None,
+     ) -> None:
+         """Add a column to the table.
+ 
+@@ -398,8 +439,14 @@ class Table(JupyterMixin):
+             max_width (Optional[int], optional): Maximum width of column, or ``None`` for no maximum. Defaults to None.
+             ratio (int, optional): Flexible ratio for the column (requires ``Table.expand`` or ``Table.width``). Defaults to None.
+             no_wrap (bool, optional): Set to ``True`` to disable wrapping of this column.
++            max_lines (int, optional): Maximum number of lines for each cell in this column, or ``None`` to use the table setting. Defaults to None.
++            more_marker (str, optional): Marker shown at the end of a truncated cell, or ``None`` to use the table setting. Defaults to None.
++
++        Raises:
++            ValueError: If ``max_lines`` is less than 1.
+         """
+ 
++        validate_max_lines(max_lines)
+         column = Column(
+             _index=len(self.columns),
+             header=header,
+@@ -416,6 +463,8 @@ class Table(JupyterMixin):
+             max_width=max_width,
+             ratio=ratio,
+             no_wrap=no_wrap,
++            max_lines=max_lines,
++            more_marker=more_marker,
+         )
+         self.columns.append(column)
+ 
+@@ -424,6 +473,7 @@ class Table(JupyterMixin):
+         *renderables: Optional["RenderableType"],
+         style: Optional[StyleType] = None,
+         end_section: bool = False,
++        max_lines: Optional[int] = None,
+     ) -> None:
+         """Add a row of renderables.
+ 
+@@ -432,11 +482,15 @@ class Table(JupyterMixin):
+                 or ``None`` for a blank cell.
+             style (StyleType, optional): An optional style to apply to the entire row. Defaults to None.
+             end_section (bool, optional): End a section and draw a line. Defaults to False.
++            max_lines (int, optional): Maximum number of lines for each cell in this row, overriding the column and table settings. Defaults to None.
+ 
+         Raises:
+             errors.NotRenderableError: If you add something that can't be rendered.
++            ValueError: If ``max_lines`` is less than 1.
+         """
+ 
++        validate_max_lines(max_lines)
++
+         def add_cell(column: Column, renderable: "RenderableType") -> None:
+             column._cells.append(renderable)
+ 
+@@ -464,7 +518,9 @@ class Table(JupyterMixin):
+                 raise errors.NotRenderableError(
+                     f"unable to render {type(renderable).__name__}; a string or other renderable object is required"
+                 )
+-        self.rows.append(Row(style=style, end_section=end_section))
++        self.rows.append(
++            Row(style=style, end_section=end_section, max_lines=max_lines)
++        )
+ 
+     def add_section(self) -> None:
+         """Add a new section (draw a line after current row)."""
+@@ -625,9 +681,12 @@ class Table(JupyterMixin):
+         return widths
+ 
+     def _get_cells(
+-        self, console: "Console", column_index: int, column: Column
++        self,
++        console: "Console",
++        column_index: int,
++        column: Column,
+     ) -> Iterable[_Cell]:
+-        """Get all the cells with padding and optional header."""
++        """Get all the cells with padding and optional header and ``max_rows`` applied."""
+ 
+         collapse_padding = self.collapse_padding
+         pad_edge = self.pad_edge
+@@ -667,20 +726,49 @@ class Table(JupyterMixin):
+         raw_cells: List[Tuple[StyleType, "RenderableType"]] = []
+         _append = raw_cells.append
+         get_style = console.get_style
++        column_max_lines = (
++            column.max_lines if column.max_lines is not None else self.max_lines
++        )
++        marker = (
++            column.more_marker if column.more_marker is not None else self.more_marker
++        )
++        row_limits: List[Optional[int]] = []
+         if self.show_header:
++            row_limits.append(column_max_lines)
+             header_style = get_style(self.header_style or "") + get_style(
+                 column.header_style
+             )
+             _append((header_style, column.header))
+         cell_style = get_style(column.style or "")
+-        for cell in column.cells:
++        rows = self._get_render_rows()
++        cells = list(column.cells)
++        if rows is not self.rows:
++            # The last row is the marker row, replacing the hidden rows
++            del cells[len(rows) - 1 :]
++            cells.append(self._get_marker_text() if column_index == 0 else "")
++        for cell, row in zip(cells, rows):
+             _append((cell_style, cell))
++            row_limits.append(
++                row.max_lines if row.max_lines is not None else column_max_lines
++            )
+         if self.show_footer:
++            row_limits.append(column_max_lines)
+             footer_style = get_style(self.footer_style or "") + get_style(
+                 column.footer_style
+             )
+             _append((footer_style, column.footer))
+ 
++        if any(limit is not None for limit in row_limits):
++            raw_cells = [
++                (
++                    style,
++                    renderable
++                    if limit is None
++                    else LineLimit(renderable, limit, marker),
++                )
++                for (style, renderable), limit in zip(raw_cells, row_limits)
++            ]
++
+         if any_padding:
+             _Padding = Padding
+             for first, last, (style, renderable) in loop_first_last(raw_cells):
+@@ -762,6 +850,7 @@ class Table(JupyterMixin):
+             self._get_cells(console, column_index, column)
+             for column_index, column in enumerate(self.columns)
+         )
++        rows = self._get_render_rows()
+ 
+         row_cells: List[Tuple[_Cell, ...]] = list(zip(*_column_cells))
+         _box = (
+@@ -807,14 +896,14 @@ class Table(JupyterMixin):
+         else:
+             box_segments = []
+ 
+-        get_row_style = self.get_row_style
++        get_row_style = self._get_row_style
+         get_style = console.get_style
+ 
+         for index, (first, last, row_cell) in enumerate(loop_first_last(row_cells)):
+             header_row = first and show_header
+             footer_row = last and show_footer
+             row = (
+-                self.rows[index - show_header]
++                rows[index - show_header]
+                 if (not header_row and not footer_row)
+                 else None
+             )
+@@ -824,7 +913,7 @@ class Table(JupyterMixin):
+                 row_style = Style.null()
+             else:
+                 row_style = get_style(
+-                    get_row_style(console, index - 1 if show_header else index)
++                    get_row_style(console, index - 1 if show_header else index, rows)
+                 )
+             for width, cell, column in zip(widths, row_cell, columns):
+                 render_options = options.update(
+diff --git a/rich/tree.py b/rich/tree.py
+index 9a87d60d..e8408c9f 100644
+--- a/rich/tree.py
++++ b/rich/tree.py
+@@ -3,6 +3,7 @@ from typing import Iterator, List, Optional, Tuple
+ from ._loop import loop_first, loop_last
+ from .console import Console, ConsoleOptions, RenderableType, RenderResult
+ from .jupyter import JupyterMixin
++from .linelimit import LineLimit, validate_max_lines
+ from .measure import Measurement
+ from .segment import Segment
+ from .style import Style, StyleStack, StyleType
+@@ -25,6 +26,8 @@ class Tree(JupyterMixin):
+         expanded (bool, optional): Also display children. Defaults to True.
+         highlight (bool, optional): Highlight renderable (if str). Defaults to False.
+         hide_root (bool, optional): Hide the root node. Defaults to False.
++        max_lines (Optional[int], optional): Maximum number of lines to show for the label of this node, or None for no limit. Defaults to None.
++        more_marker (str, optional): Marker shown at the end of a truncated label. Defaults to "\u2026".
+     """
+ 
+     ASCII_GUIDES = ("    ", "|   ", "+-- ", "`-- ")
+@@ -43,7 +46,13 @@ class Tree(JupyterMixin):
+         expanded: bool = True,
+         highlight: bool = False,
+         hide_root: bool = False,
++        max_lines: Optional[int] = None,
++        more_marker: str = "\u2026",
++        max_children: Optional[int] = None,
++        children_marker: str = "\u2026 {hidden} more",
+     ) -> None:
++        validate_max_lines(max_lines)
++        validate_max_lines(max_children)
+         self.label = label
+         self.style = style
+         self.guide_style = guide_style
+@@ -51,6 +60,24 @@ class Tree(JupyterMixin):
+         self.expanded = expanded
+         self.highlight = highlight
+         self.hide_root = hide_root
++        self.max_lines = max_lines
++        self.more_marker = more_marker
++        self.max_children = max_children
++        self.children_marker = children_marker
++
++    def _get_visible_children(self) -> List["Tree"]:
++        """Get the children to display: at most ``max_children``, then a marker leaf."""
++        children = self.children
++        max_children = self.max_children
++        if max_children is None or len(children) <= max_children:
++            return children
++        hidden = len(children) - max_children
++        marker = Tree(
++            self.children_marker.replace("{hidden}", str(hidden)),
++            style="dim",
++            guide_style=self.guide_style,
++        )
++        return [*children[:max_children], marker]
+ 
+     def add(
+         self,
+@@ -60,6 +87,10 @@ class Tree(JupyterMixin):
+         guide_style: Optional[StyleType] = None,
+         expanded: bool = True,
+         highlight: Optional[bool] = False,
++        max_lines: Optional[int] = None,
++        more_marker: Optional[str] = None,
++        max_children: Optional[int] = None,
++        children_marker: Optional[str] = None,
+     ) -> "Tree":
+         """Add a child tree.
+ 
+@@ -69,6 +100,10 @@ class Tree(JupyterMixin):
+             guide_style (StyleType, optional): Style of the guide lines. Defaults to "tree.line".
+             expanded (bool, optional): Also display children. Defaults to True.
+             highlight (Optional[bool], optional): Highlight renderable (if str). Defaults to False.
++            max_lines (Optional[int], optional): Maximum number of lines for the label, or None to inherit from the parent. Defaults to None.
++            more_marker (Optional[str], optional): Marker for a truncated label, or None to inherit from the parent. Defaults to None.
++            max_children (Optional[int], optional): Maximum number of children of the new node to display, or None to inherit from the parent. Defaults to None.
++            children_marker (Optional[str], optional): Text of the leaf shown when children are hidden, or None to inherit from the parent. Defaults to None.
+ 
+         Returns:
+             Tree: A new child Tree, which may be further modified.
+@@ -79,6 +114,12 @@ class Tree(JupyterMixin):
+             guide_style=self.guide_style if guide_style is None else guide_style,
+             expanded=expanded,
+             highlight=self.highlight if highlight is None else highlight,
++            max_lines=self.max_lines if max_lines is None else max_lines,
++            more_marker=self.more_marker if more_marker is None else more_marker,
++            max_children=self.max_children if max_children is None else max_children,
++            children_marker=(
++                self.children_marker if children_marker is None else children_marker
++            ),
+         )
+         self.children.append(node)
+         return node
+@@ -135,8 +176,11 @@ class Tree(JupyterMixin):
+             guide_style = guide_style_stack.current + get_style(node.guide_style)
+             style = style_stack.current + get_style(node.style)
+             prefix = levels[(2 if self.hide_root else 1) :]
++            label = node.label
++            if node.max_lines is not None:
++                label = LineLimit(label, node.max_lines, node.more_marker)
+             renderable_lines = console.render_lines(
+-                Styled(node.label, style),
++                Styled(label, style),
+                 options.update(
+                     width=options.max_width
+                     - sum(level.cell_length for level in prefix),
+@@ -161,16 +205,15 @@ class Tree(JupyterMixin):
+                             SPACE if last else CONTINUE, prefix[-1].style or null_style
+                         )
+ 
+-            if node.expanded and node.children:
++            children = node._get_visible_children() if node.expanded else []
++            if children:
+                 levels[-1] = make_guide(
+                     SPACE if last else CONTINUE, levels[-1].style or null_style
+                 )
+-                levels.append(
+-                    make_guide(END if len(node.children) == 1 else FORK, guide_style)
+-                )
++                levels.append(make_guide(END if len(children) == 1 else FORK, guide_style))
+                 style_stack.push(get_style(node.style))
+                 guide_style_stack.push(get_style(node.guide_style))
+-                push(iter(loop_last(node.children)))
++                push(iter(loop_last(children)))
+                 depth += 1
+ 
+     def __rich_measure__(
+@@ -195,8 +238,9 @@ class Tree(JupyterMixin):
+             indent = level * 4
+             minimum = max(min_measure + indent, minimum)
+             maximum = max(max_measure + indent, maximum)
+-            if tree.expanded and tree.children:
+-                push(iter(tree.children))
++            children = tree._get_visible_children() if tree.expanded else []
++            if children:
++                push(iter(children))
+                 level += 1
+         return Measurement(minimum, maximum)
+ 

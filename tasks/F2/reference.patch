@@ -1,0 +1,81 @@
+diff --git a/src/marshmallow/fields.py b/src/marshmallow/fields.py
+index c6e71f70..46c2dc51 100644
+--- a/src/marshmallow/fields.py
++++ b/src/marshmallow/fields.py
+@@ -738,21 +738,37 @@ class List(Field[list[_InternalT | None]]):
+         numbers = fields.List(fields.Float())
+ 
+     :param cls_or_instance: A field class or instance.
++    :param unique: If `True`, validate that no two deserialized items are equal.
+     :param kwargs: The same keyword arguments that :class:`Field` receives.
+ 
+     .. versionchanged:: 3.0.0rc9
+         Does not serialize scalar values to single-item lists.
++    .. versionchanged:: 4.4.0
++        Add ``unique`` parameter.
+     """
+ 
+     #: Default error messages.
+-    default_error_messages = {"invalid": "Not a valid list."}
++    default_error_messages = {
++        "invalid": "Not a valid list.",
++        "duplicate": "Items must be unique.",
++    }
+ 
+     def __init__(
+         self,
+         cls_or_instance: Field[_InternalT] | type[Field[_InternalT]],
++        *,
++        unique: bool = False,
+         **kwargs: Unpack[_BaseFieldKwargs],
+     ):
+         super().__init__(**kwargs)
++        self.unique = unique
++        if unique:
++            # Insert validation into self.validators so that multiple errors can be stored.
++            if not isinstance(self.error_messages["duplicate"], str):
++                raise ValueError('"duplicate" error message must be a string.')
++            self.validators.insert(
++                0, validate.Unique(error=self.error_messages["duplicate"])
++            )
+         try:
+             self.inner: Field[_InternalT] = _resolve_field_instance(cls_or_instance)
+         except _FieldInstanceResolutionError as error:
+diff --git a/src/marshmallow/validate.py b/src/marshmallow/validate.py
+index 35c0e8bc..054a062c 100644
+--- a/src/marshmallow/validate.py
++++ b/src/marshmallow/validate.py
+@@ -706,3 +706,33 @@ class ContainsNoneOf(NoneOf):
+             if val in self.iterable:
+                 raise ValidationError(self._format_error(value))
+         return value
++
++
++class Unique(Validator):
++    """Validator which succeeds if no two elements of ``value`` are equal.
++    Empty input is considered valid. Elements do not need to be hashable.
++
++    :param error: Error message to raise in case of a validation error.
++
++    .. versionadded:: 4.4.0
++    """
++
++    default_message = "Items must be unique."
++
++    def __init__(self, *, error: str | None = None):
++        self.error: str = error or self.default_message
++
++    def __call__(self, value: typing.Iterable[_T]) -> typing.Iterable[_T]:
++        seen_hashable: set[typing.Any] = set()
++        seen_unhashable: list[typing.Any] = []
++        for item in value:
++            try:
++                if item in seen_hashable:
++                    raise ValidationError(self.error)
++                seen_hashable.add(item)
++            except TypeError:
++                # Unhashable item (e.g. a dict or list), fall back to equality
++                if item in seen_unhashable:
++                    raise ValidationError(self.error) from None
++                seen_unhashable.append(item)
++        return value

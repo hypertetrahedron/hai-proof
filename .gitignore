@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+results/
+dist/
+*.egg-info/
+
+# Per-user Claude Code settings (may hold credentials such as CLAUDE_CODE_OAUTH_TOKEN)
+.claude/settings.local.json
+# Local secrets (CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY)
+.env
+
+# Task repo snapshots are rebuilt from the pinned SHA by `hai-proof build-task`
+tasks/*/repo/
+tasks/*/source.lock.json
+
+# Per-user config (execution host aliases, local overrides); template is hai-proof.example.toml
+hai-proof.toml

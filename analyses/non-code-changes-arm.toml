@@ -1,0 +1,18 @@
+name       = "non-code-changes-arm"
+scope      = "arm"
+budget_usd = 1.50
+prompt     = """
+You are given the per-session reports of several coding-agent sessions, one per trial,
+at /analysis/trials/*/report.md. Each report lists changes that did not directly affect
+the product code (roadmap or documentation changes, test structure changes, config or
+tooling files, and so on). Transcripts and diff_breakdown.json files, where present, sit
+beside each report in the same trial directory.
+
+Summarize which non-code changes recur across the sessions. For each recurring pattern,
+state how many sessions showed it, give example file paths, and say what seems to have
+prompted it, citing the individual trial directories. Separate patterns that appear in
+most sessions from one-off changes. Note any sessions whose report is missing. Do not
+speculate beyond what the reports and transcripts show.
+
+Return the summary as your final response.
+"""

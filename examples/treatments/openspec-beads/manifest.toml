@@ -1,0 +1,28 @@
+name = "openspec-beads"
+prompt_prefix = ""
+
+[env]
+
+# Pin the exact releases that were evaluated; never @latest. Versions below are placeholders.
+[[requires]]
+name = "openspec"
+install = "npm install -g @fission-ai/openspec@<pinned version>"
+check = "openspec --version"
+
+[[requires]]
+name = "bd"
+install = "npm install -g @beads/bd@<pinned version>"
+check = "bd --version"
+
+[setup]
+# Needs non-interactive flags; confirm against the pinned versions when onboarding.
+commands = ["openspec init <non-interactive flags>", "bd init <non-interactive flags>"]
+artifacts = ["openspec/", ".beads/"]
+
+[network]
+allow = []
+
+[expect]
+plugins = []
+mcp_servers = []
+skills = []

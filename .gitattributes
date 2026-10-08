@@ -1,0 +1,2 @@
+# Normalise to LF everywhere: shell scripts and Dockerfiles run inside Linux containers
+* text=auto eol=lf

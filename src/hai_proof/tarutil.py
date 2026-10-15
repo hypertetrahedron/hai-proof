@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import tarfile
 from pathlib import Path, PurePosixPath
-from typing import Mapping
+from typing import Callable, Mapping
 
 _EXCLUDE_DIRS = {".git", "__pycache__", ".venv", ".pytest_cache", ".mypy_cache"}
 
@@ -54,14 +54,25 @@ def tar_files(files: Mapping[str, bytes | str], *, mode: int = 0o644, uid: int =
     return buf.getvalue()
 
 
-def extract_tar(data: bytes, dest: Path) -> list[Path]:
-    """Safely extract tar bytes into dest (rejects absolute paths, '..' and links). Returns files written."""
+def extract_tar(data: bytes, dest: Path, *, strip_components: int = 0,
+                skip: Callable[[str], bool] | None = None) -> list[Path]:
+    """Safely extract tar bytes into dest (rejects absolute paths, '..' and links). Returns files written.
+
+    `strip_components` drops leading path parts like `tar --strip-components`; `skip(name)` is called
+    with the stripped posix name and excludes the member when it returns True.
+    """
     dest.mkdir(parents=True, exist_ok=True)
     root = dest.resolve()
     written: list[Path] = []
     with tarfile.open(fileobj=io.BytesIO(data), mode="r") as tar:
         for m in tar.getmembers():
-            target = (dest / m.name).resolve()
+            parts = PurePosixPath(m.name).parts[strip_components:]
+            if not parts:
+                continue
+            name = PurePosixPath(*parts).as_posix()
+            if skip is not None and skip(name):
+                continue
+            target = (dest / name).resolve()
             if not str(target).startswith(str(root)) or m.issym() or m.islnk():
                 continue
             if m.isdir():

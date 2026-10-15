@@ -23,7 +23,7 @@ MODES: dict[str, dict[str, int]] = {
 
 _TOP_KEYS = {
     "default_host", "model", "effort", "cli_version", "tasks_dir", "treatments_dir",
-    "analyses_dir", "results_dir", "ssh_binary", "analyses", "limits", "probe", "egress",
+    "analyses_dir", "results_dir", "ssh_binary", "analyses", "limits", "probe", "egress", "stand_in_model",
 }
 
 
@@ -43,6 +43,7 @@ class ProjectConfig:
     limits: Limits = field(default_factory=Limits)
     probe_runs: int = 5
     egress: str = "proxy"
+    stand_in_model: str = "claude-sonnet-5-5"  # user stand-in for user-in-the-loop runs (DESIGN §3.8)
 
     def path(self, attr: str) -> Path:
         """Resolve one of the *_dir settings against the project root."""
@@ -64,7 +65,7 @@ def load_project_config(root: Path) -> ProjectConfig:
     if unknown:
         raise ConfigError(f"{f}: unknown keys: {', '.join(unknown)}")
     for key in ("default_host", "model", "effort", "cli_version", "tasks_dir", "treatments_dir",
-                "analyses_dir", "results_dir", "ssh_binary"):
+                "analyses_dir", "results_dir", "ssh_binary", "stand_in_model"):
         if key in d:
             if not isinstance(d[key], str) or not d[key]:
                 raise ConfigError(f"{f}: '{key}' must be a non-empty string")
@@ -106,6 +107,24 @@ def select_tasks_for_mode(tasks: list[TaskSpec], mode: str) -> list[TaskSpec]:
         raise ConfigError(f"unknown mode '{mode}' (expected one of: {', '.join(MODES)})")
     max_level = MODES[mode]["max_level"]
     return [t for t in tasks if t.level <= max_level]
+
+
+DEFAULT_SUITE = "standard"
+
+
+def select_tasks_for_suite(tasks: list[TaskSpec], suite: str | None) -> list[TaskSpec]:
+    """Tasks tagged with `suite`. With no suite given, the standard suite if any task is in it, else
+    every task. 'all' selects every task."""
+    if suite == "all":
+        return tasks
+    if suite is None:
+        std = [t for t in tasks if DEFAULT_SUITE in t.suites]
+        return std or tasks
+    picked = [t for t in tasks if suite in t.suites]
+    if not picked:
+        known = sorted({s for t in tasks for s in t.suites})
+        raise ConfigError(f"no tasks in suite '{suite}' (suites: {', '.join(known) or 'none'}, or 'all')")
+    return picked
 
 
 CREDENTIAL_VARS = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")

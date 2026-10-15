@@ -8,9 +8,9 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .config import ConfigError
-from .models import PLAIN, Requirement, TreatmentSpec
+from .models import PLAIN, TASK_PROMPT_SLOT, Requirement, TreatmentSpec
 
-_TOP_KEYS = {"name", "prompt_prefix", "env", "requires", "setup", "network", "expect"}
+_TOP_KEYS = {"name", "prompt_prefix", "prompt_variant", "env", "requires", "setup", "network", "expect", "workflow"}
 _SLUG = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
@@ -62,6 +62,9 @@ def load_treatment(path: Path) -> TreatmentSpec:
     prefix = d.get("prompt_prefix", "")
     if not isinstance(prefix, str):
         raise ConfigError(f"{mf}: prompt_prefix must be a string")
+    variant = d.get("prompt_variant", "")
+    if not isinstance(variant, str) or (variant and not _SLUG.match(variant)):
+        raise ConfigError(f"{mf}: prompt_variant must be a name matching [A-Za-z0-9._-]+")
 
     env = d.get("env", {})
     if not isinstance(env, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in env.items()):
@@ -86,11 +89,19 @@ def load_treatment(path: Path) -> TreatmentSpec:
     net = _table(d, "network", {"allow"}, mf)
     allow = _str_list(net.get("allow", []), f"{mf}: network.allow")
     exp = _table(d, "expect", {"plugins", "mcp_servers", "skills"}, mf)
+    wf = _table(d, "workflow", {"turns"}, mf)
+    turns = _str_list(wf.get("turns", []), f"{mf}: workflow.turns")
+    if turns:
+        if any(not t.strip() for t in turns):
+            raise ConfigError(f"{mf}: workflow.turns must not contain empty messages")
+        if not any(TASK_PROMPT_SLOT in t for t in turns):
+            raise ConfigError(f"{mf}: one of workflow.turns must contain {TASK_PROMPT_SLOT} (where the task prompt goes)")
 
     return TreatmentSpec(
         name=name,
         path=path,
         prompt_prefix=prefix,
+        prompt_variant=variant,
         env=dict(env),
         requires=tuple(reqs),
         setup_commands=commands,
@@ -99,6 +110,7 @@ def load_treatment(path: Path) -> TreatmentSpec:
         expect_plugins=_str_list(exp.get("plugins", []), f"{mf}: expect.plugins"),
         expect_mcp_servers=_str_list(exp.get("mcp_servers", []), f"{mf}: expect.mcp_servers"),
         expect_skills=_str_list(exp.get("skills", []), f"{mf}: expect.skills"),
+        workflow=turns,
     )
 
 

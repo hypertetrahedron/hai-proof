@@ -2,7 +2,7 @@ import pytest
 
 from hai_proof.config import (
     MODES, ConfigError, ProjectConfig, auth_env, load_project_config, resolve_host,
-    select_tasks_for_mode,
+    select_tasks_for_mode, select_tasks_for_suite,
 )
 from hai_proof.models import TaskSpec
 
@@ -114,3 +114,17 @@ def test_auth_env_missing_names_dotenv(tmp_path, monkeypatch):
         monkeypatch.delenv(v, raising=False)
     with _pytest.raises(ConfigError, match=r"\.env"):
         auth_env(tmp_path)
+
+
+def _s(i, *suites):
+    return TaskSpec(id=i, kind="bug", level=1, path=None, prompt="p", suites=suites)  # type: ignore[arg-type]
+
+
+def test_suites():
+    tasks = [_s("a", "standard"), _s("b", "smoke"), _s("c")]
+    assert [t.id for t in select_tasks_for_suite(tasks, None)] == ["a"]
+    assert [t.id for t in select_tasks_for_suite(tasks, "smoke")] == ["b"]
+    assert len(select_tasks_for_suite(tasks, "all")) == 3
+    assert len(select_tasks_for_suite([_s("x"), _s("y")], None)) == 2  # untagged library: everything
+    with pytest.raises(ConfigError, match="smoke"):
+        select_tasks_for_suite(tasks, "nope")

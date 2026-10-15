@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from hai_proof.config import ConfigError
-from hai_proof.tasks import build_task, is_test_path, load_suite, load_task
+from hai_proof.tasks import _parse, build_task, is_test_path, load_suite, load_task
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "tasks" / "example-bug"
 SHA = "a" * 40
@@ -92,6 +92,19 @@ def test_load_suite(tmp_path):
         load_suite(tmp_path / "none")
 
 
+def test_prompt_variants(tmp_path):
+    d = _task(tmp_path, 'id="V1"\nkind="bug"\nlevel=1\n', prompt="Full report.")
+    (d / "prompts").mkdir()
+    (d / "prompts" / "degraded.md").write_text("Shorter report.\n")
+    t = load_task(d)
+    assert t.prompt_for() == "Full report." and t.prompt_for("degraded") == "Shorter report."
+    with pytest.raises(KeyError):
+        t.prompt_for("other")
+    (d / "prompts" / "empty.md").write_text("  \n")
+    with pytest.raises(ConfigError, match="empty"):
+        load_task(d)
+
+
 def test_is_test_path():
     for p in ("tests/a.py", "pkg/tests/data/x.json", "test_x.py", "a/b_test.py", "a/conftest.py"):
         assert is_test_path(p), p
@@ -155,6 +168,89 @@ def test_build_task(tmp_path, upstream, capsys):
     _run(work, "init", "-q")
     _run(work, "apply", str(d / "reference.patch"))
     assert (work / "pkg" / "__init__.py").read_text().endswith("return 2\n")
+
+
+def test_build_task_exclude(tmp_path, upstream):
+    up, base, fix = upstream
+    d = _src_task(tmp_path, up, base, fix)
+    tf = d / "task.toml"
+    tf.write_text(tf.read_text() + 'exclude = ["conftest.py", "pkg/*"]\n')
+    build_task(d)
+    assert (d / "hidden_tests" / "tests" / "test_f.py").is_file()
+    assert not (d / "hidden_tests" / "conftest.py").exists()
+    assert not (d / "reference.patch").exists()
+
+
+def test_source_exclude_validation(tmp_path):
+    base = "a" * 40
+    with pytest.raises(ConfigError, match="requires source.fix"):
+        _parse(_task(tmp_path, f'id="X"\nkind="bug"\nlevel=1\n[source]\nurl="u"\nbase="{base}"\nexclude=["a"]\n',
+                     name="x", repo=False), check_dirs=False)
+    with pytest.raises(ConfigError, match="list of path patterns"):
+        _parse(_task(tmp_path, f'id="Y"\nkind="bug"\nlevel=1\n[source]\nurl="u"\nbase="{base}"\nfix="{base}"\n'
+                               'exclude="a"\n', name="y", repo=False), check_dirs=False)
+
+
+def test_acceptance_cmd(tmp_path):
+    head = 'kind="bug"\nlevel=1\n'
+    t = _parse(_task(tmp_path, f'id="A"\n{head}acceptance=["tests/t.py"]\nacceptance_cmd="python -m unittest tests.t"\n',
+                     name="a", repo=False), check_dirs=False)
+    assert t.acceptance_cmd == "python -m unittest tests.t"
+    with pytest.raises(ConfigError, match="needs 'acceptance'"):
+        _parse(_task(tmp_path, f'id="B"\n{head}acceptance_cmd="x"\n', name="b", repo=False), check_dirs=False)
+    with pytest.raises(ConfigError, match="only applies to pytest"):
+        _parse(_task(tmp_path, f'id="C"\n{head}acceptance=["t.py"]\nacceptance_cmd="x"\nacceptance_args=["-x"]\n',
+                     name="c", repo=False), check_dirs=False)
+    with pytest.raises(ConfigError, match="non-empty string"):
+        _parse(_task(tmp_path, f'id="D"\n{head}acceptance=["t.py"]\nacceptance_cmd=" "\n', name="d", repo=False),
+               check_dirs=False)
+
+
+def test_suites(tmp_path):
+    head = 'kind="bug"\nlevel=1\n'
+    t = _parse(_task(tmp_path, f'id="A"\n{head}suites=["standard", "smoke"]\n', name="a", repo=False), check_dirs=False)
+    assert t.suites == ("standard", "smoke")
+    assert _parse(_task(tmp_path, f'id="B"\n{head}', name="b", repo=False), check_dirs=False).suites == ()
+    for i, bad in enumerate(['"standard"', '[""]', '["all"]']):
+        with pytest.raises(ConfigError, match="suite"):
+            _parse(_task(tmp_path, f'id="C{i}"\n{head}suites={bad}\n', name=f"c{i}", repo=False), check_dirs=False)
+
+
+def test_cost_tier_and_report_order(tmp_path):
+    head = 'kind="bug"\nlevel=1\n'
+    t = _parse(_task(tmp_path, f'id="A"\n{head}cost_tier="medium"\nreport_order=7\n', name="a", repo=False),
+               check_dirs=False)
+    assert (t.cost_tier, t.report_order) == ("medium", 7)
+    t = _parse(_task(tmp_path, f'id="B"\n{head}', name="b", repo=False), check_dirs=False)
+    assert (t.cost_tier, t.report_order) == ("", None)
+    for i, bad in enumerate(['cost_tier="cheap"', "report_order=0", "report_order=true", 'report_order="1"']):
+        with pytest.raises(ConfigError, match="cost_tier|report_order"):
+            _parse(_task(tmp_path, f'id="C{i}"\n{head}{bad}\n', name=f"c{i}", repo=False), check_dirs=False)
+
+
+def test_content_hash(tmp_path):
+    d = _task(tmp_path, 'id="A"\nkind="bug"\nlevel=1\n', hidden=True)
+    (d / "repo" / "a.py").write_text("x = 1\n")
+    (d / "hidden_tests" / "test_a.py").write_text("def test(): pass\n")
+    h = load_task(d).content_hash()
+    assert h == load_task(d).content_hash() and len(h) == 12
+    # report metadata, baseline.json and caches don't change it
+    (d / "task.toml").write_text('id="A"\nkind="bug"\nlevel=1\nsuites=["s"]\ncost_tier="low"\nreport_order=3\n')
+    (d / "baseline.json").write_text("{}")
+    (d / "hidden_tests" / "__pycache__").mkdir()
+    (d / "hidden_tests" / "__pycache__" / "x.pyc").write_bytes(b"\0")
+    assert load_task(d).content_hash() == h
+    # anything that can change a trial does
+    changes = [
+        lambda: (d / "hidden_tests" / "test_a.py").write_text("def test(): assert 0\n"),
+        lambda: (d / "repo" / "a.py").write_text("x = 2\n"),
+        lambda: (d / "prompt.md").write_text("Fix it now."),
+        lambda: (d / "task.toml").write_text('id="A"\nkind="bug"\nlevel=1\ntimeout_s=60\n'),
+    ]
+    for change in changes:
+        change()
+        assert load_task(d).content_hash() != h
+        h = load_task(d).content_hash()
 
 
 def test_build_task_refuses_overwrite_then_force(tmp_path, upstream):

@@ -58,11 +58,14 @@ def test_comparative_summary_structure():
     trials.append(mk_trial("B", "t2", 0, status="error", error="boom", pair="px"))
     trials[0].analyses.append(AnalysisResult(name="n", ok=True, report_path="A/t1/rep0/analysis-n.md", cost_usd=0.5))
     s = build_summary(run, trials, n_boot=200)
-    for k in ("schema", "run", "verdict", "ratios", "pass_k", "per_task", "probe", "excluded",
+    for k in ("schema", "run", "results", "ratios", "pass_k", "per_task", "probe", "excluded",
               "analysis_cost", "trials_table"):
         assert k in s
-    assert s["schema"] == 1
-    assert s["verdict"]["label"]
+    assert s["schema"] == 2 and "verdict" not in s
+    assert set(s["results"]["arms"]) == {"A", "B"} and s["results"]["k"] == 3
+    assert s["results"]["arms"]["A"]["pass@1"] is not None
+    assert set(s["results"]["relative"]) == {"pass@1", "pass@k"}
+    assert "Pass rate (B vs A)" in render_html(s)
     assert set(s["ratios"]) == {"cost_usd", "tokens_total", "wall_s"}
     assert abs(s["ratios"]["cost_usd"]["gm_ratio"] - 2.0) < 0.05
     assert s["probe"]["A"]["median_first_request_input_tokens"] == 1100
@@ -81,16 +84,18 @@ def test_comparative_summary_structure():
     json.dumps(s)
 
 
-def test_single_arm_has_null_verdict():
+def test_single_arm_has_no_ratios():
     run = mk_run("single", reps=2)
     trials = [mk_trial("B", t, r) for t in ("t1", "t2") for r in range(2)]
     s = build_summary(run, trials, n_boot=100)
-    assert s["verdict"] is None and s["ratios"] == {}
+    assert s["ratios"] == {} and set(s["results"]["arms"]) == {"B"}
+    assert s["results"]["relative"] is None
     assert s["probe"] is None
     assert s["per_task"][0]["ratio"] is None
     html_ = render_html(s)
-    assert "SINGLE-ARM — NO COMPARATIVE VERDICT" in html_
-    assert "Forest plot" not in html_
+    assert "SINGLE-ARM — NO COMPARISON" in html_
+    assert "Forest plot" not in html_ and "Relative metric" not in html_
+    assert "pass@2" in html_
 
 
 def test_ab_stamp():
@@ -101,13 +106,13 @@ def test_ab_stamp():
     assert "<svg" in h and "Forest plot" in h
 
 
-def test_lightning_indicative():
+def test_lightning_results():
     run = mk_run(reps=1)
     trials = comparative_trials(reps=1, bcost=3.0)
     s = build_summary(run, trials, n_boot=100)
-    assert s["verdict"] is not None and s["verdict"]["indicative"] is True
+    assert s["results"]["k"] == 1 and s["ratios"]["cost_usd"]["gm_ratio"] > 2
     h = render_html(s)
-    assert "INDICATIVE" in h
+    assert "pass@1" in h and "Relative metric" in h and "INDICATIVE" not in h
 
 
 def test_html_comparative_sections_and_no_external():
@@ -120,9 +125,9 @@ def test_html_comparative_sections_and_no_external():
     trials.append(mk_trial("A", "t2", 1, status="discarded", error="rl", pair="pz", rate_limited=True))
     h = render_html(build_summary(run, trials, n_boot=100))
     assert "COMPARATIVE" in h
-    for section in ("Context-tax probe", "Forest plot", "Per-task table", "Success disagreements",
+    for section in ("<h2>Results</h2>", "Context-tax probe", "Forest plot", "Per-task table", "Success disagreements",
                     "Behavior differences", "Change breakdown", "Analyses", "Excluded / discarded",
-                    "Isolation audit", "excluded from all verdicts"):
+                    "Isolation audit", "excluded from all results"):
         assert section in h
     assert "+4,000 input tokens" in h
     assert "<details>" in h
@@ -157,6 +162,31 @@ def test_load_run_override_and_write(tmp_path):
     (tmp_path / "A" / "n.md").write_text("# report <b>x</b>")
     sp, hp = write_report(tmp_path, run, trials)
     assert sp.exists() and hp.exists()
-    assert json.loads(sp.read_text())["schema"] == 1
+    assert json.loads(sp.read_text())["schema"] == 2
     page = hp.read_text(encoding="utf-8")
     assert "&lt;b&gt;x&lt;/b&gt;" in page
+
+
+def test_fixed_task_order_and_tier_groups():
+    tasks = [{"id": "x", "kind": "bug", "level": 1, "origin": "o"},
+             {"id": "hi", "kind": "bug", "level": 1, "origin": "o", "cost_tier": "high", "report_order": 3},
+             {"id": "lo2", "kind": "bug", "level": 1, "origin": "o", "cost_tier": "low", "report_order": 2},
+             {"id": "lo1", "kind": "bug", "level": 1, "origin": "o", "cost_tier": "low", "report_order": 1}]
+    trials = [mk_trial(a, t["id"], 0) for t in tasks for a in ("A", "B")]
+    s = build_summary(mk_run(tasks=tasks, reps=1), trials, n_boot=50)
+    assert [p["task_id"] for p in s["per_task"]] == ["lo1", "lo2", "hi", "x"]
+    h = render_html(s)
+    assert h.index("Low cost") < h.index("High cost") < h.index("Not tiered")
+
+
+def test_apply_task_order_fills_only_missing():
+    from types import SimpleNamespace
+
+    from hai_proof.report import apply_task_order
+
+    run = {"tasks": [{"id": "a"}, {"id": "b", "cost_tier": "high", "report_order": 9}, {"id": "gone"}]}
+    specs = [SimpleNamespace(id="a", cost_tier="low", report_order=1),
+             SimpleNamespace(id="b", cost_tier="low", report_order=2)]
+    apply_task_order(run, specs)
+    assert run["tasks"][0] == {"id": "a", "cost_tier": "low", "report_order": 1}
+    assert run["tasks"][1]["cost_tier"] == "high" and "cost_tier" not in run["tasks"][2]

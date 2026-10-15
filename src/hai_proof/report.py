@@ -11,10 +11,31 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import stats
-from .models import TrialResult, trial_from_json
+from .models import TrialResult, ask_tool_mode, trial_from_json
 
 METRIC_LABELS = {"cost_usd": "Cost", "tokens_total": "Tokens", "wall_s": "Wall time"}
 BAND = 0.15
+TIER_LABELS = {"low": "Low cost", "medium": "Medium cost", "high": "High cost", "": "Not tiered"}
+_TIER_RANK = {"low": 0, "medium": 1, "high": 2}
+
+
+def task_sort_key(task: dict) -> tuple:
+    """Fixed report order: cost tier, then the task's report_order, then id (untiered tasks last)."""
+    order = task.get("report_order")
+    return (_TIER_RANK.get(task.get("cost_tier") or "", 3), order if isinstance(order, int) else 10**9,
+            str(task.get("id", task.get("task_id", ""))))
+
+
+def apply_task_order(run: dict, specs: Sequence[Any]) -> None:
+    """Fill cost_tier/report_order into a run's task list from the current task library, for runs
+    recorded before those keys existed. Values already in run.json win."""
+    by_id = {t.id: t for t in specs}
+    for task in run.get("tasks", []):
+        spec = by_id.get(task.get("id"))
+        if spec is None:
+            continue
+        task.setdefault("cost_tier", spec.cost_tier)
+        task.setdefault("report_order", spec.report_order)
 
 e = html.escape
 
@@ -43,19 +64,20 @@ def build_summary(run: dict, trials: Sequence[TrialResult], *, n_boot: int = 500
     single = shape == "single" or len(labels) < 2
     scored = [t for t in trials if t.scored]
 
-    verdict = None
     ratios: dict[str, Any] = {}
     if not single:
-        v = stats.verdict(scored, shape=shape, reps=run.get("reps", 1), n_boot=n_boot, seed=seed)
-        verdict = _asdict(v) if v is not None else None
         for metric in stats.METRICS:
             r = stats.ratio_ci(scored, metric, ref=labels[0], cand=labels[1], n_boot=n_boot, seed=seed)
             ratios[metric] = _asdict(r) if r is not None else None
 
     pass_k = {lab: stats.pass_k(scored, lab) for lab in labels}
+    k = int(run.get("reps") or 1)
+    results = {"k": k, "arms": {lab: stats.pass_at(scored, lab, k) for lab in labels}, "relative": None}
+    if not single:
+        results["relative"] = stats.pass_at_relative(scored, k, ref=labels[0], cand=labels[1], n_boot=n_boot, seed=seed)
 
     per_task = []
-    for task in run.get("tasks", []):
+    for task in sorted(run.get("tasks", []), key=task_sort_key):
         tid = task["id"]
         arms_out: dict[str, Any] = {}
         for lab in labels:
@@ -93,6 +115,8 @@ def build_summary(run: dict, trials: Sequence[TrialResult], *, n_boot: int = 500
                 "kind": task.get("kind"),
                 "level": task.get("level"),
                 "origin": task.get("origin"),
+                "cost_tier": task.get("cost_tier") or "",
+                "report_order": task.get("report_order"),
                 "arms": arms_out,
                 "ratio": ratio,
             }
@@ -144,6 +168,10 @@ def build_summary(run: dict, trials: Sequence[TrialResult], *, n_boot: int = 500
             "wall_s": _val(t, "wall_s"), "cost_usd": _val(t, "cost_usd"),
             "tokens_total": int(_val(t, "tokens_total")), "turns": int(_val(t, "turns")),
             "status": t.status, "artifacts_dir": t.artifacts_dir,
+            # Files changed per the git diff; the session's files_edited only sees Edit/Write tool calls.
+            "files_changed": sum(int(v.get("files", 0)) for v in t.diff_breakdown.values()),
+            "session": {k: v for k, v in t.session.items() if k != "collected"},
+            "user_replies": t.user_loop.get("user_replies") if t.user_loop else None,
         }
         for t in trials
         if t.rep >= 0
@@ -157,9 +185,9 @@ def build_summary(run: dict, trials: Sequence[TrialResult], *, n_boot: int = 500
                 break
 
     return {
-        "schema": 1,
+        "schema": 2,
         "run": run,
-        "verdict": verdict,
+        "results": results,
         "ratios": ratios,
         "pass_k": pass_k,
         "per_task": per_task,
@@ -171,7 +199,49 @@ def build_summary(run: dict, trials: Sequence[TrialResult], *, n_boot: int = 500
         "warmup_trials": sum(1 for t in trials if t.rep == -1),
         "trial_analyses": trial_analyses,
         "init_snapshots": first_init,
+        "user_loop": user_loop_summary(scored, labels),
     }
+
+
+def user_loop_summary(scored: Sequence[TrialResult], labels: Sequence[str]) -> dict[str, Any] | None:
+    """Per arm: how much the agent needed the user (DESIGN §3.8). None when no trial used the turn loop."""
+    if not any(t.user_loop for t in scored):
+        return None
+    out: dict[str, Any] = {}
+    for lab in labels:
+        ts = [t for t in scored if t.arm == lab and t.user_loop]
+        if not ts:
+            continue
+        replies = [int(t.user_loop.get("user_replies", 0)) for t in ts]
+        reasons: dict[str, int] = {}
+        for t in ts:
+            r = str(t.user_loop.get("stop_reason") or "?")
+            reasons[r] = reasons.get(r, 0) + 1
+        asked = [t for t, n in zip(ts, replies) if n]
+        tool_qs = [int(t.user_loop.get("tool_questions", 0)) for t in ts]
+        # a trial "asked" if the user answered anything: a text reply or an AskUserQuestion call
+        asking = [t for t, n, q in zip(ts, replies, tool_qs) if n or q]
+        out[lab] = {
+            "mode": ts[0].user_loop.get("mode"),
+            "trials": len(ts),
+            "agent_calls": sum(int(t.user_loop.get("agent_calls", 0)) for t in ts),
+            "user_replies": sum(replies),
+            "mean_user_replies": sum(replies) / len(ts),
+            "trials_with_replies": len(asked),
+            "passes_with_replies": sum(1 for t in asked if t.success),
+            "passes_without_replies": sum(1 for t, n in zip(ts, replies) if not n and t.success),
+            "tool_questions": sum(tool_qs),
+            "trials_asking": len(asking),
+            "passes_asking": sum(1 for t in asking if t.success),
+            "passes_not_asking": sum(1 for t in ts if t not in asking and t.success),
+            "reply_cap_hits": sum(int(t.user_loop.get("reply_cap_hits", 0)) for t in ts),
+            "ended_waiting": sum(1 for t in ts if t.user_loop.get("ended_waiting")),
+            "stop_reasons": dict(sorted(reasons.items())),
+            "stand_in_calls": sum(int(t.user_loop.get("stand_in_calls", 0)) for t in ts),
+            "stand_in_errors": sum(int(t.user_loop.get("stand_in_errors", 0)) for t in ts),
+            "stand_in_cost_usd": sum(float(t.user_loop.get("stand_in_cost_usd", 0.0)) for t in ts),
+        }
+    return out
 
 
 # --------------------------------------------------------------------------- IO
@@ -237,8 +307,39 @@ def _link(path: str, text: str) -> str:
 def _arm_name(run: dict, lab: str) -> str:
     for a in run.get("arms", []):
         if a["label"] == lab:
-            return str(a.get("treatment", lab))
+            tags = [a.get("user", "conventional")] if a.get("user", "conventional") != "conventional" else []
+            tags += {"on": ["ask tool"], "hidden": ["ask tool hidden"]}.get(ask_tool_mode(a.get("ask_tool")), [])
+            return str(a.get("treatment", lab)) + (f" ({', '.join(tags)})" if tags else "")
     return lab
+
+
+def _user_loop(summary: dict) -> str:
+    ul = summary.get("user_loop")
+    if not ul:
+        return ""
+    loop = summary["run"].get("user_loop") or {}
+    rows = ""
+    for lab, a in ul.items():
+        reasons = ", ".join(f"{k} {v}" for k, v in a["stop_reasons"].items())
+        rows += (f'<tr><td class="l">{e(lab)}</td><td class="l">{e(str(a["mode"]))}</td><td>{a["trials"]}</td>'
+                 f'<td>{a["agent_calls"]}</td><td>{a["user_replies"]}</td><td>{_num(a["mean_user_replies"], 2)}</td>'
+                 f'<td>{a["trials_with_replies"]} ({a["passes_with_replies"]} passed)</td>'
+                 f'<td>{a.get("tool_questions", 0)}</td>'
+                 f'<td>{a.get("trials_asking", a["trials_with_replies"])} ({a.get("passes_asking", a["passes_with_replies"])} passed)</td>'
+                 f'<td>{a["reply_cap_hits"]}</td><td>{a["ended_waiting"]}</td><td class="l">{e(reasons)}</td>'
+                 f'<td>{a["stand_in_calls"]} / {a["stand_in_errors"]}</td><td>{_usd(a["stand_in_cost_usd"])}</td></tr>')
+    model = loop.get("stand_in_model")
+    note = (f'Stand-in model {e(str(model))}, up to {e(str(loop.get("max_user_replies")))} replies per trial. '
+            if model else "")
+    return ('<div class="tablewrap"><table><tr><th class="l">Arm</th><th class="l">User</th><th>Trials</th>'
+            '<th>Agent calls</th><th>User replies</th><th>Replies / trial</th><th>Trials with replies</th>'
+            '<th>Tool questions</th><th>Trials that asked</th>'
+            '<th>Reply limit hit</th><th>Ended waiting</th><th class="l">Stop reasons</th>'
+            '<th>Stand-in calls / errors</th><th>Stand-in cost</th></tr>'
+            f'{rows}</table></div><p class="note">{note}Agent calls are <code>claude -p</code> calls on one session: '
+            'scripted turns plus stand-in replies. "Tool questions": AskUserQuestion questions (arms with the ask '
+            'tool). "Trials that asked": a text reply or a tool question. "Ended waiting": the agent&#39;s last message '
+            'still waited for the user. Stand-in cost is not in the arm&#39;s cost. Each trial&#39;s exchange is in its user_loop.json.</p>')
 
 
 CSS = """
@@ -255,8 +356,6 @@ main{max-width:1100px;margin:0 auto;padding:24px 16px 64px}
 h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:36px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
 .stamp{display:inline-block;border:2px solid var(--ink2);padding:2px 10px;font-weight:700;letter-spacing:.04em;font-size:13px}
 .note{color:var(--ink2);font-size:13px}.meta{color:var(--ink2);font-size:13px;margin:2px 0}
-.verdict{font-size:22px;font-weight:700;margin:20px 0 6px;line-height:1.3}
-.badge{font-size:12px;border:1px solid var(--warn);color:var(--warn);padding:1px 8px;border-radius:10px;vertical-align:middle;margin-left:6px}
 table{border-collapse:collapse;width:100%;font-size:13px;background:var(--surface)}
 th,td{border-bottom:1px solid var(--line);padding:4px 8px;text-align:right;vertical-align:top}
 th:first-child,td:first-child,td.l,th.l{text-align:left}th{color:var(--ink2);font-weight:600}
@@ -272,44 +371,69 @@ footer{margin-top:40px;color:var(--ink2);font-size:13px;border-top:1px solid var
 def _stamp(run: dict) -> str:
     shape = run.get("shape")
     if shape == "single":
-        return '<span class="stamp">SINGLE-ARM — NO COMPARATIVE VERDICT</span>'
+        return '<span class="stamp">SINGLE-ARM — NO COMPARISON</span>'
     if shape == "ab":
         return ('<span class="stamp">A/B COMPARISON</span> <span class="note">Plain Claude Code was not an arm: '
                 "this result says nothing about either bundle versus vanilla Claude Code.</span>")
     return '<span class="stamp">COMPARATIVE (treatment vs plain)</span>'
 
 
-def _success_totals(summary: dict, lab: str) -> str:
-    pk = summary["pass_k"].get(lab, {})
-    return f"{sum(v['passes'] for v in pk.values())}/{sum(v['runs'] for v in pk.values())}"
+def _pct(v: float | None) -> str:
+    return "—" if v is None else f"{v:.0%}"
 
 
-def _verdict_html(summary: dict) -> str:
+def _results_html(summary: dict) -> str:
     run = summary["run"]
     labels = [a["label"] for a in run.get("arms", [])]
-    if summary["verdict"] is None:
-        if run.get("shape") == "single" and labels:
-            lab = labels[0]
-            return (f'<div class="verdict">Treatment {e(_arm_name(run, lab))}: no verdict (single arm) — '
-                    f"success {e(_success_totals(summary, lab))}</div>")
-        return '<div class="verdict">No verdict could be computed (insufficient paired data).</div>'
-    v = summary["verdict"]
+    res = summary["results"]
+    k = res["k"]
+    head = '<tr><th class="l">Arm</th><th class="l">Treatment</th><th>Tasks</th><th>Passed runs</th>'            f'<th>pass@1</th><th>pass@{k}</th></tr>'
+    rows = ""
+    for lab in labels:
+        r = res["arms"].get(lab) or {}
+        rows += (f'<tr><td class="l">{e(lab)}</td><td class="l">{e(_arm_name(run, lab))}</td>'
+                 f'<td>{r.get("tasks", 0)}</td><td>{r.get("passes", 0)}/{r.get("runs", 0)}</td>'
+                 f'<td>{_pct(r.get("pass@1"))}</td><td>{_pct(r.get("pass@k"))}</td></tr>')
+    out = (f'<div class="tablewrap"><table>{head}{rows}</table></div>'
+           f'<p class="note">pass@1: share of runs that pass, averaged over tasks. pass@{k}: chance that at least '
+           f'one of {k} runs of a task passes (unbiased estimate), averaged over tasks; with 1 rep it equals pass@1.</p>')
+    if not summary["ratios"]:
+        return out
     a, b = labels[0], labels[1]
-    parts = [f"success {_success_totals(summary, b)} vs {_success_totals(summary, a)}"]
-    for m, short in (("cost_usd", "cost"), ("wall_s", "wall")):
+    rel = res.get("relative") or {}
+    prows = ""
+    for name in ("pass@1", "pass@k"):
+        r = rel.get(name)
+        shown = name if name == "pass@1" else f"pass@{k}"
+        if not r:
+            prows += f'<tr><td class="l">{shown}</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>'
+            continue
+        cls = "good" if r["ci_low"] > 0 else ("bad" if r["ci_high"] < 0 else "")
+        prows += (f'<tr><td class="l">{shown}</td><td class="{cls}">{r["diff"] * 100:+.0f} pts</td>'
+                  f'<td>[{r["ci_low"] * 100:+.0f}, {r["ci_high"] * 100:+.0f}]</td><td>{_fx(r["ratio"])}</td>'
+                  f'<td>{r["tasks_b_higher"]} / {r["tasks_b_lower"]} of {r["n_tasks"]}</td></tr>')
+    out += ('<div class="tablewrap"><table><tr><th class="l">Pass rate '
+            f'({e(b)} vs {e(a)})</th><th>Difference ({e(b)} − {e(a)})</th><th>95% CI</th><th>Ratio ({e(b)} ÷ {e(a)})</th>'
+            f'<th>Tasks {e(b)} higher / lower</th></tr>{prows}</table></div>'
+            '<p class="note">Over the tasks both arms ran. Difference in percentage points; CI from a bootstrap '
+            "that resamples tasks, keeping each task's two arms together.</p>")
+    rrows = ""
+    for m in stats.METRICS:
         r = summary["ratios"].get(m)
-        if r:
-            if r.get("ci_low") is not None and r.get("ci_high") is not None:
-                parts.append(f"{short} {_fx(r['gm_ratio'])} [{r['ci_low']:.2f}, {r['ci_high']:.2f}]")
-            else:
-                parts.append(f"{short} {_fx(r['gm_ratio'])}")
-    name = _arm_name(run, b)
-    if run.get("shape") == "ab":
-        name = f"{name} vs {_arm_name(run, a)}"
-    badge = '<span class="badge">INDICATIVE</span>' if v.get("indicative") else ""
-    reasons = "".join(f"<li>{e(r)}</li>" for r in v.get("reasons", []))
-    return (f'<div class="verdict">Treatment {e(name)}: {e(v["label"])} — {e(", ".join(parts))}{badge}</div>'
-            f'<ul class="note">{reasons}</ul>')
+        if not r:
+            rrows += f'<tr><td class="l">{e(METRIC_LABELS[m])}</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>'
+            continue
+        p = r.get("wilcoxon_p")
+        rrows += (f'<tr><td class="l">{e(METRIC_LABELS[m])}</td><td>{_fx(r["gm_ratio"])}</td>'
+                  f'<td>[{r["ci_low"]:.2f}, {r["ci_high"]:.2f}]</td><td>{"—" if p is None else f"{p:.3f}"}</td>'
+                  f'<td>{r["n_tasks"]} / {r["n_pairs"]}</td></tr>')
+    out += ('<div class="tablewrap"><table><tr><th class="l">Relative metric '
+            f'({e(b)} ÷ {e(a)})</th><th>Ratio</th><th>95% CI</th><th>Wilcoxon p</th><th>Tasks / pairs</th></tr>'
+            f'{rrows}</table></div>'
+            '<p class="note">Geometric mean of paired per-run ratios over tasks; below ×1 means B used less. '
+            "CI from a cluster bootstrap over tasks, then runs; p from a Wilcoxon signed-rank test on per-task "
+            "median log-ratios. Only pairs where both runs completed count, pass or fail.</p>")
+    return out
 
 
 def _probe_html(summary: dict) -> str:
@@ -400,7 +524,14 @@ def _per_task_table(summary: dict) -> str:
         head += "<th>cost ×</th><th>tokens ×</th><th>wall ×</th>"
     head += "</tr>"
     body = ""
+    ncols = 1 + 4 * len(labels) + (0 if single else 3)
+    tiered = any(pt.get("cost_tier") for pt in summary["per_task"])
+    group = None
     for pt in summary["per_task"]:
+        tier = pt.get("cost_tier") or ""
+        if tiered and tier != group:
+            group = tier
+            body += f'<tr><th class="l" colspan="{ncols}">{e(TIER_LABELS.get(tier, tier))}</th></tr>'
         meta = f'({e(str(pt["kind"]))} L{e(str(pt["level"]))}, {e(str(pt["origin"]))})'
         body += f'<tr><td class="l">{e(str(pt["task_id"]))} <span class="note">{meta}</span></td>'
         for lab in labels:
@@ -414,7 +545,9 @@ def _per_task_table(summary: dict) -> str:
             rr = pt.get("ratio") or {}
             body += "".join(f"<td>{_fx(rr.get(m))}</td>" for m in stats.METRICS)
         body += "</tr>"
-    return f'<div class="tablewrap"><table>{head}{body}</table></div>'
+    note = ('<p class="note">Tasks are grouped by cost tier and listed in a fixed order (cheapest first, by '
+            "plain-arm output tokens; docs/task-catalog.md). The order is not re-ranked per run.</p>") if tiered else ""
+    return f'<div class="tablewrap"><table>{head}{body}</table></div>{note}'
 
 
 def _disagreements(summary: dict) -> str:
@@ -510,6 +643,37 @@ def _analyses(summary: dict) -> str:
     return "".join(out)
 
 
+def _trials(summary: dict) -> str:
+    rows = ""
+    for tr in summary["trials_table"]:
+        ss = tr.get("session") or {}
+        links = []
+        if tr["artifacts_dir"]:
+            if "requests" in ss:
+                links.append(_link(f'{tr["artifacts_dir"]}/session.html', "session"))
+            links.append(_link(tr["artifacts_dir"], "files"))
+
+        def g(k: str) -> str:
+            v = ss.get(k)
+            return "—" if v is None else (f"{v / 1000:,.0f}k" if k == "peak_context" else f"{v:,}")
+
+        if tr.get("user_replies") is not None:
+            links.append(_link(f'{tr["artifacts_dir"]}/user_loop.json', f'user ({tr["user_replies"]} replies)'))
+        ok = '<span class="good">pass</span>' if tr["success"] else '<span class="bad">fail</span>'
+        rows += (f'<tr><td class="l">{e(tr["arm"])}</td><td class="l">{e(str(tr["task"]))}</td><td>{tr["rep"]}</td>'
+                 f'<td>{ok if tr["status"] == "ok" else e(tr["status"])}</td><td>{_num(tr["wall_s"] / 60, 1)}</td>'
+                 f'<td>{_usd(tr["cost_usd"])}</td><td>{tr["turns"]}</td><td>{g("tool_calls")}</td>'
+                 f'<td>{g("tool_errors")}</td><td>{g("subagents")}</td><td>{g("peak_context")}</td>'
+                 f'<td>{g("compactions")}</td><td>{tr["files_changed"]}</td><td class="l">{" ".join(links)}</td></tr>')
+    if not rows:
+        return '<p class="note">No scored trials.</p>'
+    return ('<div class="tablewrap"><table><tr><th class="l">Arm</th><th class="l">Task</th><th>Rep</th><th>Result</th>'
+            '<th>Wall (min)</th><th>Cost</th><th>Turns</th><th>Tool calls</th><th>Tool errors</th><th>Subagents</th>'
+            '<th>Peak context</th><th>Compactions</th><th>Files changed</th><th class="l">Details</th></tr>'
+            f'{rows}</table></div><p class="note">Session columns come from Claude Code&#39;s own transcripts '
+            '(saved per trial under claude_home/); "session" opens the per-trial timeline and conversation.</p>')
+
+
 def _excluded(summary: dict) -> str:
     ex = summary["excluded"]
     wu = summary.get("warmup_trials", 0)
@@ -544,6 +708,7 @@ def _header(summary: dict) -> str:
     hi = run.get("host_info") or {}
     arms = "".join(
         f'<tr><td class="l">{e(a["label"])}</td><td class="l">{e(str(a.get("treatment")))}</td>'
+        f'<td class="l">{e(str(a.get("user", "conventional")) + ({"on": " + ask tool", "hidden": " + ask tool hidden"}.get(ask_tool_mode(a.get("ask_tool")), "")))}</td>'
         f'<td class="l">{e(str(a.get("treatment_hash") or ""))}</td>'
         f'<td class="l">{e(str(a.get("image_digest") or a.get("image") or ""))}</td></tr>'
         for a in run.get("arms", [])
@@ -559,20 +724,20 @@ def _header(summary: dict) -> str:
             f'<p class="meta">Host: {e(host)}</p>'
             f'<p class="meta">Model: {e(str(run.get("model")))} (effort {e(str(run.get("effort")))}), '
             f'Claude Code CLI {e(str(run.get("cli_version")))}</p>'
-            '<div class="tablewrap"><table><tr><th class="l">Arm</th><th class="l">Treatment</th><th class="l">Hash</th>'
+            '<div class="tablewrap"><table><tr><th class="l">Arm</th><th class="l">Treatment</th><th class="l">User</th>'
+            '<th class="l">Hash</th>'
             f'<th class="l">Image</th></tr>{arms}</table></div>')
 
 
 def render_html(summary: dict) -> str:
     run = summary["run"]
     single = not summary["ratios"]
-    parts = [f"<section>{_header(summary)}</section>", f"<section>{_verdict_html(summary)}</section>",
-             f"<h2>Context-tax probe</h2>{_probe_html(summary)}"]
+    parts = [f"<section>{_header(summary)}</section>", f"<h2>Results</h2>{_results_html(summary)}"]
+    if summary.get("user_loop"):
+        parts.append(f"<h2>User in the loop</h2>{_user_loop(summary)}")
+    parts.append(f"<h2>Context-tax probe</h2>{_probe_html(summary)}")
     if single:
         parts.append("<h2>Absolute metrics per task</h2>" + _per_task_table(summary))
-        for lab, d in summary["pass_k"].items():
-            n = sum(1 for v in d.values() if v["all_pass"])
-            parts.append(f'<p class="note">Arm {e(lab)}: pass^k on {n}/{len(d)} tasks.</p>')
     else:
         panels = "".join(_forest_svg(summary, m) for m in stats.METRICS)
         parts.append("<h2>Forest plot</h2>"
@@ -581,14 +746,15 @@ def render_html(summary: dict) -> str:
                      f'<div class="panels">{panels}</div>')
         parts.append("<h2>Per-task table</h2>" + _per_task_table(summary))
         parts.append("<h2>Success disagreements</h2>" + _disagreements(summary))
-    parts += ["<h2>Behavior differences</h2>" + _behavior(summary),
+    parts += ["<h2>Trials</h2>" + _trials(summary),
+              "<h2>Behavior differences</h2>" + _behavior(summary),
               "<h2>Change breakdown</h2>" + _breakdown(summary),
               "<h2>Analyses</h2>" + _analyses(summary),
               "<h2>Excluded / discarded trials</h2>" + _excluded(summary),
               "<h2>Isolation audit</h2>" + _isolation(summary)]
     ac = summary.get("analysis_cost") or {}
     cost = ", ".join(f"{e(a)}: ${v['cost_usd']:.2f} over {v['sessions']} session(s)" for a, v in ac.items()) or "none"
-    parts.append(f"<footer>Analysis cost (excluded from all verdicts and metrics): {cost}.</footer>")
+    parts.append(f"<footer>Analysis cost (excluded from all results and metrics): {cost}.</footer>")
     return ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
             f"<title>hai-proof {e(str(run.get('run_id', '')))}</title><style>{CSS}</style></head>"

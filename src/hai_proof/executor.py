@@ -51,7 +51,9 @@ class Executor(ABC):
     def _check(self, proc: CP, args: list[str], check: bool) -> CP:
         if check and proc.returncode != 0:
             err = (proc.stderr or b"").decode("utf-8", errors="replace").strip()
-            raise ExecError(f"[{self.name}] `docker {' '.join(args[:3])}` failed (rc={proc.returncode}): {err[:500]}",
+            # The cause is at the end (e.g. a failed RUN step after the build preamble).
+            err = err if len(err) <= 1500 else "…" + err[-1500:]
+            raise ExecError(f"[{self.name}] `docker {' '.join(args[:3])}` failed (rc={proc.returncode}): {err}",
                             cmd=["docker", *args], returncode=proc.returncode,
                             stdout=proc.stdout or b"", stderr=proc.stderr or b"")
         return proc

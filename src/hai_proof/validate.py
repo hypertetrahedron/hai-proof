@@ -14,7 +14,7 @@ from . import images
 from .executor import Executor
 from .models import TaskSpec
 from .tarutil import tar_files
-from .trial import run_grader
+from .trial import CONTAINER_SYSCTLS, baseline_script, run_grader
 
 SLOW_SUITE_S = 60.0
 
@@ -42,8 +42,10 @@ def validate_task(ex: Executor, base_image: str, task: TaskSpec, *, cpus: float 
 
     image = images.build_trial(ex, base_image, task)
     cid = ex.run_detached(["--network", "none", "--label", label, "--cpus", str(cpus), "--memory", memory,
-                           image, "sleep", "infinity"])
+                           *CONTAINER_SYSCTLS, image, "sleep", "infinity"])
     try:
+        # Same start state as a trial: /work is a git repo with the baseline commit.
+        ex.exec(cid, ["bash", "-c", baseline_script()], workdir="/work")
         v.base = run_grader(ex, cid, task)
         if v.base.get("acceptance_pass"):
             v.problems.append("hidden acceptance tests already PASS at the start state (nothing to solve)")
@@ -85,8 +87,12 @@ def format_validation(v: TaskValidation) -> str:
     lines += [f"    problem: {p}" for p in v.problems]
     lines += [f"    warning: {w}" for w in v.warnings]
     if not v.ok:
-        tail = (v.reference or v.base).get("acceptance_tail") or ""
-        if tail:
-            lines.append("    acceptance output (tail):")
-            lines += ["      " + t for t in tail.strip().splitlines()[-15:]]
+        last = v.reference or v.base
+        for kind in ("acceptance", "regression"):
+            if kind == "regression" and last.get("regression_pass") is not False:
+                continue
+            tail = last.get(f"{kind}_tail") or ""
+            if tail:
+                lines.append(f"    {kind} output (tail):")
+                lines += ["      " + t for t in tail.strip().splitlines()[-15:]]
     return "\n".join(lines)

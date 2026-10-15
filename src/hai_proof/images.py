@@ -30,8 +30,9 @@ def _hash_dir(d: Path) -> str:
                 continue
             h.update(rel.as_posix().encode())
             h.update(b"\0")
-            # normalise line endings so Windows checkouts hash like Linux ones
-            h.update(f.read_bytes().replace(b"\r\n", b"\n"))
+            # Raw bytes: the image gets these exact bytes, and patches apply byte-wise, so a CRLF and an
+            # LF checkout of the same repo are different images. (build-task always writes LF.)
+            h.update(f.read_bytes())
             h.update(b"\0")
     return h.hexdigest()
 

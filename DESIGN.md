@@ -34,12 +34,14 @@ hai-proof/
   tasks/<task-id>/
     task.toml                # id, kind (bug|feature), level (1-3), timeout, budget
     prompt.md                # what the developer would type
+    prompts/<variant>.md     # optional prompt variants (e.g. degraded.md), chosen by a treatment
     repo/                    # fixture source (no .git history containing the fix)
     hidden_tests/            # copied in only AFTER the agent exits
     grade.sh                 # runs hidden + existing tests, emits JSON
   treatments/<name>/
     manifest.toml            # declares expected skills/plugins/MCP/hooks (for init check),
-                             # optional prompt_prefix (e.g. "/tdd "), extra env,
+                             # optional prompt_prefix (e.g. "/tdd "), prompt_variant
+                             # (use each task's prompts/<variant>.md), extra env,
                              # external tool requirements + workspace setup (§3.4)
     Dockerfile               # optional: extra image layer FROM the base image (§3.4)
     user/                    # copied into CLAUDE_CONFIG_DIR  (≈ ~/.claude)
@@ -65,7 +67,6 @@ hai-proof/
      --model <pinned full model id> --effort <pinned> \
      --permission-mode bypassPermissions \
      --max-turns 60 --max-budget-usd <task budget> \
-     --no-session-persistence \
      --exclude-dynamic-system-prompt-sections \
      --output-format stream-json --verbose
    ```
@@ -73,9 +74,10 @@ hai-proof/
    - Auth: `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`), the same one for both arms.
    - Permissions are bypassed **only inside the container**. That container is the sandbox.
 4. **Capture.** A small wrapper inside the container records monotonic start and end times around the `claude` process. It writes the full stream-json transcript to a file inside the container. The runner copies both out afterwards. Timing is therefore taken next to the process, so SSH latency and dropped connections never touch the measurement.
+   - Session persistence stays on (no `--no-session-persistence`), so Claude Code writes its own records. After the agent exits, the runner copies the container's `~/.claude` into the trial's `claude_home/`. That covers the session and subagent JSONL transcripts, file history, todos and debug logs. `.credentials.json` is dropped, `.claude.json` copies are key-redacted, and every known secret value is scrubbed from all saved files. `claudedata.py` parses the transcripts into `claude_data.json` and a per-trial `session.html` (context growth, tools, subagents, edits, conversation), and the report's Trials table links to it.
 5. **Grade.** Copy `hidden_tests/` in and run `grade.sh` with no network and no agent present. It produces:
-   - `acceptance_pass`: the hidden tests.
-   - `regression_pass`: the pre-existing suite.
+   - `acceptance_pass`: the hidden tests. By default these run under pytest with the task's `acceptance` node ids. A task whose project uses another runner sets `acceptance_cmd` (e.g. `python -m unittest …`), and then exit code 0 counts as a pass.
+   - `regression_pass`: the pre-existing suite. Tests the agent added are run here too, on purpose: an agent test that fails is a result worth recording. That is why both steps should use the project's own runner (B9, B15, B18, B19).
    - `diff_stats`: files and lines changed.
 6. **Analyze** (optional). Run any attached trial-scope analyses, using a neutral analyzer on a copy of the workspace (§3.7).
 7. **Destroy** the container.
@@ -87,6 +89,8 @@ hai-proof/
 - Run repetitions in blocks, which spreads any drift evenly across tasks.
 - Before the first block, run one **warm-up pair** that is not scored. It absorbs cold-start effects such as image pulls and the first cache writes.
 - On HTTP 429 or a transient API error, the runner discards **both members of the pair** and reruns them. It logs every discard. A pair with a retry inside it is not comparable.
+- The account usage limit (`usage_limit_reached`, e.g. the subscription's 5-hour window) lasts until it resets, so an immediate rerun would fail too. The runner discards the pair, waits until the reported `resetsAt` plus 2 minutes, and reruns the pair with a `-ulwaitN` pair id. A wait does not count as a retry. It logs each wait in `run.json` under `usage_limit_waits`. A wait longer than 6 hours, more than 8 waits, or no reset time stops the run cleanly (`stopped_early`), and the report is still written.
+- `run --resume <results-dir>` continues a run whose controller died. It needs the original arguments: model, reps, seed, effort, egress, limits, arms with their treatment hashes, tasks with their hashes, and the CLI version must all match, or it refuses. It removes the run's leftover containers and networks, and skips the warm-up, the probes, and any (task, rep) whose arms all have an `ok` record. Trial dirs without a record (the pair in flight) move to `orphaned/<timestamp>/`, and their agent cost counts towards `--max-spend`. Each resume is logged in `run.json` under `resumes`.
 
 ### 3.3 Context-tax probe (cheap and diagnostic)
 
@@ -209,9 +213,9 @@ An **arm** is a label bound to a configuration: either `plain` (an empty config 
 
 | Shape | CLI | Arm A (reference) | Arm B (candidate) | Output |
 |---|---|---|---|---|
-| **Comparative** (default) | `--treatment X` | `plain` | `X` | Full verdict, X ÷ plain |
-| **A/B** | `--arm-a X --arm-b Y` | treatment `X` | treatment `Y` | Same statistics, Y ÷ X, with A/B verdict wording (§6) |
-| **Single-arm** | `--treatment X --no-control` (or `--arm-a X` alone) | — | `X` (or `plain`) | Absolute metrics only, no verdict |
+| **Comparative** (default) | `--treatment X` | `plain` | `X` | Results with ratios, X ÷ plain |
+| **A/B** | `--arm-a X --arm-b Y` | treatment `X` | treatment `Y` | Same statistics, Y ÷ X (§6) |
+| **Single-arm** | `--treatment X --no-control` (or `--arm-a X` alone) | — | `X` (or `plain`) | pass@1, pass@k and absolute metrics, no ratios |
 
 - **The plain control is just another arm.** The trial lifecycle, pairing, isolation checks, probe and analyses (§3.7) run identically per arm. `--arm-a plain --arm-b plain` is exactly the A/A calibration run (§6).
 - **A/B.** Each arm is built and checked on its own:
@@ -222,9 +226,10 @@ An **arm** is a label bound to a configuration: either `plain` (an empty config 
   - The report names both treatments and their hashes. It notes that "plain" was not part of the run, so the result says nothing about either bundle versus vanilla Claude Code.
 - **Single-arm (`--no-control`).** This is for debugging a treatment, checking that a task suite is solvable, piloting task difficulty (§4 calibration), or exercising a new execution host.
   - Trials run one at a time instead of in pairs. The concurrency is 1.
-  - The report shows per-task absolute metrics: success and pass^k, wall_s, cost, tokens, turns, `dependency_used` and analyses.
-  - The report is stamped **SINGLE-ARM — NO COMPARATIVE VERDICT**. `summary.json` sets `"verdict": null`, so CI can't mistake it for a pass.
+  - The report shows per-task absolute metrics: success, pass@1 and pass@k, wall_s, cost, tokens, turns, `dependency_used` and analyses.
+  - The report is stamped **SINGLE-ARM — NO COMPARISON**. `summary.json` has `"ratios": {}`.
   - Comparing single-arm reports from different runs is not supported. Those runs are unpaired and happened at different times, which is exactly the drift pairing exists to remove. That comparison is deferred (see the roadmap).
+- **Suites pick the task set; modes then filter it.** Each task.toml may list `suites`. `run` uses `--suite` (default `standard`; `all` for every task), and the mode drops levels above its maximum. Levels set the time, budget and turn limits rather than a fixed difficulty tier, so `quick` means "the shorter-limit tasks of the suite".
 - **Run modes combine with arm shapes.** Lightning, quick and full set reps and tasks. Arm shape sets what runs per rep. For example, `--lightning --no-control` gives 6 agent runs.
 
 ### 3.7 Post-run analyses (optional, per arm)
@@ -271,7 +276,7 @@ Attach analyses with `--analysis non-code-changes`, which can be repeated. A run
 
 **Isolation from the measurements.**
 - Analyses run *after* grading, on a copy of the workspace, so they cannot change a result.
-- Their tokens, cost and time are recorded as `analysis_*` fields. They are **never** added to an arm's metrics or used in a verdict.
+- Their tokens, cost and time are recorded as `analysis_*` fields. They are **never** added to an arm's metrics or used in the results.
 - Analysis cost is shown separately in the report's cost summary. A trial-scope analysis in full mode adds up to 60 extra sessions, each capped by its `budget_usd`.
 - A failed or over-budget analysis is logged and leaves the trial's result untouched.
 
@@ -279,6 +284,60 @@ Attach analyses with `--analysis non-code-changes`, which can be repeated. A run
 - `product_code`, `tests`, `docs` (`*.md`, `docs/`), `planning` (`ROADMAP.md`, `TODO*`, `openspec/`, `.beads/`), `config_tooling` (`pyproject.toml`, `.github/`, `.claude/`, …), `treatment_artifact`, `other`.
 
 That gives a cheap, objective first answer to "what else did the agent change?" in every run. An LLM analysis is then for explaining *why*.
+
+### 3.8 User in the loop (scripted turns and a user stand-in)
+
+Some workflows need a user between steps: the user runs a planning skill, reviews the plan, then runs an execution skill. Agents also sometimes stop to ask a question. A conventional trial is one `claude -p` session with no input stream, so a question ends the session and the trial is graded on whatever exists. A run can instead choose a **user-in-the-loop** test. The conventional test stays the default and is unchanged.
+
+**Scripted turns belong to the treatment.** A manifest can list the user messages of its workflow:
+```toml
+[workflow]
+turns = ["/opsx:propose {task_prompt}", "/opsx:apply"]
+```
+`{task_prompt}` is replaced with the task prompt (after `prompt_prefix` and any `prompt_variant`). Without `[workflow]` the script is one turn, the task prompt. The scripted messages are fixed text, identical in every user mode, and never contain the user brief.
+
+**User modes are per arm** (`run --user MODE`, with `--user-a` / `--user-b` overrides):
+
+| Mode | Between turns |
+|---|---|
+| `conventional` (default) | nobody answers; each scripted turn is sent when the agent stops |
+| `uninformative` | a stand-in decides whether the agent is waiting and, if so, always replies "I don't have anything to add. Use your best judgement and continue." |
+| `informative` | the same decision, but the stand-in replies from the task's user brief (`tasks/<ID>/user.md`) |
+
+A comparison changes one variable: either the treatment with the mode fixed, or the mode with the treatment fixed (`--arm-a X --arm-b X --user-a uninformative --user-b informative`). A treatment's claim that interacting with the user improves outcomes is the interaction effect in the 2×2 of {plain, treatment} × {uninformative, informative}. A plain conventional arm whose prompt includes the brief (a `prompt_variant`) is the upper bound where nothing is left to ask.
+
+**The loop** (`userloop.run_loop`). Every agent turn is a `claude -p` call on one session: `--session-id <uuid>` first, then `--resume <uuid>`, with the same flags as a conventional trial. After each call:
+1. If the call ended abnormally (error, max turns, budget, time limit, rate or usage limit), the loop stops.
+2. Conventional: send the next scripted turn, or stop.
+3. Otherwise the stand-in classifies the agent's final message as WAITING (a question, a choice, an approval request) or DONE (the step is finished; an optional offer of more work counts as DONE).
+   - WAITING, replies left: the stand-in's reply is the next message, and the script stays where it is.
+   - WAITING, no replies left (`--max-user-replies`, default 5 per trial): the next scripted turn, or stop with "user-reply limit".
+   - DONE: the next scripted turn, or stop with "completed".
+
+The stand-in never moves the workflow forward: it doesn't name skills or phases, or tell the agent to start implementing. The time limit, turn limit and budget cover the whole trial, and each call gets what is left. `--max-budget-usd` applies to one call's own spend, while the cost and token totals in the result event carry across `--resume` (both checked with Claude Code 2.1.296, 2026-10-13). Stand-in time doesn't count against the agent's time limit.
+
+**The stand-in** is a `claude -p --safe-mode --tools '' --max-turns 1 --system-prompt …` call with its own model. The model is `stand_in_model` in hai-proof.toml or `--stand-in-model` (default `claude-sonnet-5-5`), the same for both arms. It runs in its own container from the plain base image, on the arm's egress network, so the agent's container never holds the brief. The WAITING / DONE decision uses one prompt for both stand-in modes and never sees the brief, so the two modes differ only in what the replies say. The informative responder sees the original request, the brief, the recent conversation and the message it answers. It:
+- answers only from the brief, and says "make a reasonable assumption" when the brief doesn't cover a question;
+- approves or corrects plans only against the user's intent, never the code's correctness;
+- starts with the option label when offered options.
+
+An unparseable decision counts as DONE, and a failed reply becomes "I don't have a preference…". Both are counted as stand-in errors.
+
+**What is recorded.**
+- `agent/turns/NN/` holds each call's transcript, timing and stderr. `agent/transcript.jsonl`, `timing.json` and `stderr.log` are their concatenation, so metrics, isolation, leakage and Claude Code data work as for one session. Cost and tokens come from the last result event; turns and wall time are summed.
+- `user_loop.json` holds every exchange: source (script or stand-in), phase, message, the agent's final message, the decision, and each stand-in call's output, cost and errors.
+- `TrialResult.user_loop` summarises it: agent calls, scripted turns, user replies, stop reason, whether the trial ended waiting, reply-limit hits, and stand-in calls, errors and cost.
+- The report adds a **User in the loop** section per arm: replies per trial, trials with replies and their passes, stop reasons and stand-in cost.
+- run.json records each arm's `user`, the stand-in settings (`user_loop`) and each task's `brief_hash`, which a resume must match. `user.md` is left out of the task content hash, so adding a brief doesn't split a task's baselines.
+- Stand-in cost is never added to an arm's cost. Plain arms with a stand-in don't feed baselines (§6).
+
+**The ask tool (`--ask-tool off|on|hidden`, per arm `--ask-tool-a/-b`).** Plain `claude -p` never offers AskUserQuestion, even when `--tools` names it, so by default questions arrive as text in the final message and the stand-in answers them as above. Interactive Claude Code, which most real use is, does have the tool. With the ask tool on, each call runs with `--input-format stream-json --permission-prompt-tool stdio`, the mode the Agent SDK uses. The CLI then offers AskUserQuestion, EnterPlanMode and ExitPlanMode (checked on 2.1.299), and sends a `can_use_tool` control request on stdout whenever a tool needs the user.
+- The wrapper (`hai_proof_wrap.py`) sends the prompt as a stream-json user message, copies stdout to the transcript, and answers control requests on stdin. Every tool other than AskUserQuestion is allowed (the session runs with bypassPermissions, so only tools that need the user ask; ExitPlanMode is approved). It closes stdin after the result event.
+- An AskUserQuestion call is written to `/out/turns/NN/ask/NNN.json`. The controller polls for it, answers it, and writes `NNN.answer.json`; the wrapper returns the answers as the tool's `answers`. A question nobody answers within 10 minutes is denied with "make a reasonable assumption".
+- Who answers: in informative mode the stand-in, from the brief (`userloop.ToolAnswerer`). Each answer starts with the matching option label (or says none fits) and adds what the brief says that the option leaves out or gets wrong, as fully as a text reply would. An earlier one-line-per-question format dropped such details and handicapped the tool arm (run 20261014-211242-0728, stopped). In every other mode each question gets the fixed uninformative reply, since nobody else is there to ask. Stand-in answers count against `--max-user-replies` separately from text replies; past the cap the fixed reply is used.
+- `hidden` runs the same input mode with `--disallowedTools AskUserQuestion` (Enter/ExitPlanMode stay). It is the control for `on`: `off` vs `on` changes both the input mode and the tool, `hidden` vs `on` only the tool, `off` vs `hidden` only the input mode.
+- The ask tool (on or hidden) puts the arm through the turn loop even in conventional mode (one call). The time a question waits for its answer counts toward the call's wall time and is recorded in the call's `timing.json` (`ask_wait_s`, `questions`, `control_requests`). `user_loop.json` records each call's `tool_questions` with the answers and their source; the summary adds `tool_question_calls` and `tool_questions`.
+- run.json records each arm's `ask_tool`, which a resume must match. Arms with the ask tool don't feed baselines.
 
 ## 4. Task suite (6 tasks)
 
@@ -315,6 +374,9 @@ url    = "https://github.com/<org>/<project>.git"
 base   = "<full commit SHA>"   # the state the agent starts from
 fix    = "<full commit SHA>"   # optional: upstream fix, used to derive hidden tests + reference solution
 ```
+`exclude` (optional, needs `fix`) lists path patterns of the fix to leave out of both the hidden tests and the
+reference. Use it when an upstream change fixes more than one defect and the task covers only one of them
+(B18 keeps tornado's cancellation hang and drops the same PR's websocket and HTTP/1 hardening).
 
 **How a task is built.**
 1. `hai-proof build-task` clones the repo, checks out `base`, and **deletes `.git`**. It then re-initializes a single-commit repo, so the agent cannot find the fix in the history.
@@ -348,48 +410,49 @@ Dependencies are installed with `uv sync`, or `uv pip install -e .[test]`, at bu
 | `success` | `acceptance_pass && regression_pass` |
 | `wall_s` | In-container wrapper, monotonic, from `claude` process start to exit |
 | `api_s` | `duration_api_ms` |
-| `cost_usd` | `total_cost_usd`. Includes subagents. It is a client-side estimate, used only for relative comparison. |
+| `cost_usd` | `total_cost_usd`. Includes subagents. It is a client-side estimate, used only for relative comparison. A session stopped at the time limit never emits its result event; cost and token totals then come from the last `cost-state` record in its session file (`cost_source: "session"`), which Claude Code writes when the session is stopped. |
 | `tokens_{input,output,cache_read,cache_write}` | Summed over **`modelUsage`**. Includes subagents. The top-level `usage` field excludes them and would undercount. |
 | `turns` | `num_turns` |
 | `tool_calls`, `subagent_calls`, `skills_fired` | Counted from the stream-json transcript |
 | `diff_lines` | `grade.sh` |
 | `diff_breakdown` | Changed files and lines per category: product_code, tests, docs, planning, config_tooling, treatment_artifact, other (§3.7) |
-| `analysis_*` | Tokens, cost and time of post-run analyses. Reported separately and **never** included in arm metrics or verdicts. |
+| `analysis_*` | Tokens, cost and time of post-run analyses. Reported separately and **never** included in arm metrics or results. |
 | `terminal_reason`, `is_error` | Result event; distinguishes max-turns or budget exhaustion from completion |
 | `init_snapshot` | `system/init`: tools, MCP servers, plugins, errors. Used for the isolation check. |
 
 The run also records the CLI version, image digest, model ID, start time and treatment hash.
 
-## 6. Analysis and verdict
+## 6. Analysis and results
 
-- **Reliability.** For each task and arm, report pass^5: the fraction of task–arm cells where all five runs pass. A task where the arms disagree on success is listed explicitly. It is never averaged away.
-- **Efficiency.** For cost, total tokens and wall_s, the headline is the **geometric-mean ratio, treatment ÷ control**, with a 95% **cluster bootstrap** CI. The bootstrap resamples tasks, then repetitions within each task, on log values. A Wilcoxon signed-rank test on per-task median log-ratios gives the p-value. Report each task's ratio as well, in a forest plot.
-- **Verdict rules.** The margin is ±15%, which suits a smoke test.
+The report has no verdict. It gives a **Results** section and leaves the judgement to the reader; an earlier rule-based verdict (HARMFUL / COSTS MORE / PAYS FOR ITSELF …) was removed on 2026-10-11 because its success rule silently ignored every task the control did not pass on all runs.
 
-| Verdict | Condition |
-|---|---|
-| **HARMFUL** | Treatment pass^k is lower on any task, or its overall success rate drops by 10 points or more. |
-| **COSTS MORE THAN IT'S WORTH** | Success is the same, and the CI lower bound on the cost ratio *or* the wall ratio is above 1.15. |
-| **PAYS FOR ITSELF** | Success is the same or better, and the CI upper bound on cost *and* wall is below 0.85, or success is strictly better. |
-| **NO MEANINGFUL DIFFERENCE** | Both CIs fall inside [0.85, 1.15]. |
-| **INCONCLUSIVE** | Anything else. Add repetitions, or check the per-task plots for one outlier task. |
+- **Pass rates, per arm.** Over the tasks of the run, each task weighted equally:
+  - **pass@1**: the share of a task's runs that pass, averaged over tasks.
+  - **pass@k** (k = reps): the chance that at least one of k runs of a task passes, using the unbiased estimate 1 − C(n−c, k)/C(n, k) for n runs with c passes, averaged over tasks. A task with fewer than k scored runs (excluded trials) uses k = n. With one rep, pass@k equals pass@1.
+  - **B vs A** on both, over the tasks both arms ran: the difference B − A in percentage points with a 95% bootstrap CI (tasks resampled, each task's two arms kept together), the ratio B ÷ A, and how many tasks B is higher or lower on.
+  - Per-task pass counts stay in the per-task table, and tasks where the arms' pass counts differ are listed under *Success disagreements*. They are never averaged away.
+- **Relative metrics (B ÷ A).** For cost, total tokens and wall_s: the **geometric-mean ratio** of paired runs, with a 95% **cluster bootstrap** CI. The bootstrap resamples tasks, then repetitions within each task, on log values. A Wilcoxon signed-rank test on per-task median log-ratios gives the p-value. Every pair where both runs completed counts, whether or not it passed. Per-task ratios are in the forest plot. With one rep the CI reflects only task-to-task spread.
+- **Task order.** Per-task tables group tasks by `cost_tier` (low, medium, high) and list them by the fixed
+  `report_order` from task.toml (docs/task-catalog.md), so reports line up across runs.
+- **Baselines.** Plain-arm trials are also folded into each task's `baseline.json` per model / CLI version /
+  effort / task hash (docs/task-authoring.md), for expected values over time.
+- **Resource gate.** Before every pair (warm-up, probes, scored pairs) the runner checks memory on the controller
+  machine and the execution host, removes this run's leaked trial containers, and logs a snapshot to
+  `resources.jsonl` (`resources.py`). Short memory makes it wait; if memory stays short, the run stops cleanly
+  rather than being killed mid-trial.
+- **Provenance.** run.json records each task's content hash and `harness` (hai-proof version, a hash of the
+  controller and image sources, git commit and dirty flag), so results can be split by task and harness version.
+- `summary.json` (schema 2) holds these as `results` (`k`; `pass@1`, `pass@k`, `tasks`, `runs`, `passes` per arm; `relative` B vs A) and `ratios`.
 
 **Calibration before first use: the A/A run.** Run control against control, using the same suite and procedure. Two things must hold:
-1. The verdict is NO MEANINGFUL DIFFERENCE.
+1. pass@1 is similar for both arms and every ratio CI contains ×1.
 2. The measured within-task log-SD is used to confirm the suite's power. At log-SD ≈ 0.3, about 8 paired observations detect a 30% shift. Six tasks × 5 reps = 30 pairs, which leaves room for heavy tails.
 
 If A/A reports a difference, the harness itself is broken. Repeat the A/A after any CLI or model upgrade.
 
 **Other arm shapes (§3.6).**
-- **A/B runs** use the same statistics and thresholds. Ratios are B ÷ A, and the verdicts are worded relative to A:
-  - **B HARMFUL vs A**
-  - **B COSTS MORE THAN A**
-  - **B CHEAPER THAN A**
-  - **NO MEANINGFUL DIFFERENCE**
-  - **INCONCLUSIVE**
-
-  The report states that neither arm was compared with plain Claude Code.
-- **Single-arm runs** produce no verdict. They report per-task absolute metrics and pass^k only.
+- **A/B runs** use the same statistics. Ratios are B ÷ A. The report states that neither arm was compared with plain Claude Code.
+- **Single-arm runs** report pass@1, pass@k and per-task absolute metrics, with no ratios.
 
 ## 7. Cost and runtime envelope
 
@@ -399,22 +462,20 @@ If A/A reports a difference, the harness itself is broken. Repeat the A/A after 
 - **Quick mode** (3 reps, no level-3 tasks) runs 24 agent runs in about 1 hour. It suits a first look at a new bundle.
 - **Arm shape** changes these counts: single-arm runs halve them, and A/B runs match comparative ones. Trial-scope analyses add one capped session per trial, with cost reported separately.
 - **Lightning mode** runs a single repetition of all 6 tasks. That is 12 agent runs plus the context-tax probe, in roughly 30–40 minutes.
-  - One repetition gives no within-task variance, so lightning mode does not compute bootstrap CIs or Wilcoxon p-values.
-  - It reports the per-task ratios, the overall geometric-mean ratio, any success disagreements, and the probe result.
-  - The verdict is labelled **INDICATIVE**. It is one of LIKELY COSTLIER, LIKELY CHEAPER, LIKELY HARMFUL or NO OBVIOUS DIFFERENCE.
-  - "Likely" requires the same direction on at least 5 of 6 tasks *and* a geometric-mean ratio beyond ×1.5 or ×0.67. A single run of the same task can vary by about 2× on its own, so anything narrower is noise.
+  - One repetition gives no within-task variance: the ratio CIs reflect only task-to-task spread, and pass@k equals pass@1.
+  - A single run of the same task can vary by about 2× on its own, so treat any ratio narrower than ×1.5 / ×0.67 as noise.
   - Use it as a triage gate. A bundle that looks costlier in lightning mode is worth a quick or full run before anyone argues about it.
 
-| Mode | Reps | Tasks | Agent runs | Statistics | Verdict |
+| Mode | Reps | Tasks | Agent runs | Statistics | Notes |
 |---|---|---|---|---|---|
-| Lightning | 1 | 6 | 12 | per-task ratios only | INDICATIVE |
-| Quick | 3 | 4 (levels 1–2) | 24 | bootstrap CI, Wilcoxon | full verdict, wider CIs |
-| Full | 5 | 6 | 60 | bootstrap CI, Wilcoxon | full verdict |
+| Lightning | 1 | 6 | 12 | per-task ratios, task-level CI | triage only |
+| Quick | 3 | 4 (levels 1–2) | 24 | bootstrap CI, Wilcoxon | wider CIs |
+| Full | 5 | 6 | 60 | bootstrap CI, Wilcoxon | |
 
 ## 8. Reporting
 
 `report.html` is a single file, and `summary.json` holds the same content for CI. The report contains:
-1. **The verdict line**, for example: "Treatment `team-superpowers@a1b2c3`: COSTS MORE THAN IT'S WORTH. Success 30/30 vs 30/30, cost ×1.62 [1.41, 1.88], wall ×1.37 [1.18, 1.60]."
+1. **Results**: pass@1 and pass@k per arm and B vs A (difference with CI, ratio), and the cost, token and wall ratios (B ÷ A) with 95% CI and Wilcoxon p (§6).
 2. **The context-tax probe**: fixed tokens added per session.
 3. A per-task table and forest plot for the cost, token and wall ratios.
 4. Success disagreements, with links to both transcripts.
@@ -449,9 +510,12 @@ If A/A reports a difference, the harness itself is broken. Repeat the A/A after 
 | Test leakage | Hidden tests are copied in only after the agent exits; the fixture has no fix in its git history; graders run offline |
 | Treatment's external tools leak into control, or installing them inflates treatment time | Tools installed only in a per-treatment image layer at build time; control preflight asserts they are absent; setup runs before the clock starts |
 | Skill's external tool never actually used | Transcript scan reports `dependency_used` per tool, and the report flags dependencies with zero use |
-| Treatment needs a user-typed trigger (slash-command workflow) | `manifest.toml` `prompt_prefix` is part of the treatment, recorded in the report |
+| Treatment needs a user-typed trigger (slash-command workflow) | `manifest.toml` `prompt_prefix` is part of the treatment, recorded in the report; multi-step workflows use `[workflow]` turns (§3.8) |
+| Treatment stops to ask the user and is graded on unfinished work | User-in-the-loop modes (§3.8); the conventional test is kept for comparability, and `ended_waiting` shows trials that stopped waiting |
+| The user stand-in helps or hurts one arm, or is too cooperative | Same stand-in model and prompts for both arms; WAITING / DONE decided without the brief; replies only from the brief, never about correctness; replies capped; every exchange in `user_loop.json` for audit; an uninformative-vs-informative comparison separates the information from the extra turns |
+| Questions in `claude -p` differ from interactive use (no AskUserQuestion tool) | `--ask-tool on` offers the tool through the SDK's stdio mode (§3.8); an A/B with `--ask-tool-b on` measures whether its absence changes behaviour. Without it, questions arrive as text and are answered as text; read a sample of `user_loop.json` before trusting a result |
 | The analyzer is biased by the harness it analyzes, or by knowing the arm | The analyzer runs with `--safe-mode`, in a fresh config dir, on a workspace copy; it is never told the arm or treatment name |
-| Analysis cost or time leaks into arm metrics | Recorded as separate `analysis_*` fields and excluded from every verdict |
+| Analysis cost or time leaks into arm metrics | Recorded as separate `analysis_*` fields and excluded from every result |
 | A/B result misread as "better than vanilla" | A/B reports state that plain Claude Code was not an arm; a comparative run against `plain` is needed for that claim |
 | Treatment claims quality, not speed | Out of scope for the smoke test; diff size and regression pass are recorded; a blinded LLM-judge quality rubric is deferred |
 | The agent's choice of model or effort differs | Both pinned; `CLAUDE_CODE_SUBAGENT_MODEL` pinned; treatments that change the model are flagged in the report as a confound |
@@ -476,7 +540,7 @@ If A/A reports a difference, the harness itself is broken. Repeat the A/A after 
    - Build the transcript scan that reports `dependency_used`.
    - Prove it end to end with an OpenSpec bundle and a beads bundle.
 4. **A/A calibration**, recording the measured σ.
-5. **Analysis and report**: bootstrap, Wilcoxon, verdict rules, HTML report.
+5. **Analysis and report**: bootstrap, Wilcoxon, pass@k, HTML report.
 6. **Arm shapes and post-run analyses** (§3.6, §3.7):
    - `--no-control`, and `--arm-a` with `--arm-b`.
    - `diff_breakdown`.

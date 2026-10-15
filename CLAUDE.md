@@ -19,7 +19,7 @@ uv run hai-proof run ... --dry-run                 # always dry-run first; real 
 
 - `src/hai_proof/` — controller. `cli.py` entry; `config.py` (hai-proof.toml, host + auth resolution);
   `executor.py`/`hosts.py`/`sshconfig.py` (local or SSH Docker); `images.py`; `trial.py`/`runner.py`
-  (trial lifecycle, scheduling); `streamjson.py` (transcript parsing); `stats.py`/`report.py` (verdict,
+  (trial lifecycle, scheduling); `streamjson.py` (transcript parsing); `stats.py`/`report.py` (results,
   summary.json, report.html); `tasks.py`/`validate.py`; `treatments.py`; `analyses*.py`, `diffbreakdown.py`.
 - `image/base/` — trial image; `hai_proof_wrap.py` and `hai_proof_grade.py` run *inside* the container
   (stdlib only, no package imports).

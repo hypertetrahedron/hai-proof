@@ -21,11 +21,13 @@ from .models import GitSource, TaskSpec
 
 _TOP_KEYS = {
     "id", "kind", "level", "origin", "timeout_s", "budget_usd", "max_turns", "install",
-    "acceptance", "regression", "source", "diff_categories",
+    "acceptance", "acceptance_args", "acceptance_cmd", "regression", "source", "diff_categories",
+    "suites", "cost_tier", "report_order",
 }
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _SLUG = re.compile(r"^[A-Za-z0-9._-]+$")
 _KINDS = ("bug", "feature")
+COST_TIERS = ("low", "medium", "high")
 _ORIGINS = ("synthetic", "upstream-fix", "injected", "authored")
 _DEFAULTS = TaskSpec(id="", kind="bug", level=1, path=Path("."), prompt="")
 
@@ -54,7 +56,7 @@ def _parse_source(d: dict, tf: Path) -> GitSource | None:
         return None
     if not isinstance(s, dict):
         raise ConfigError(f"{tf}: [source] must be a table")
-    bad = sorted(set(s) - {"kind", "url", "base", "fix"})
+    bad = sorted(set(s) - {"kind", "url", "base", "fix", "exclude"})
     if bad:
         raise ConfigError(f"{tf}: unknown keys in [source]: {', '.join(bad)}")
     if s.get("kind", "git") != "git":
@@ -66,7 +68,12 @@ def _parse_source(d: dict, tf: Path) -> GitSource | None:
         v = s.get(k)
         if v is not None and not (isinstance(v, str) and _SHA.match(v)):
             raise ConfigError(f"{tf}: source.{k} must be a full 40-character lowercase hex SHA, got {v!r}")
-    return GitSource(url=s["url"], base=s["base"], fix=s.get("fix"))
+    exclude = s.get("exclude", [])
+    if not (isinstance(exclude, list) and all(isinstance(p, str) and p for p in exclude)):
+        raise ConfigError(f"{tf}: source.exclude must be a list of path patterns")
+    if exclude and not s.get("fix"):
+        raise ConfigError(f"{tf}: source.exclude requires source.fix")
+    return GitSource(url=s["url"], base=s["base"], fix=s.get("fix"), exclude=tuple(exclude))
 
 
 def _parse(path: Path, *, check_dirs: bool) -> TaskSpec:
@@ -98,6 +105,16 @@ def _parse(path: Path, *, check_dirs: bool) -> TaskSpec:
     acceptance = d.get("acceptance", [])
     if not isinstance(acceptance, list) or not all(isinstance(a, str) and a for a in acceptance):
         raise ConfigError(f"{tf}: acceptance must be a list of strings")
+    acceptance_args = d.get("acceptance_args", [])
+    if not isinstance(acceptance_args, list) or not all(isinstance(a, str) and a for a in acceptance_args):
+        raise ConfigError(f"{tf}: acceptance_args must be a list of strings")
+    acceptance_cmd = d.get("acceptance_cmd", "")
+    if not isinstance(acceptance_cmd, str) or ("acceptance_cmd" in d and not acceptance_cmd.strip()):
+        raise ConfigError(f"{tf}: acceptance_cmd must be a non-empty string")
+    if acceptance_cmd and not acceptance:
+        raise ConfigError(f"{tf}: acceptance_cmd needs 'acceptance' (the hidden test files it runs)")
+    if acceptance_cmd and acceptance_args:
+        raise ConfigError(f"{tf}: acceptance_args only applies to pytest; put them in acceptance_cmd")
     for a in acceptance:
         fp = a.split("::", 1)[0]
         if "\\" in fp or PurePosixPath(fp).is_absolute() or ".." in PurePosixPath(fp).parts:
@@ -113,6 +130,20 @@ def _parse(path: Path, *, check_dirs: bool) -> TaskSpec:
     ):
         raise ConfigError(f"{tf}: [diff_categories] must map category names to lists of glob strings")
 
+    suites = d.get("suites", [])
+    if not isinstance(suites, list) or not all(isinstance(s, str) and s.strip() for s in suites):
+        raise ConfigError(f"{tf}: suites must be a list of non-empty strings")
+    if "all" in suites:
+        raise ConfigError(f"{tf}: 'all' is reserved and can't be a suite name")
+
+    cost_tier = d.get("cost_tier", "")
+    if cost_tier and cost_tier not in COST_TIERS:
+        raise ConfigError(f"{tf}: cost_tier must be one of {', '.join(COST_TIERS)}, got {cost_tier!r}")
+    report_order = d.get("report_order")
+    if report_order is not None and (isinstance(report_order, bool) or not isinstance(report_order, int)
+                                     or report_order < 1):
+        raise ConfigError(f"{tf}: report_order must be a positive integer, got {report_order!r}")
+
     source = _parse_source(d, tf)
 
     pf = path / "prompt.md"
@@ -121,6 +152,22 @@ def _parse(path: Path, *, check_dirs: bool) -> TaskSpec:
     prompt = pf.read_text(encoding="utf-8").strip()
     if not prompt:
         raise ConfigError(f"{pf}: prompt is empty")
+
+    variants = {}
+    for vf in sorted((path / "prompts").glob("*.md")):
+        text = vf.read_text(encoding="utf-8").strip()
+        if not text:
+            raise ConfigError(f"{vf}: prompt is empty")
+        variants[vf.stem] = text
+
+    brief = ""
+    uf = path / "user.md"
+    if uf.is_file():
+        brief = uf.read_text(encoding="utf-8").strip()
+        if not brief:
+            raise ConfigError(f"{uf}: user brief is empty")
+        if re.search(r"hidden[ _-]?tests?", brief, re.I):
+            raise ConfigError(f"{uf}: the user brief must not mention the hidden tests")
 
     if check_dirs and source is None:
         if not (path / "repo").is_dir():
@@ -140,9 +187,16 @@ def _parse(path: Path, *, check_dirs: bool) -> TaskSpec:
         max_turns=_int(d, "max_turns", _DEFAULTS.max_turns, tf),
         install=d.get("install", _DEFAULTS.install),
         acceptance=tuple(acceptance),
+        acceptance_args=tuple(acceptance_args),
+        acceptance_cmd=acceptance_cmd,
         regression=d.get("regression", _DEFAULTS.regression),
         source=source,
         diff_categories={k: tuple(v) for k, v in cats_raw.items()},
+        prompt_variants=variants,
+        user_brief=brief,
+        suites=tuple(suites),
+        cost_tier=cost_tier,
+        report_order=report_order,
     )
 
 
@@ -219,7 +273,8 @@ def _rmtree(p: Path) -> None:
 
 
 def _git(git: str, cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[bytes]:
-    cmd = [git, "-c", "core.autocrlf=false", "-c", "core.safecrlf=false", *args]
+    # core.eol=lf: with a `* text=auto` .gitattributes, git would otherwise use the platform eol (CRLF on Windows).
+    cmd = [git, "-c", "core.autocrlf=false", "-c", "core.eol=lf", "-c", "core.safecrlf=false", *args]
     r = subprocess.run(cmd, cwd=cwd, capture_output=True)
     if check and r.returncode != 0:
         err = r.stderr.decode("utf-8", "replace").strip()
@@ -265,6 +320,8 @@ def build_task(task_dir: Path, *, git: str = "git", force: bool = False) -> None
                 changed: list[tuple[str, str]] = []
                 for i in range(0, len(parts) - 1, 2):
                     changed.append((parts[i][:1], parts[i + 1]))
+                # Parts of a multi-fix upstream change that belong to other defects (DESIGN §4.1).
+                changed = [(s, p) for s, p in changed if not any(fnmatch.fnmatch(p, x) for x in src.exclude)]
                 tests = [(s, p) for s, p in changed if is_test_path(p)]
                 others = [p for s, p in changed if not is_test_path(p)]
 

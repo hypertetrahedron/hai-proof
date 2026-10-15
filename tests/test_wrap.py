@@ -61,3 +61,81 @@ def test_start_failure_still_writes_done(tmp_path):
 def test_build_argv():
     assert wrap.build_argv(["a", "b"], "P", 1) == ["a", "P", "b"]
     assert wrap.build_argv(["a"], "P", None) == ["a"]
+
+
+FAKE_STDIO_CLAUDE = r'''
+import json, sys
+def emit(o):
+    sys.stdout.write(json.dumps(o) + "\n"); sys.stdout.flush()
+msg = json.loads(sys.stdin.readline())
+emit({"type": "system", "subtype": "init", "tools": ["AskUserQuestion", "Bash"]})
+emit({"type": "control_request", "request_id": "r1",
+      "request": {"subtype": "can_use_tool", "tool_name": "Bash", "input": {"command": "ls"}}})
+r1 = json.loads(sys.stdin.readline())
+q = {"questions": [{"question": "Which?", "header": "H", "multiSelect": False,
+                    "options": [{"label": "A", "description": ""}, {"label": "B", "description": ""}]}]}
+emit({"type": "control_request", "request_id": "r2",
+      "request": {"subtype": "can_use_tool", "tool_name": "AskUserQuestion", "input": q}})
+r2 = json.loads(sys.stdin.readline())
+emit({"type": "result", "subtype": "success", "result": json.dumps([msg, r1, r2])})
+assert sys.stdin.readline() == ""  # the wrapper closes stdin after the result
+'''
+
+
+def test_stdio_session_answers_questions_through_the_mailbox(tmp_path):
+    import threading
+
+    ask = tmp_path / "ask"
+
+    def user():
+        for _ in range(200):
+            if (ask / "000.json").exists():
+                q = json.loads((ask / "000.json").read_text())
+                (ask / "000.answer.json").write_text(json.dumps({"answers": {q["questions"][0]["question"]: "B"}}))
+                return
+            time.sleep(0.05)
+
+    th = threading.Thread(target=user)
+    th.start()
+    rc, out = _run(tmp_path, [sys.executable, "-c", FAKE_STDIO_CLAUDE],
+                   stdio={"ask_dir": str(ask), "answer_timeout_s": 20})
+    th.join()
+    assert rc == 0
+    lines = [json.loads(x) for x in (out / "transcript.jsonl").read_text().splitlines()]
+    msg, r1, r2 = json.loads(lines[-1]["result"])
+    assert msg == {"type": "user", "message": {"role": "user", "content": "hello prompt"}}
+    assert r1["response"]["response"] == {"behavior": "allow", "updatedInput": {"command": "ls"}}
+    assert r2["response"]["request_id"] == "r2"
+    assert r2["response"]["response"]["updatedInput"]["answers"] == {"Which?": "B"}
+    t = json.loads((out / "timing.json").read_text())
+    assert t["exit_code"] == 0 and t["questions"] == 1
+    assert t["control_requests"] == [["Bash", "allow"], ["AskUserQuestion", "allow"]]
+
+
+def test_stdio_session_denies_an_unanswered_question(tmp_path):
+    rc, out = _run(tmp_path, [sys.executable, "-c", FAKE_STDIO_CLAUDE],
+                   stdio={"ask_dir": str(tmp_path / "ask"), "answer_timeout_s": 1})
+    lines = [json.loads(x) for x in (out / "transcript.jsonl").read_text().splitlines()]
+    r2 = json.loads(lines[-1]["result"])[2]
+    assert r2["response"]["response"]["behavior"] == "deny"
+    assert json.loads((out / "timing.json").read_text())["control_requests"][-1] == ["AskUserQuestion", "deny"]
+
+
+LINGERING_CLAUDE = r'''
+import json, sys, time
+def emit(o):
+    sys.stdout.write(json.dumps(o) + "\n"); sys.stdout.flush()
+sys.stdin.readline()
+emit({"type": "result", "subtype": "success", "result": "done"})
+time.sleep(30)  # a background task keeps the CLI alive after its result
+emit({"type": "result", "subtype": "success", "result": "woken again"})
+'''
+
+
+def test_stdio_session_ends_the_call_at_the_first_result(tmp_path, monkeypatch):
+    monkeypatch.setattr(wrap, "RESULT_GRACE_S", 0.5)
+    rc, out = _run(tmp_path, [sys.executable, "-c", LINGERING_CLAUDE], stdio={"ask_dir": str(tmp_path / "ask")})
+    lines = [json.loads(x) for x in (out / "transcript.jsonl").read_text().splitlines()]
+    assert [x["result"] for x in lines] == ["done"]
+    t = json.loads((out / "timing.json").read_text())
+    assert t["stopped_after_result"] is True and t["timed_out"] is False and t["wall_s"] < 15

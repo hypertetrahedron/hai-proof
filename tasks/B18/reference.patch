@@ -1,0 +1,179 @@
+diff --git a/tornado/concurrent.py b/tornado/concurrent.py
+index 2a061562..7fa91413 100644
+--- a/tornado/concurrent.py
++++ b/tornado/concurrent.py
+@@ -152,11 +152,19 @@ def chain_future(
+        Now accepts both Tornado/asyncio `Future` objects and
+        `concurrent.futures.Future`.
+ 
++    .. versionchanged:: 6.6
++
++       If ``a`` is cancelled, ``b`` is now cancelled too. Previously ``b``
++       would never complete.
++
+     """
+ 
+     def copy(a: "Future[_T]") -> None:
+         if b.done():
+             return
++        if a.cancelled():
++            b.cancel()
++            return
+         if hasattr(a, "exc_info") and a.exc_info() is not None:  # type: ignore
+             future_set_exc_info(b, a.exc_info())  # type: ignore
+         else:
+diff --git a/tornado/gen.py b/tornado/gen.py
+index 4cd3ba27..3375ce0e 100644
+--- a/tornado/gen.py
++++ b/tornado/gen.py
+@@ -193,6 +193,13 @@ def coroutine(
+        The ``callback`` argument was removed. Use the returned
+        awaitable object instead.
+ 
++    .. versionchanged:: 6.6
++
++       If the coroutine raises `asyncio.CancelledError` (including by
++       yielding a cancelled `.Future` without catching the exception), the
++       returned `.Future` is now cancelled. Previously the coroutine would
++       never complete.
++
+     """
+ 
+     @functools.wraps(func)
+@@ -205,6 +212,11 @@ def coroutine(
+             result = ctx_run(func, *args, **kwargs)
+         except (Return, StopIteration) as e:
+             result = _value_from_stopiteration(e)
++        except asyncio.CancelledError:
++            # Like asyncio.Task, a coroutine that raises CancelledError
++            # is treated as cancelled.
++            future.cancel()
++            return future
+         except Exception:
+             future_set_exc_info(future, sys.exc_info())
+             try:
+@@ -225,6 +237,8 @@ def coroutine(
+                     future_set_result_unless_cancelled(
+                         future, _value_from_stopiteration(e)
+                     )
++                except asyncio.CancelledError:
++                    future.cancel()
+                 except Exception:
+                     future_set_exc_info(future, sys.exc_info())
+                 else:
+@@ -482,6 +496,11 @@ def multi(
+        with a unified function ``multi``. Added support for yieldables
+        other than ``YieldPoint`` and `.Future`.
+ 
++    .. versionchanged:: 6.6
++       If a child is cancelled, ``multi()`` now raises `asyncio.CancelledError`
++       (without logging it if it is not the first failure), matching
++       `asyncio.gather`. Previously ``multi()`` would never complete.
++
+     """
+     return multi_future(children, quiet_exceptions=quiet_exceptions)
+ 
+@@ -528,9 +547,13 @@ def multi_future(
+             for f in children_futs:
+                 try:
+                     result_list.append(f.result())
+-                except Exception as e:
++                except (Exception, asyncio.CancelledError) as e:
++                    # As in asyncio.gather, a cancelled child is treated as
++                    # an error, and does not cancel the combined future.
+                     if future.done():
+-                        if not isinstance(e, quiet_exceptions):
++                        if not isinstance(
++                            e, (asyncio.CancelledError, quiet_exceptions)
++                        ):
+                             app_log.error(
+                                 "Multiple exceptions in yield list", exc_info=True
+                             )
+@@ -765,11 +788,11 @@ class Runner:
+                 try:
+                     try:
+                         value = future.result()
+-                    except Exception as e:
++                    except (Exception, asyncio.CancelledError) as e:
+                         # Save the exception for later. It's important that
+                         # gen.throw() not be called inside this try/except block
+                         # because that makes sys.exc_info behave unexpectedly.
+-                        exc: Exception | None = e
++                        exc: BaseException | None = e
+                     else:
+                         exc = None
+                     finally:
+@@ -793,6 +816,12 @@ class Runner:
+                     )
+                     self.result_future = None  # type: ignore
+                     return
++                except asyncio.CancelledError:
++                    self.finished = True
++                    self.future = _null_future
++                    self.result_future.cancel()
++                    self.result_future = None  # type: ignore
++                    return
+                 except Exception:
+                     self.finished = True
+                     self.future = _null_future
+diff --git a/tornado/web.py b/tornado/web.py
+index 46575a42..e04ad314 100644
+--- a/tornado/web.py
++++ b/tornado/web.py
+@@ -56,6 +56,7 @@ the executor do not refer to Tornado objects.
+ 
+ """
+ 
++import asyncio
+ import base64
+ import binascii
+ import datetime
+@@ -1866,7 +1867,25 @@ class RequestHandler:
+                 result = await result
+             if self._auto_finish and not self._finished:
+                 self.finish()
+-        except Exception as e:
++        except (Exception, asyncio.CancelledError) as e:
++            task = asyncio.current_task()
++            if (
++                isinstance(e, asyncio.CancelledError)
++                and task is not None
++                and task.cancelling()
++            ):
++                # This handler's own task was cancelled (as opposed to the
++                # handler awaiting something else that was cancelled). This is
++                # not an error to be logged, but send a response so the
++                # connection is not left hanging, then let the cancellation
++                # propagate.
++                result = None
++                if not self._finished:
++                    try:
++                        self.send_error(500)
++                    except Exception:
++                        app_log.error("Exception in exception handler", exc_info=True)
++                raise
+             try:
+                 self._handle_request_exception(e)
+             except Exception:
+@@ -1874,10 +1893,10 @@ class RequestHandler:
+             finally:
+                 # Unset result to avoid circular references
+                 result = None
++        finally:
+             if self._prepared_future is not None and not self._prepared_future.done():
+                 # In case we failed before setting _prepared_future, do it
+-                # now (to unblock the HTTP server).  Note that this is not
+-                # in a finally block to avoid GC issues prior to Python 3.4.
++                # now (to unblock the HTTP server).
+                 self._prepared_future.set_result(None)
+ 
+     def data_received(self, chunk: bytes) -> Awaitable[None] | None:
+@@ -2511,7 +2530,7 @@ class _HandlerDelegate(httputil.HTTPMessageDelegate):
+         fut = gen.convert_yielded(
+             self.handler._execute(transforms, *self.path_args, **self.path_kwargs)
+         )
+-        fut.add_done_callback(lambda f: f.result())
++        fut.add_done_callback(lambda f: f.cancelled() or f.result())
+         # If we are streaming the request body, then execute() is finished
+         # when the handler has prepared to receive the body.  If not,
+         # it doesn't matter when execute() finishes (so we return None)

@@ -1,0 +1,134 @@
+diff --git a/docs/project/changelog.rst b/docs/project/changelog.rst
+index fa2540c..d38e8a4 100644
+--- a/docs/project/changelog.rst
++++ b/docs/project/changelog.rst
+@@ -32,6 +32,11 @@ notice.
+ 
+ *In development*
+ 
++Improvements
++............
++
++* Connections are now garbage collected immediately once closed.
++
+ .. _17.0.1:
+ 
+ 17.0.1
+diff --git a/src/websockets/asyncio/connection.py b/src/websockets/asyncio/connection.py
+index 74ab5e2..87d96ab 100644
+--- a/src/websockets/asyncio/connection.py
++++ b/src/websockets/asyncio/connection.py
+@@ -8,6 +8,7 @@ import random
+ import struct
+ import traceback
+ import uuid
++import weakref
+ from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Iterable, Mapping
+ from types import TracebackType
+ from typing import Any, Literal, Self, cast, overload
+@@ -67,7 +68,7 @@ class Connection(asyncio.Protocol):
+         # Inject reference to this instance in the protocol's logger.
+         self.protocol.logger = logging.LoggerAdapter(
+             self.protocol.logger,
+-            {"websocket": self},
++            {"websocket": weakref.proxy(self)},
+         )
+ 
+         # Copy attributes from the protocol for convenience.
+@@ -1025,6 +1026,8 @@ class Connection(asyncio.Protocol):
+ 
+         if self.keepalive_task is not None:
+             self.keepalive_task.cancel()
++            # Break reference cycle to allow immediate garbage collection.
++            self.keepalive_task = None
+ 
+         # If self.connection_lost_waiter isn't pending, that's a bug, because:
+         # - it's set only here in connection_lost() which is called only once;
+diff --git a/src/websockets/legacy/protocol.py b/src/websockets/legacy/protocol.py
+index 0f86d3d..cb97e48 100644
+--- a/src/websockets/legacy/protocol.py
++++ b/src/websockets/legacy/protocol.py
+@@ -11,6 +11,7 @@ import time
+ import traceback
+ import uuid
+ import warnings
++import weakref
+ from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Iterable, Mapping
+ from typing import Any, Callable, Deque, cast
+ 
+@@ -205,7 +206,10 @@ class WebSocketCommonProtocol(asyncio.Protocol):
+         # Logger or LoggerAdapter for this connection.
+         if logger is None:
+             logger = logging.getLogger("websockets.protocol")
+-        self.logger: LoggerLike = logging.LoggerAdapter(logger, {"websocket": self})
++        self.logger: LoggerLike = logging.LoggerAdapter(
++            logger,
++            {"websocket": weakref.proxy(self)},
++        )
+         """Logger for this connection."""
+ 
+         # Track if DEBUG is enabled. Shortcut logging calls if it isn't.
+@@ -1278,6 +1282,8 @@ class WebSocketCommonProtocol(asyncio.Protocol):
+             # Cancel the keepalive ping task.
+             if hasattr(self, "keepalive_ping_task"):
+                 self.keepalive_ping_task.cancel()
++                # Break reference cycle to allow immediate garbage collection.
++                del self.keepalive_ping_task
+ 
+             # A client should wait for a TCP close from the server.
+             if self.is_client and hasattr(self, "transfer_data_task"):
+diff --git a/src/websockets/sync/connection.py b/src/websockets/sync/connection.py
+index 74ac997..c687d78 100644
+--- a/src/websockets/sync/connection.py
++++ b/src/websockets/sync/connection.py
+@@ -10,6 +10,7 @@ import threading
+ import time
+ import traceback
+ import uuid
++import weakref
+ from collections.abc import Iterable, Iterator, Mapping
+ from types import TracebackType
+ from typing import Any, Literal, Self, overload
+@@ -69,7 +70,7 @@ class Connection:
+         # Inject reference to this instance in the protocol's logger.
+         self.protocol.logger = logging.LoggerAdapter(
+             self.protocol.logger,
+-            {"websocket": self},
++            {"websocket": weakref.proxy(self)},
+         )
+ 
+         # Copy attributes from the protocol for convenience.
+diff --git a/src/websockets/trio/connection.py b/src/websockets/trio/connection.py
+index 606653a..26e0321 100644
+--- a/src/websockets/trio/connection.py
++++ b/src/websockets/trio/connection.py
+@@ -6,6 +6,7 @@ import random
+ import struct
+ import traceback
+ import uuid
++import weakref
+ from collections.abc import AsyncIterable, AsyncIterator, Iterable, Mapping
+ from types import TracebackType
+ from typing import Any, Literal, Self, overload
+@@ -67,7 +68,7 @@ class Connection(trio.abc.AsyncResource):
+         # Inject reference to this instance in the protocol's logger.
+         self.protocol.logger = logging.LoggerAdapter(
+             self.protocol.logger,
+-            {"websocket": self},
++            {"websocket": weakref.proxy(self)},
+         )
+ 
+         # Copy attributes from the protocol for convenience.
+diff --git a/src/websockets/trio/messages.py b/src/websockets/trio/messages.py
+index a578d81..a1b348f 100644
+--- a/src/websockets/trio/messages.py
++++ b/src/websockets/trio/messages.py
+@@ -284,3 +284,8 @@ class Assembler:
+ 
+         # Unblock get() or get_iter().
+         self.send_frames.close()
++
++        # Break reference cycle to allow immediate garbage collection:
++        # Connection -> Assembler -> bound methods -> Connection.
++        self.pause = lambda: None
++        self.resume = lambda: None

@@ -1,0 +1,24 @@
+id = "B5"
+kind = "bug"
+level = 3
+suites = ["standard"]
+cost_tier = "medium"
+report_order = 7
+origin = "upstream-fix"
+# Real upstream bug with a large fix (docs/task-catalog.md, candidate D6): dateparser is not
+# thread-safe (issues #441, #1291), fixed by PR #1346 (merged 2026-08-24) across 8 modules.
+timeout_s = 3600
+budget_usd = 40.0
+max_turns = 300
+install = "uv pip install --python /opt/venv/bin/python -e '.[calendars,langdetect]' pytest parameterized"
+acceptance = ["tests/test_thread_safety.py"]
+# Default collection from the repo root picks up dateparser_scripts/ and fuzzing/, which do not import.
+regression = "python -m pytest -q -p no:cacheprovider tests"
+
+[source]
+kind = "git"
+url  = "https://github.com/scrapinghub/dateparser.git"
+# parent of the fix commit
+base = "de7b986fa1fe3c7830bdb922435501ad871c55c3"
+# PR #1346 "Make thread-safe"
+fix  = "cd9bb13e63f41eb5f44074cfdc73a41aa62293e1"

@@ -1,0 +1,17 @@
+id = "B8"
+kind = "bug"
+level = 1
+origin = "upstream-fix"
+# Memory leak with a hidden cause (docs/task-catalog.md): asgiref Local leaves reference cycles via a
+# caught exception's traceback inside a @contextmanager generator (issue #487, PR #508, 2025-06-30).
+timeout_s = 1200
+budget_usd = 3.0
+max_turns = 40
+install = "uv pip install --python /opt/venv/bin/python -e '.[tests]'"
+acceptance = ["tests/test_garbage_collection.py"]
+
+[source]
+kind = "git"
+url  = "https://github.com/django/asgiref.git"
+base = "ec6f666621407674e80d039bf235ba2662193bdb"
+fix  = "37870f58963c38617a910743ba69311ec8e4e0d0"

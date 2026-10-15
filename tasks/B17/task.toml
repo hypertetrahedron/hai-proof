@@ -1,0 +1,28 @@
+id = "B17"
+kind = "bug"
+level = 2
+suites = ["standard"]
+cost_tier = "low"
+report_order = 1
+origin = "upstream-fix"
+# One hang, two independent causes, the second found only after the first fix shipped
+# (docs/task-catalog.md): `--dist=loadgroup` hangs after a crashed worker is replaced
+# (pytest-xdist issues #1323 and #1327, PRs #1324 and #1328, 2026-08-27 / 2026-09-04).
+# hidden_tests/testing/acceptance_test.py was edited by hand: upstream's two tests assert an exact
+# failure count specific to its fix ("*5 failed*"); they now assert the behaviour (run finishes, crash
+# reported as a failure). `build-task --force` restores the upstream file; re-apply the edit.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=3.9.0 uv pip install --python /opt/venv/bin/python -e . pytest pytest-timeout"
+acceptance = [
+    "testing/acceptance_test.py::TestNodeFailure::test_loadgroup_does_not_hang_after_restart",
+    "testing/acceptance_test.py::TestNodeFailure::test_loadgroup_does_not_hang_after_restart2",
+]
+regression = "python -m pytest -q -p no:cacheprovider --timeout=120 testing"
+
+[source]
+kind = "git"
+url  = "https://github.com/pytest-dev/pytest-xdist.git"
+base = "dd198c35710f22b1cb86b7fc00311f9b7c63d665"
+fix  = "eba6a4475eb8697fc476357ff54d7b8b948781cf"

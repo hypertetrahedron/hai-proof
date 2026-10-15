@@ -1,0 +1,261 @@
+{
+ "schema": 1,
+ "entries": [
+  {
+   "model": "claude-sonnet-5-5",
+   "cli_version": "2.1.296",
+   "effort": "default",
+   "task_hash": "b8ac27011d9e",
+   "samples": [
+    {
+     "run_id": "20261010-085001-4eae",
+     "rep": 0,
+     "date": "2026-10-10",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.3070019,
+     "tokens_total": 661535,
+     "tokens_output": 8696,
+     "wall_s": 84.74682468362153,
+     "turns": 19,
+     "tool_calls": 18,
+     "first_request_input_tokens": 15308,
+     "cache_read_share": 0.9268428730150332,
+     "cache_misses": 0,
+     "first_edit_s": 34.9,
+     "test_runs": 4,
+     "code_runs": 0,
+     "diff_files": 7,
+     "diff_lines": 168
+    },
+    {
+     "run_id": "20261010-085001-4eae",
+     "rep": 1,
+     "date": "2026-10-10",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.46789649999999994,
+     "tokens_total": 1396665,
+     "tokens_output": 13504,
+     "wall_s": 544.6630889531225,
+     "turns": 34,
+     "tool_calls": 33,
+     "first_request_input_tokens": 15312,
+     "cache_read_share": 0.9545918312551686,
+     "cache_misses": 0,
+     "first_edit_s": 21.0,
+     "test_runs": 9,
+     "code_runs": 3,
+     "diff_files": 8,
+     "diff_lines": 143
+    },
+    {
+     "run_id": "20261010-085001-4eae",
+     "rep": 2,
+     "date": "2026-10-10",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.3733951,
+     "tokens_total": 959603,
+     "tokens_output": 10615,
+     "wall_s": 143.2293654140085,
+     "turns": 26,
+     "tool_calls": 25,
+     "first_request_input_tokens": 15308,
+     "cache_read_share": 0.94285970343986,
+     "cache_misses": 0,
+     "first_edit_s": 22.3,
+     "test_runs": 7,
+     "code_runs": 1,
+     "diff_files": 7,
+     "diff_lines": 131
+    }
+   ],
+   "summary": {
+    "trials": 3,
+    "passes": 3,
+    "pass_rate": 1.0,
+    "pass_rate_wilson95": [
+     0.43850296436068037,
+     1.0
+    ],
+    "timeouts": 0,
+    "end_reasons": {
+     "completed": 3
+    },
+    "harness_versions": [
+     "unrecorded"
+    ],
+    "excluded": 0,
+    "first_date": "2026-10-10",
+    "last_date": "2026-10-10",
+    "runs": [
+     {
+      "run_id": "20261010-085001-4eae",
+      "date": "2026-10-10",
+      "trials": 3,
+      "passes": 3,
+      "excluded": 0
+     }
+    ],
+    "metrics": {
+     "cost_usd": {
+      "n": 3,
+      "mean": 0.38276449999999995,
+      "var": 0.006537607319559996,
+      "sd": 0.08085547179727538,
+      "cv": 0.211240780681791,
+      "min": 0.3070019,
+      "median": 0.3733951,
+      "max": 0.46789649999999994
+     },
+     "tokens_total": {
+      "n": 3,
+      "mean": 1005934.3333333334,
+      "var": 136713973561.33333,
+      "sd": 369748.52746337384,
+      "cv": 0.3675672608152757,
+      "min": 661535.0,
+      "median": 959603.0,
+      "max": 1396665.0
+     },
+     "tokens_output": {
+      "n": 3,
+      "mean": 10938.333333333334,
+      "var": 5857624.333333333,
+      "sd": 2420.2529482129203,
+      "cv": 0.22126341138621852,
+      "min": 8696.0,
+      "median": 10615.0,
+      "max": 13504.0
+     },
+     "wall_s": {
+      "n": 3,
+      "mean": 257.54642635025084,
+      "var": 62682.03535072877,
+      "sd": 250.36380599185813,
+      "cv": 0.9721113569301688,
+      "min": 84.74682468362153,
+      "median": 143.2293654140085,
+      "max": 544.6630889531225
+     },
+     "turns": {
+      "n": 3,
+      "mean": 26.333333333333332,
+      "var": 56.333333333333336,
+      "sd": 7.505553499465135,
+      "cv": 0.28502101896703047,
+      "min": 19.0,
+      "median": 26.0,
+      "max": 34.0
+     },
+     "tool_calls": {
+      "n": 3,
+      "mean": 25.333333333333332,
+      "var": 56.333333333333336,
+      "sd": 7.505553499465135,
+      "cv": 0.29627184866309747,
+      "min": 18.0,
+      "median": 25.0,
+      "max": 33.0
+     },
+     "first_request_input_tokens": {
+      "n": 3,
+      "mean": 15309.333333333334,
+      "var": 5.333333333333333,
+      "sd": 2.309401076758503,
+      "cv": 0.0001508492255329104,
+      "min": 15308.0,
+      "median": 15308.0,
+      "max": 15312.0
+     },
+     "cache_read_share": {
+      "n": 3,
+      "mean": 0.9414314692366873,
+      "var": 0.00019403106055752823,
+      "sd": 0.013929503241592223,
+      "cv": 0.014796088400238272,
+      "min": 0.9268428730150332,
+      "median": 0.94285970343986,
+      "max": 0.9545918312551686
+     },
+     "cache_misses": {
+      "n": 3,
+      "mean": 0.0,
+      "var": 0.0,
+      "sd": 0.0,
+      "cv": null,
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+     },
+     "first_edit_s": {
+      "n": 3,
+      "mean": 26.066666666666666,
+      "var": 58.94333333333332,
+      "sd": 7.677456175930496,
+      "cv": 0.2945315668515536,
+      "min": 21.0,
+      "median": 22.3,
+      "max": 34.9
+     },
+     "test_runs": {
+      "n": 3,
+      "mean": 6.666666666666667,
+      "var": 6.333333333333333,
+      "sd": 2.516611478423583,
+      "cv": 0.37749172176353746,
+      "min": 4.0,
+      "median": 7.0,
+      "max": 9.0
+     },
+     "code_runs": {
+      "n": 3,
+      "mean": 1.3333333333333333,
+      "var": 2.3333333333333335,
+      "sd": 1.5275252316519468,
+      "cv": 1.1456439237389602,
+      "min": 0.0,
+      "median": 1.0,
+      "max": 3.0
+     },
+     "diff_files": {
+      "n": 3,
+      "mean": 7.333333333333333,
+      "var": 0.3333333333333333,
+      "sd": 0.5773502691896257,
+      "cv": 0.0787295821622217,
+      "min": 7.0,
+      "median": 7.0,
+      "max": 8.0
+     },
+     "diff_lines": {
+      "n": 3,
+      "mean": 147.33333333333334,
+      "var": 356.3333333333333,
+      "sd": 18.876793513023692,
+      "cv": 0.12812303289382596,
+      "min": 131.0,
+      "median": 143.0,
+      "max": 168.0
+     }
+    }
+   }
+  }
+ ],
+ "task": "B15",
+ "about": "Generated by `hai-proof baseline update`: plain-arm (unmodified Claude Code) trials only, one entry per model / CLI version / effort / task hash. Do not edit by hand.",
+ "current_task_hash": "b8ac27011d9e"
+}

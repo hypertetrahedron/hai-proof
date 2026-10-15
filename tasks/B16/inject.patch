@@ -1,0 +1,14 @@
+diff --git a/tests/conftest.py b/tests/conftest.py
+index b549a52..d4b29c6 100644
+--- a/tests/conftest.py
++++ b/tests/conftest.py
+@@ -3,6 +3,9 @@
+ # 2.0, and the MIT License.  See the LICENSE file in the root of this
+ # repository for complete details.
+ 
++# logging only fills in processName once multiprocessing has been imported; CI gets it via plugins.
++import multiprocessing  # noqa: F401
++
+ import logging
+ 
+ from io import StringIO

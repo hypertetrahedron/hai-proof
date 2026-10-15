@@ -1,0 +1,36 @@
+id = "B19"
+kind = "bug"
+level = 2
+suites = ["standard"]
+cost_tier = "low"
+report_order = 4
+origin = "upstream-fix"
+# Multi-cause socket leak (docs/task-catalog.md): sockets stay open after a connect timeout or an
+# abandoned connect, through several independent paths: start_tls hands the socket to a stream the
+# caller never sees, TCPClient.connect's timeout/cancel leave the handshake or other attempts open,
+# and simple_httpclient enforced its connect timeout outside TCPClient (issues #2785, #3614; PRs
+# #3735 + #3745, 2026-09-25). The same PR's synchronous-connect-error fix is a separate defect: its
+# tests (test_sync_failure_*, test_source_ip_mixed_families) were removed by hand from
+# hidden_tests/tornado/test/tcpclient_test.py. `build-task --force` restores them; remove them again.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest"
+acceptance = [
+    "tornado/test/iostream_test.py::TestIOStreamStartTLS::test_start_tls_cancellation",
+    "tornado/test/simple_httpclient_test.py::TLSHandshakeTimeoutTestCase",
+    "tornado/test/tcpclient_test.py::TCPClientTest::test_connect_tls_timeout_closes_stream",
+    "tornado/test/tcpclient_test.py::TCPClientTest::test_connect_tls_cancel_closes_stream",
+    "tornado/test/tcpclient_test.py::TCPClientTest::test_connect_tls_cancel_with_timeout_closes_stream",
+    "tornado/test/tcpclient_test.py::ConnectorTest::test_cancel",
+]
+acceptance_cmd = "python -m tornado.test.runtests tornado.test.iostream_test.TestIOStreamStartTLS.test_start_tls_cancellation tornado.test.simple_httpclient_test.TLSHandshakeTimeoutTestCase tornado.test.tcpclient_test.TCPClientTest.test_connect_tls_timeout_closes_stream tornado.test.tcpclient_test.TCPClientTest.test_connect_tls_cancel_closes_stream tornado.test.tcpclient_test.TCPClientTest.test_connect_tls_cancel_with_timeout_closes_stream tornado.test.tcpclient_test.ConnectorTest.test_cancel"
+# Tornado's own runner for both steps: under pytest ~360 tests fail on the access log and warning
+# setup that runtests.main() does.
+regression = "python -m tornado.test.runtests"
+
+[source]
+kind = "git"
+url  = "https://github.com/tornadoweb/tornado.git"
+base = "76460597125d4e7cf33e6c3cff111ec952a4fd15"
+fix  = "89afbd1d7e069721cd9476b7ee5760f54217c925"

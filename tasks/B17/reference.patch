@@ -1,0 +1,70 @@
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index dd9cd3b..4bece64 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -1,6 +1,6 @@
+ repos:
+ - repo: https://github.com/astral-sh/ruff-pre-commit
+-  rev: "v0.16.4"
++  rev: "v0.16.5"
+   hooks:
+     - id: ruff
+       args: ["--fix"]
+diff --git a/changelog/1323.bugfix.rst b/changelog/1323.bugfix.rst
+new file mode 100644
+index 0000000..0833ae3
+--- /dev/null
++++ b/changelog/1323.bugfix.rst
+@@ -0,0 +1 @@
++Fix hang with `--dist=loadgroup` if a crashed worker is replaced.
+diff --git a/changelog/1327.bugfix.rst b/changelog/1327.bugfix.rst
+new file mode 100644
+index 0000000..cb1c7ec
+--- /dev/null
++++ b/changelog/1327.bugfix.rst
+@@ -0,0 +1 @@
++Fix hang with `--dist=loadgroup` if a crashed worker is replaced.
+\ No newline at end of file
+diff --git a/src/xdist/scheduler/loadscope.py b/src/xdist/scheduler/loadscope.py
+index 73162dc..3ff1403 100644
+--- a/src/xdist/scheduler/loadscope.py
++++ b/src/xdist/scheduler/loadscope.py
+@@ -196,8 +196,10 @@ class LoadScopeScheduling:
+                 "Unable to identify crashitem on a workload with pending items"
+             )
+ 
+-        # Made uncompleted work unit available again
+-        self.workqueue.update(workload)
++        # Make uncompleted work units available again
++        for scope, work_unit in workload.items():
++            if any(not completed for completed in work_unit.values()):
++                self.workqueue[scope] = work_unit
+ 
+         for node in self.assigned_work:
+             self._reschedule(node)
+@@ -278,6 +280,12 @@ class LoadScopeScheduling:
+             for nodeid, completed in work_unit.items()
+             if not completed
+         ]
++        if not nodeids_indexes:
++            # Raise since this is an internal error that may result in a hanging worker
++            # See #1323
++            raise RuntimeError(
++                "Trying to assign a work unit with no pending items to a node"
++            )
+ 
+         node.send_runtest_some(nodeids_indexes)
+ 
+@@ -350,6 +358,12 @@ class LoadScopeScheduling:
+ 
+         # Initial distribution already happened, reschedule on all nodes
+         if self.collection is not None:
++            for node in self.nodes:
++                self._reschedule(node)
++            # Ensure nodes have at least two work units if possible,
++            # since workers need a "next item" before running the current one.
++            # (A restarted worker has no item before calling _reschedule()
++            # for the first time.)
+             for node in self.nodes:
+                 self._reschedule(node)
+             return

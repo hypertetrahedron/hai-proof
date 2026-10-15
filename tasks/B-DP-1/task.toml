@@ -1,0 +1,32 @@
+id = "B-DP-1"
+# Degraded-prompt task: B7 with one diagnostic observation removed from the prompt
+# (docs/prompt-degradation.md). The removal changed the result in run 20261010-085001-4eae.
+kind = "bug"
+level = 2
+suites = ["diagnosis"]
+origin = "upstream-fix"
+# Concurrency bug with the symptom far from the cause (docs/task-catalog.md, candidate D12):
+# dask/distributed PR #9315 (merged 2026-07-02), an 8-line guard in comm/tcp.py for a listener-stop vs
+# accepted-stream race that leaves a client hanging in the comm handshake.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_DISTRIBUTED=2026.6.0 uv pip install --python /opt/venv/bin/python -e . pytest pytest-timeout pytest-rerunfailures"
+# The new regression test, plus the existing guard that the comm handshake is NOT subject to a timeout
+# (so "add a handshake timeout" is not accepted as a fix). The rest of test_comms.py is skipped because
+# its IPv6 tests cannot pass in an IPv6-less container.
+acceptance = [
+    "distributed/comm/tests/test_comms.py::test_stop_listener_during_handle_stream",
+    "distributed/comm/tests/test_comms.py::test_handshake_slow_comm",
+    # test_handshake_slow_comm is marked slow and is skipped without this flag.
+    "--runslow",
+]
+regression = "python -m pytest -q -p no:cacheprovider distributed/comm/tests"
+
+[source]
+kind = "git"
+url  = "https://github.com/dask/distributed.git"
+# parent of the fix commit
+base = "2d43f7f6f19b5905c13adb5ba26fd0a48f2a29b2"
+# PR #9315 "Fix server hanging on aborted TCP comms"
+fix  = "4db4e05c033fd1a4b40430ff639b1e6a51cfaeb9"

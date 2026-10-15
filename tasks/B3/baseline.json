@@ -1,0 +1,474 @@
+{
+ "schema": 1,
+ "entries": [
+  {
+   "model": "claude-sonnet-5-5",
+   "cli_version": "2.1.293",
+   "effort": "default",
+   "task_hash": "da3a9062c56a",
+   "samples": [
+    {
+     "run_id": "20261007-211025-c0aa",
+     "rep": 0,
+     "date": "2026-10-08",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.11990880000000001,
+     "tokens_total": 159192,
+     "tokens_output": 2708,
+     "wall_s": 28.275004843249917,
+     "turns": 7,
+     "tool_calls": 6,
+     "first_request_input_tokens": 15550,
+     "cache_read_share": 0.8812251871953365,
+     "cache_misses": null,
+     "first_edit_s": null,
+     "test_runs": null,
+     "code_runs": null,
+     "diff_files": 3,
+     "diff_lines": 37
+    },
+    {
+     "run_id": "20261007-211025-c0aa",
+     "rep": 1,
+     "date": "2026-10-08",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.1008784,
+     "tokens_total": 124106,
+     "tokens_output": 2481,
+     "wall_s": 48.369350884109735,
+     "turns": 6,
+     "tool_calls": 5,
+     "first_request_input_tokens": 15546,
+     "cache_read_share": 0.8702399561665028,
+     "cache_misses": null,
+     "first_edit_s": null,
+     "test_runs": null,
+     "code_runs": null,
+     "diff_files": 3,
+     "diff_lines": 30
+    },
+    {
+     "run_id": "20261007-211025-c0aa",
+     "rep": 2,
+     "date": "2026-10-08",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.1358926,
+     "tokens_total": 159947,
+     "tokens_output": 3614,
+     "wall_s": 64.95172307640314,
+     "turns": 8,
+     "tool_calls": 7,
+     "first_request_input_tokens": 15548,
+     "cache_read_share": 0.8646801753080708,
+     "cache_misses": null,
+     "first_edit_s": null,
+     "test_runs": null,
+     "code_runs": null,
+     "diff_files": 3,
+     "diff_lines": 41
+    }
+   ],
+   "summary": {
+    "trials": 3,
+    "passes": 3,
+    "pass_rate": 1.0,
+    "pass_rate_wilson95": [
+     0.43850296436068037,
+     1.0
+    ],
+    "timeouts": 0,
+    "end_reasons": {
+     "completed": 3
+    },
+    "harness_versions": [
+     "unrecorded"
+    ],
+    "excluded": 0,
+    "first_date": "2026-10-08",
+    "last_date": "2026-10-08",
+    "runs": [
+     {
+      "run_id": "20261007-211025-c0aa",
+      "date": "2026-10-08",
+      "trials": 3,
+      "passes": 3,
+      "excluded": 0
+     }
+    ],
+    "metrics": {
+     "cost_usd": {
+      "n": 3,
+      "mean": 0.11889326666666666,
+      "var": 0.0003072720313733335,
+      "sd": 0.017529176574309857,
+      "cv": 0.14743624315963386,
+      "min": 0.1008784,
+      "median": 0.11990880000000001,
+      "max": 0.1358926
+     },
+     "tokens_total": {
+      "n": 3,
+      "mean": 147748.33333333334,
+      "var": 419362450.3333333,
+      "sd": 20478.341005397222,
+      "cv": 0.13860285624472168,
+      "min": 124106.0,
+      "median": 159192.0,
+      "max": 159947.0
+     },
+     "tokens_output": {
+      "n": 3,
+      "mean": 2934.3333333333335,
+      "var": 359342.3333333333,
+      "sd": 599.4516939114721,
+      "cv": 0.20428888807615772,
+      "min": 2481.0,
+      "median": 2708.0,
+      "max": 3614.0
+     },
+     "wall_s": {
+      "n": 3,
+      "mean": 47.1986929345876,
+      "var": 337.3232451146131,
+      "sd": 18.366361782198812,
+      "cv": 0.389128610142926,
+      "min": 28.275004843249917,
+      "median": 48.369350884109735,
+      "max": 64.95172307640314
+     },
+     "turns": {
+      "n": 3,
+      "mean": 7.0,
+      "var": 1.0,
+      "sd": 1.0,
+      "cv": 0.14285714285714285,
+      "min": 6.0,
+      "median": 7.0,
+      "max": 8.0
+     },
+     "tool_calls": {
+      "n": 3,
+      "mean": 6.0,
+      "var": 1.0,
+      "sd": 1.0,
+      "cv": 0.16666666666666666,
+      "min": 5.0,
+      "median": 6.0,
+      "max": 7.0
+     },
+     "first_request_input_tokens": {
+      "n": 3,
+      "mean": 15548.0,
+      "var": 4.0,
+      "sd": 2.0,
+      "cv": 0.00012863390789812196,
+      "min": 15546.0,
+      "median": 15548.0,
+      "max": 15550.0
+     },
+     "cache_read_share": {
+      "n": 3,
+      "mean": 0.8720484395566368,
+      "var": 7.0887313716733e-05,
+      "sd": 0.008419460417196163,
+      "cv": 0.009654808191018322,
+      "min": 0.8646801753080708,
+      "median": 0.8702399561665028,
+      "max": 0.8812251871953365
+     },
+     "diff_files": {
+      "n": 3,
+      "mean": 3.0,
+      "var": 0.0,
+      "sd": 0.0,
+      "cv": 0.0,
+      "min": 3.0,
+      "median": 3.0,
+      "max": 3.0
+     },
+     "diff_lines": {
+      "n": 3,
+      "mean": 36.0,
+      "var": 31.0,
+      "sd": 5.5677643628300215,
+      "cv": 0.15466012118972283,
+      "min": 30.0,
+      "median": 37.0,
+      "max": 41.0
+     }
+    }
+   }
+  },
+  {
+   "model": "claude-sonnet-5-5",
+   "cli_version": "2.1.296",
+   "effort": "default",
+   "task_hash": "da3a9062c56a",
+   "samples": [
+    {
+     "run_id": "20261010-085001-4eae",
+     "rep": 0,
+     "date": "2026-10-10",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.1012969,
+     "tokens_total": 134731,
+     "tokens_output": 2368,
+     "wall_s": 32.13693223334849,
+     "turns": 6,
+     "tool_calls": 5,
+     "first_request_input_tokens": 15664,
+     "cache_read_share": 0.8598540796104831,
+     "cache_misses": 0,
+     "first_edit_s": 13.0,
+     "test_runs": 1,
+     "code_runs": 1,
+     "diff_files": 3,
+     "diff_lines": 37
+    },
+    {
+     "run_id": "20261010-085001-4eae",
+     "rep": 1,
+     "date": "2026-10-10",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.099486,
+     "tokens_total": 146521,
+     "tokens_output": 2755,
+     "wall_s": 34.34710304252803,
+     "turns": 9,
+     "tool_calls": 8,
+     "first_request_input_tokens": 15666,
+     "cache_read_share": 0.8804198715542482,
+     "cache_misses": 0,
+     "first_edit_s": 19.2,
+     "test_runs": 1,
+     "code_runs": 1,
+     "diff_files": 3,
+     "diff_lines": 36
+    },
+    {
+     "run_id": "20261010-085001-4eae",
+     "rep": 2,
+     "date": "2026-10-10",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.0915336,
+     "tokens_total": 125217,
+     "tokens_output": 2473,
+     "wall_s": 31.28358113579452,
+     "turns": 7,
+     "tool_calls": 6,
+     "first_request_input_tokens": 15665,
+     "cache_read_share": 0.8685402141881693,
+     "cache_misses": 0,
+     "first_edit_s": 12.5,
+     "test_runs": 1,
+     "code_runs": 0,
+     "diff_files": 3,
+     "diff_lines": 38
+    }
+   ],
+   "summary": {
+    "trials": 3,
+    "passes": 3,
+    "pass_rate": 1.0,
+    "pass_rate_wilson95": [
+     0.43850296436068037,
+     1.0
+    ],
+    "timeouts": 0,
+    "end_reasons": {
+     "completed": 3
+    },
+    "harness_versions": [
+     "unrecorded"
+    ],
+    "excluded": 0,
+    "first_date": "2026-10-10",
+    "last_date": "2026-10-10",
+    "runs": [
+     {
+      "run_id": "20261010-085001-4eae",
+      "date": "2026-10-10",
+      "trials": 3,
+      "passes": 3,
+      "excluded": 0
+     }
+    ],
+    "metrics": {
+     "cost_usd": {
+      "n": 3,
+      "mean": 0.09743883333333332,
+      "var": 2.6973675243333288e-05,
+      "sd": 0.0051936187040765025,
+      "cv": 0.05330132275198119,
+      "min": 0.0915336,
+      "median": 0.099486,
+      "max": 0.1012969
+     },
+     "tokens_total": {
+      "n": 3,
+      "mean": 135489.66666666666,
+      "var": 113896785.33333333,
+      "sd": 10672.24368787245,
+      "cv": 0.07876795294011929,
+      "min": 125217.0,
+      "median": 134731.0,
+      "max": 146521.0
+     },
+     "tokens_output": {
+      "n": 3,
+      "mean": 2532.0,
+      "var": 40053.0,
+      "sd": 200.1324561384285,
+      "cv": 0.07904125439906338,
+      "min": 2368.0,
+      "median": 2473.0,
+      "max": 2755.0
+     },
+     "wall_s": {
+      "n": 3,
+      "mean": 32.58920547055701,
+      "var": 2.4997049290803437,
+      "sd": 1.5810455177129923,
+      "cv": 0.04851439287592946,
+      "min": 31.28358113579452,
+      "median": 32.13693223334849,
+      "max": 34.34710304252803
+     },
+     "turns": {
+      "n": 3,
+      "mean": 7.333333333333333,
+      "var": 2.3333333333333335,
+      "sd": 1.5275252316519468,
+      "cv": 0.20829889522526548,
+      "min": 6.0,
+      "median": 7.0,
+      "max": 9.0
+     },
+     "tool_calls": {
+      "n": 3,
+      "mean": 6.333333333333333,
+      "var": 2.3333333333333335,
+      "sd": 1.5275252316519468,
+      "cv": 0.24118819447136003,
+      "min": 5.0,
+      "median": 6.0,
+      "max": 8.0
+     },
+     "first_request_input_tokens": {
+      "n": 3,
+      "mean": 15665.0,
+      "var": 1.0,
+      "sd": 1.0,
+      "cv": 6.383657835939994e-05,
+      "min": 15664.0,
+      "median": 15665.0,
+      "max": 15666.0
+     },
+     "cache_read_share": {
+      "n": 3,
+      "mean": 0.8696047217843001,
+      "var": 0.0001065878318852233,
+      "sd": 0.010324138311995985,
+      "cv": 0.01187221970323756,
+      "min": 0.8598540796104831,
+      "median": 0.8685402141881693,
+      "max": 0.8804198715542482
+     },
+     "cache_misses": {
+      "n": 3,
+      "mean": 0.0,
+      "var": 0.0,
+      "sd": 0.0,
+      "cv": null,
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+     },
+     "first_edit_s": {
+      "n": 3,
+      "mean": 14.9,
+      "var": 13.929999999999996,
+      "sd": 3.732291521304304,
+      "cv": 0.25048936384592646,
+      "min": 12.5,
+      "median": 13.0,
+      "max": 19.2
+     },
+     "test_runs": {
+      "n": 3,
+      "mean": 1.0,
+      "var": 0.0,
+      "sd": 0.0,
+      "cv": 0.0,
+      "min": 1.0,
+      "median": 1.0,
+      "max": 1.0
+     },
+     "code_runs": {
+      "n": 3,
+      "mean": 0.6666666666666666,
+      "var": 0.3333333333333333,
+      "sd": 0.5773502691896257,
+      "cv": 0.8660254037844386,
+      "min": 0.0,
+      "median": 1.0,
+      "max": 1.0
+     },
+     "diff_files": {
+      "n": 3,
+      "mean": 3.0,
+      "var": 0.0,
+      "sd": 0.0,
+      "cv": 0.0,
+      "min": 3.0,
+      "median": 3.0,
+      "max": 3.0
+     },
+     "diff_lines": {
+      "n": 3,
+      "mean": 37.0,
+      "var": 1.0,
+      "sd": 1.0,
+      "cv": 0.02702702702702703,
+      "min": 36.0,
+      "median": 37.0,
+      "max": 38.0
+     }
+    }
+   }
+  }
+ ],
+ "task": "B3",
+ "about": "Generated by `hai-proof baseline update`: plain-arm (unmodified Claude Code) trials only, one entry per model / CLI version / effort / task hash. Do not edit by hand.",
+ "current_task_hash": "da3a9062c56a"
+}

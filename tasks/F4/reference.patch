@@ -1,0 +1,720 @@
+diff --git a/CHANGES.rst b/CHANGES.rst
+index 2844c4c..57c49e5 100644
+--- a/CHANGES.rst
++++ b/CHANGES.rst
+@@ -1,5 +1,13 @@
+ .. currentmodule:: jinja2
+ 
++Version 3.2.0
++-------------
++
++Unreleased
++
++-   Add the ``{% match %}`` statement for structural pattern matching.
++
++
+ Version 3.1.6
+ -------------
+ 
+diff --git a/docs/templates.rst b/docs/templates.rst
+index 9f376a1..48df5eb 100644
+--- a/docs/templates.rst
++++ b/docs/templates.rst
+@@ -1025,6 +1025,59 @@ Filters that accept arguments can be called like this::
+ 
+     {% filter center(100) %}Center this{% endfilter %}
+ 
++.. _match-statement:
++
++Match
++~~~~~
++
++.. versionadded:: 3.2
++
++``match`` compares a value against a list of patterns, modelled on
++Python's structural pattern matching.  The first ``case`` whose pattern
++matches, and whose optional ``if`` guard is true, is rendered::
++
++    {% match event %}
++      {% case {"type": "login", "user": {"name": name}} %}
++        {{ name }} logged in
++      {% case [first, *rest] if rest %}
++        {{ first }} and {{ rest|length }} more
++      {% case is string as text %}
++        note: {{ text }}
++      {% case _ %}
++        unknown event
++    {% endmatch %}
++
++Only whitespace and comments may appear before the first ``case``.  The
++subject is evaluated once; if no case matches nothing is rendered.
++
++Patterns:
++
++``_``
++    Matches anything.
++``name``
++    Matches anything and binds it to ``name``.
++literals, ``-1``, ``"text"``, ``1.5``
++    Match values equal to the literal.  ``none``, ``true`` and ``false``
++    match by identity.
++dotted names, ``colors.RED``
++    Match values equal to the attribute, looked up like ``{{ colors.RED }}``.
++``[p, *rest]``, ``(p, q)``, ``p, q``
++    Match sequences other than strings and bytes.  ``*rest`` binds the
++    remaining items as a list, ``*_`` ignores them.
++``{"key": p, **rest}``
++    Match mappings containing the keys.  ``**rest`` binds the other items
++    as a dict.
++``p | q``
++    Matches if either alternative matches.  Both must bind the same names.
++``p as name``
++    Binds the value matched by ``p`` to ``name``.
++``is test``, ``is test(args)``, ``is not test``
++    Match if the :ref:`test <tests>` passes, or fails with ``not``.
++
++Each case is a scope of its own, like ``with``: names
++bound by the pattern and variables set in the body are not visible after
++``endmatch``.
++
+ .. _assignments:
+ 
+ Assignments
+diff --git a/src/jinja2/compiler.py b/src/jinja2/compiler.py
+index a4ff6a1..7a9c5f5 100644
+--- a/src/jinja2/compiler.py
++++ b/src/jinja2/compiler.py
+@@ -1379,6 +1379,134 @@ class CodeGenerator(NodeVisitor):
+         self.blockvisit(node.body, with_frame)
+         self.leave_frame(with_frame)
+ 
++    def visit_Match(self, node: nodes.Match, frame: Frame) -> None:
++        subject = self.temporary_identifier()
++        found = self.temporary_identifier()
++        self.writeline(f"{subject} = ", node)
++        self.visit(node.subject, frame)
++        self.writeline(f"{found} = False")
++        for case in node.cases:
++            self.writeline(f"if not {found}:", case)
++            self.indent()
++            case_frame = frame.inner()
++            case_frame.symbols.analyze_node(case)
++            self.enter_frame(case_frame)
++            ok = self.temporary_identifier()
++            self.match_pattern(case.pattern, subject, ok, case_frame)
++            self.writeline(f"if {ok}")
++            if case.guard is not None:
++                self.write(" and (")
++                self.visit(case.guard, case_frame.soft())
++                self.write(")")
++            self.write(":")
++            self.indent()
++            self.writeline(f"{found} = True")
++            self.blockvisit(case.body, case_frame)
++            self.outdent()
++            self.leave_frame(case_frame)
++            self.outdent()
++
++    def match_pattern(
++        self, pattern: nodes.Pattern, subject: str, ok: str, frame: Frame
++    ) -> None:
++        """Write code that sets ``ok`` to whether the value in the local
++        ``subject`` matches ``pattern``, binding its captures on success.
++        """
++        if isinstance(pattern, nodes.WildcardPattern):
++            self.writeline(f"{ok} = True")
++        elif isinstance(pattern, nodes.CapturePattern):
++            self.newline(pattern)
++            self.visit(pattern.target, frame)
++            self.write(f" = {subject}")
++            self.writeline(f"{ok} = True")
++        elif isinstance(pattern, nodes.ValuePattern):
++            value = pattern.value
++            if isinstance(value, nodes.Const) and (
++                value.value is None or isinstance(value.value, bool)
++            ):
++                self.writeline(f"{ok} = {subject} is {value.value!r}", pattern)
++                return
++            self.writeline(f"{ok} = {subject} == ", pattern)
++            self.visit(value, frame)
++        elif isinstance(pattern, nodes.TestPattern):
++            test = pattern.test
++            self.writeline(f"{test.node.name} = {subject}", pattern)  # type: ignore
++            self.writeline(f"{ok} = {'not ' if pattern.negated else ''}bool(")
++            self.visit(test, frame)
++            self.write(")")
++        elif isinstance(pattern, nodes.AsPattern):
++            self.match_pattern(pattern.pattern, subject, ok, frame)
++            self.writeline(f"if {ok}:")
++            self.indent()
++            self.newline(pattern)
++            self.visit(pattern.target, frame)
++            self.write(f" = {subject}")
++            self.outdent()
++        elif isinstance(pattern, nodes.OrPattern):
++            self.writeline(f"{ok} = False")
++            for alternative in pattern.patterns:
++                self.writeline(f"if not {ok}:")
++                self.indent()
++                self.match_pattern(alternative, subject, ok, frame)
++                self.outdent()
++        elif isinstance(pattern, nodes.SequencePattern):
++            items = pattern.items
++            star = next(
++                (i for i, p in enumerate(items) if isinstance(p, nodes.StarPattern)),
++                None,
++            )
++            fixed = len(items) - (star is not None)
++            self.writeline(
++                f"{ok} = match_sequence({subject}, {fixed}, {star is not None})",
++                pattern,
++            )
++            depth = 0
++            for i, item in enumerate(items):
++                if isinstance(item, nodes.WildcardPattern) or (
++                    isinstance(item, nodes.StarPattern) and item.target is None
++                ):
++                    continue
++                self.writeline(f"if {ok}:")
++                self.indent()
++                depth += 1
++                if isinstance(item, nodes.StarPattern):
++                    after = len(items) - i - 1
++                    self.newline(item)
++                    self.visit(item.target, frame)  # type: ignore
++                    self.write(f" = list({subject}[{i}:len({subject}) - {after}])")
++                    continue
++                index = str(i) if star is None or i < star else f"{i - len(items)}"
++                value = self.temporary_identifier()
++                self.writeline(f"{value} = {subject}[{index}]")
++                self.match_pattern(item, value, ok, frame)
++            self.outdent(depth)
++        elif isinstance(pattern, nodes.MappingPattern):
++            keys = self.temporary_identifier()
++            self.writeline(f"{keys} = (", pattern)
++            for key in pattern.keys:
++                self.visit(key, frame)
++                self.write(", ")
++            self.write(")")
++            self.writeline(f"{ok} = match_mapping({subject}, {keys})")
++            depth = 0
++            for i, value_pattern in enumerate(pattern.values):
++                self.writeline(f"if {ok}:")
++                self.indent()
++                depth += 1
++                value = self.temporary_identifier()
++                self.writeline(f"{value} = {subject}[{keys}[{i}]]")
++                self.match_pattern(value_pattern, value, ok, frame)
++            if pattern.rest is not None:
++                self.writeline(f"if {ok}:")
++                self.indent()
++                depth += 1
++                self.newline(pattern.rest)
++                self.visit(pattern.rest, frame)
++                self.write(f" = match_mapping_rest({subject}, {keys})")
++            self.outdent(depth)
++        else:
++            raise NotImplementedError(f"unknown pattern {type(pattern).__name__}")
++
+     def visit_ExprStmt(self, node: nodes.ExprStmt, frame: Frame) -> None:
+         self.newline(node)
+         self.visit(node.node, frame)
+diff --git a/src/jinja2/idtracking.py b/src/jinja2/idtracking.py
+index e6dd8cd..0ab44b8 100644
+--- a/src/jinja2/idtracking.py
++++ b/src/jinja2/idtracking.py
+@@ -219,6 +219,10 @@ class RootVisitor(NodeVisitor):
+             for item in branch:
+                 self.sym_visitor.visit(item)
+ 
++    def visit_MatchCase(self, node: nodes.MatchCase, **kwargs: t.Any) -> None:
++        for child in node.iter_child_nodes():
++            self.sym_visitor.visit(child)
++
+     def visit_With(self, node: nodes.With, **kwargs: t.Any) -> None:
+         for target in node.targets:
+             self.sym_visitor.visit(target)
+@@ -304,6 +308,12 @@ class FrameSymbolVisitor(NodeVisitor):
+         for target in node.values:
+             self.visit(target)
+ 
++    def visit_Match(self, node: nodes.Match, **kwargs: t.Any) -> None:
++        """Only the subject is evaluated in the outer scope, each case
++        gets its own.
++        """
++        self.visit(node.subject, **kwargs)
++
+     def visit_AssignBlock(self, node: nodes.AssignBlock, **kwargs: t.Any) -> None:
+         """Stop visiting at block assigns."""
+         self.visit(node.target, **kwargs)
+diff --git a/src/jinja2/nodes.py b/src/jinja2/nodes.py
+index 2f93b90..d652b94 100644
+--- a/src/jinja2/nodes.py
++++ b/src/jinja2/nodes.py
+@@ -390,6 +390,107 @@ class With(Stmt):
+     body: t.List[Node]
+ 
+ 
++class Match(Stmt):
++    """A ``{% match %}`` statement.  ``subject`` is evaluated once and
++    compared against the patterns of the cases in order.
++
++    .. versionadded:: 3.2
++    """
++
++    fields = ("subject", "cases")
++    subject: "Expr"
++    cases: t.List["MatchCase"]
++
++
++class MatchCase(Helper):
++    """One ``{% case pattern if guard %}`` of a :class:`Match`."""
++
++    fields = ("pattern", "guard", "body")
++    pattern: "Pattern"
++    guard: t.Optional["Expr"]
++    body: t.List[Node]
++
++
++class Pattern(Helper):
++    """Baseclass for the patterns of a :class:`MatchCase`."""
++
++    abstract = True
++
++
++class WildcardPattern(Pattern):
++    """``_``, matches anything and binds nothing."""
++
++    fields = ()
++
++
++class CapturePattern(Pattern):
++    """A bare name, matches anything and binds it to ``target``."""
++
++    fields = ("target",)
++    target: "Name"
++
++
++class ValuePattern(Pattern):
++    """Matches if the subject equals ``value`` (a literal or a dotted
++    name).  ``none``, ``true`` and ``false`` are compared by identity.
++    """
++
++    fields = ("value",)
++    value: "Expr"
++
++
++class SequencePattern(Pattern):
++    """``[p, ...]`` or ``(p, ...)``, at most one item may be a
++    :class:`StarPattern`.
++    """
++
++    fields = ("items",)
++    items: t.List["Pattern"]
++
++
++class StarPattern(Pattern):
++    """``*name`` inside a sequence pattern.  ``target`` is ``None`` for
++    ``*_``.
++    """
++
++    fields = ("target",)
++    target: t.Optional["Name"]
++
++
++class MappingPattern(Pattern):
++    """``{key: p, ..., **rest}``."""
++
++    fields = ("keys", "values", "rest")
++    keys: t.List["Expr"]
++    values: t.List["Pattern"]
++    rest: t.Optional["Name"]
++
++
++class OrPattern(Pattern):
++    """``p | p | ...``, the first alternative that matches wins."""
++
++    fields = ("patterns",)
++    patterns: t.List["Pattern"]
++
++
++class AsPattern(Pattern):
++    """``p as name``."""
++
++    fields = ("pattern", "target")
++    pattern: "Pattern"
++    target: "Name"
++
++
++class TestPattern(Pattern):
++    """``is [not] test(args)``.  ``test.node`` is an internal name the
++    compiler assigns the value being matched to.
++    """
++
++    fields = ("test", "negated")
++    test: "Test"
++    negated: bool
++
++
+ class Block(Stmt):
+     """A node that represents a block.
+ 
+diff --git a/src/jinja2/parser.py b/src/jinja2/parser.py
+index f411775..29454a4 100644
+--- a/src/jinja2/parser.py
++++ b/src/jinja2/parser.py
+@@ -31,8 +31,17 @@ _statement_keywords = frozenset(
+         "set",
+         "with",
+         "autoescape",
++        "match",
+     ]
+ )
++_pattern_literals = {
++    "true": True,
++    "True": True,
++    "false": False,
++    "False": False,
++    "none": None,
++    "None": None,
++}
+ _compare_operators = frozenset(["eq", "ne", "lt", "lteq", "gt", "gteq"])
+ 
+ _math_nodes: t.Dict[str, t.Type[nodes.Expr]] = {
+@@ -45,6 +54,38 @@ _math_nodes: t.Dict[str, t.Type[nodes.Expr]] = {
+ }
+ 
+ 
++def _is_irrefutable(pattern: nodes.Pattern) -> bool:
++    """A pattern that matches every subject."""
++    if isinstance(pattern, (nodes.WildcardPattern, nodes.CapturePattern)):
++        return True
++    if isinstance(pattern, nodes.AsPattern):
++        return _is_irrefutable(pattern.pattern)
++    if isinstance(pattern, nodes.OrPattern):
++        return any(_is_irrefutable(p) for p in pattern.patterns)
++    return False
++
++
++def _bound_names(pattern: nodes.Pattern) -> t.List[str]:
++    """The names a pattern binds, in order, with repeats."""
++    if isinstance(pattern, nodes.CapturePattern):
++        return [pattern.target.name]
++    if isinstance(pattern, nodes.StarPattern):
++        return [pattern.target.name] if pattern.target is not None else []
++    if isinstance(pattern, nodes.AsPattern):
++        return _bound_names(pattern.pattern) + [pattern.target.name]
++    if isinstance(pattern, nodes.OrPattern):
++        # all alternatives bind the same names, checked by the parser
++        return _bound_names(pattern.patterns[0])
++    if isinstance(pattern, nodes.SequencePattern):
++        return [n for p in pattern.items for n in _bound_names(p)]
++    if isinstance(pattern, nodes.MappingPattern):
++        rv = [n for p in pattern.values for n in _bound_names(p)]
++        if pattern.rest is not None:
++            rv.append(pattern.rest.name)
++        return rv
++    return []
++
++
+ class Parser:
+     """This is the central parsing class Jinja uses.  It's passed to
+     extensions and can be used to parse expressions or statements.
+@@ -287,6 +328,250 @@ class Parser:
+         node.body = self.parse_statements(("name:endwith",), drop_needle=True)
+         return node
+ 
++    def parse_match(self) -> nodes.Match:
++        """Parse a match statement."""
++        lineno = self.stream.expect("name:match").lineno
++        subject = self.parse_tuple()
++        end_tokens = ("name:case", "name:endmatch")
++        leading = self.parse_statements(end_tokens)
++        for node in leading:
++            if not (
++                isinstance(node, nodes.Output)
++                and all(
++                    isinstance(child, nodes.TemplateData) and not child.data.strip()
++                    for child in node.nodes
++                )
++            ):
++                self.fail(
++                    "only whitespace and comments may appear between 'match'"
++                    " and the first 'case'",
++                    node.lineno,
++                )
++        cases: t.List[nodes.MatchCase] = []
++        while next(self.stream).value == "case":
++            case_lineno = self.stream.current.lineno
++            pattern = self.parse_pattern()
++            guard = None
++            if self.stream.skip_if("name:if"):
++                guard = self.parse_expression()
++            body = self.parse_statements(end_tokens)
++            cases.append(
++                nodes.MatchCase(pattern, guard, body, lineno=case_lineno)
++            )
++        if not cases:
++            self.fail("a 'match' block needs at least one 'case'", lineno)
++        for case in cases[:-1]:
++            if case.guard is None and _is_irrefutable(case.pattern):
++                self.fail(
++                    "irrefutable pattern makes the remaining cases unreachable",
++                    case.lineno,
++                )
++        return nodes.Match(subject, cases, lineno=lineno)
++
++    def parse_pattern(self) -> nodes.Pattern:
++        """Parse the pattern of a ``case`` tag.  A top-level, comma
++        separated list of patterns is a sequence pattern.
++        """
++        lineno = self.stream.current.lineno
++        pattern = self._parse_sequence_item()
++        if self.stream.current.type == "comma":
++            items = [pattern]
++            while self.stream.skip_if("comma"):
++                if self.stream.current.type == "block_end" or self.stream.current.test(
++                    "name:if"
++                ):
++                    break
++                items.append(self._parse_sequence_item())
++            pattern = self._make_sequence(items, lineno)
++        elif isinstance(pattern, nodes.StarPattern):
++            self.fail("star pattern outside of a sequence pattern", lineno)
++        self._check_bindings(pattern, lineno)
++        return pattern
++
++    def _parse_sequence_item(self) -> nodes.Pattern:
++        if self.stream.current.type == "mul":
++            lineno = next(self.stream).lineno
++            name = self.stream.expect("name")
++            target = None
++            if name.value != "_":
++                target = self._pattern_target(name)
++            return nodes.StarPattern(target, lineno=lineno)
++        return self._parse_as_pattern()
++
++    def _parse_as_pattern(self) -> nodes.Pattern:
++        pattern = self._parse_or_pattern()
++        while self.stream.current.test("name:as"):
++            lineno = next(self.stream).lineno
++            name = self.stream.expect("name")
++            if name.value == "_":
++                self.fail("cannot bind '_' with 'as'", name.lineno)
++            pattern = nodes.AsPattern(
++                pattern, self._pattern_target(name), lineno=lineno
++            )
++        return pattern
++
++    def _parse_or_pattern(self) -> nodes.Pattern:
++        lineno = self.stream.current.lineno
++        patterns = [self._parse_closed_pattern()]
++        while self.stream.skip_if("pipe"):
++            patterns.append(self._parse_closed_pattern())
++        if len(patterns) == 1:
++            return patterns[0]
++        for alternative in patterns[:-1]:
++            if _is_irrefutable(alternative):
++                self.fail(
++                    "irrefutable alternative makes the remaining alternatives"
++                    " unreachable",
++                    alternative.lineno,
++                )
++        for alternative in patterns:
++            self._check_bindings(alternative, alternative.lineno)
++        names = [_bound_names(p) for p in patterns]
++        if any(set(n) != set(names[0]) for n in names):
++            self.fail("alternative patterns bind different names", lineno)
++        return nodes.OrPattern(patterns, lineno=lineno)
++
++    def _pattern_target(self, token: t.Any) -> nodes.Name:
++        if token.value in _pattern_literals:
++            self.fail(f"cannot bind to {token.value!r}", token.lineno)
++        return nodes.Name(token.value, "param", lineno=token.lineno)
++
++    def _make_sequence(
++        self, items: t.List[nodes.Pattern], lineno: int
++    ) -> nodes.SequencePattern:
++        if sum(isinstance(i, nodes.StarPattern) for i in items) > 1:
++            self.fail("multiple starred names in sequence pattern", lineno)
++        return nodes.SequencePattern(items, lineno=lineno)
++
++    def _parse_value_pattern(self) -> nodes.Expr:
++        """A literal or dotted name, as used by value patterns and the
++        keys of mapping patterns.
++        """
++        token = self.stream.current
++        if token.type == "sub":
++            next(self.stream)
++            number = self.stream.current
++            if number.type not in ("integer", "float"):
++                self.fail("expected a number after '-' in pattern", number.lineno)
++            next(self.stream)
++            return nodes.Const(-number.value, lineno=token.lineno)
++        if token.type == "string":
++            return self.parse_primary()
++        if token.type in ("integer", "float"):
++            next(self.stream)
++            return nodes.Const(token.value, lineno=token.lineno)
++        if token.type == "name":
++            next(self.stream)
++            if token.value in _pattern_literals:
++                return nodes.Const(_pattern_literals[token.value], lineno=token.lineno)
++            if self.stream.current.type != "dot":
++                self.fail(
++                    "mapping pattern keys must be literals or dotted names",
++                    token.lineno,
++                )
++            node: nodes.Expr = nodes.Name(token.value, "load", lineno=token.lineno)
++            while self.stream.skip_if("dot"):
++                attr = self.stream.expect("name")
++                node = nodes.Getattr(node, attr.value, "load", lineno=attr.lineno)
++            return node
++        self.fail(f"unexpected {describe_token(token)!r} in pattern", token.lineno)
++
++    def _parse_closed_pattern(self) -> nodes.Pattern:
++        token = self.stream.current
++        lineno = token.lineno
++        if token.test("name:is"):
++            next(self.stream)
++            negated = self.stream.skip_if("name:not")
++            name = self.stream.expect("name").value
++            while self.stream.current.type == "dot":
++                next(self.stream)
++                name += "." + self.stream.expect("name").value
++            args: t.List[nodes.Expr] = []
++            kwargs: t.List[nodes.Keyword] = []
++            dyn_args = dyn_kwargs = None
++            if self.stream.current.type == "lparen":
++                args, kwargs, dyn_args, dyn_kwargs = self.parse_call_args()
++            test = nodes.Test(
++                self.free_identifier(lineno),
++                name,
++                args,
++                kwargs,
++                dyn_args,
++                dyn_kwargs,
++                lineno=lineno,
++            )
++            return nodes.TestPattern(test, negated, lineno=lineno)
++        if token.type == "name" and token.value == "_":
++            next(self.stream)
++            return nodes.WildcardPattern(lineno=lineno)
++        if (
++            token.type == "name"
++            and token.value not in _pattern_literals
++            and self.stream.look().type != "dot"
++        ):
++            next(self.stream)
++            return nodes.CapturePattern(self._pattern_target(token), lineno=lineno)
++        if token.type in ("lbracket", "lparen"):
++            close = "rbracket" if token.type == "lbracket" else "rparen"
++            next(self.stream)
++            items: t.List[nodes.Pattern] = []
++            is_sequence = token.type == "lbracket"
++            while self.stream.current.type != close:
++                if items:
++                    self.stream.expect("comma")
++                    is_sequence = True
++                    if self.stream.current.type == close:
++                        break
++                items.append(self._parse_sequence_item())
++            self.stream.expect(close)
++            if not items:
++                is_sequence = True
++            if not is_sequence:
++                if isinstance(items[0], nodes.StarPattern):
++                    self.fail("star pattern outside of a sequence pattern", lineno)
++                return items[0]
++            return self._make_sequence(items, lineno)
++        if token.type == "lbrace":
++            next(self.stream)
++            keys: t.List[nodes.Expr] = []
++            values: t.List[nodes.Pattern] = []
++            rest = None
++            seen: t.Set[t.Any] = set()
++            while self.stream.current.type != "rbrace":
++                if keys or rest is not None:
++                    self.stream.expect("comma")
++                    if self.stream.current.type == "rbrace":
++                        break
++                if rest is not None:
++                    self.fail("'**rest' must be the last item of a mapping pattern")
++                if self.stream.skip_if("pow"):
++                    name = self.stream.expect("name")
++                    if name.value == "_":
++                        self.fail("cannot use '**_' in a mapping pattern", name.lineno)
++                    rest = self._pattern_target(name)
++                    continue
++                key = self._parse_value_pattern()
++                if isinstance(key, nodes.Const):
++                    if key.value in seen:
++                        self.fail(
++                            f"duplicate key {key.value!r} in mapping pattern",
++                            key.lineno,
++                        )
++                    seen.add(key.value)
++                self.stream.expect("colon")
++                keys.append(key)
++                values.append(self._parse_as_pattern())
++            self.stream.expect("rbrace")
++            return nodes.MappingPattern(keys, values, rest, lineno=lineno)
++        return nodes.ValuePattern(self._parse_value_pattern(), lineno=lineno)
++
++    def _check_bindings(self, pattern: nodes.Pattern, lineno: int) -> None:
++        seen: t.Set[str] = set()
++        for name in _bound_names(pattern):
++            if name in seen:
++                self.fail(f"multiple assignments to name {name!r} in pattern", lineno)
++            seen.add(name)
++
+     def parse_autoescape(self) -> nodes.Scope:
+         node = nodes.ScopedEvalContextModifier(lineno=next(self.stream).lineno)
+         node.options = [nodes.Keyword("autoescape", self.parse_expression())]
+diff --git a/src/jinja2/runtime.py b/src/jinja2/runtime.py
+index 09119e2..df026ee 100644
+--- a/src/jinja2/runtime.py
++++ b/src/jinja2/runtime.py
+@@ -59,6 +59,9 @@ exported = [
+     "Namespace",
+     "Undefined",
+     "internalcode",
++    "match_sequence",
++    "match_mapping",
++    "match_mapping_rest",
+ ]
+ async_exported = [
+     "AsyncLoopContext",
+@@ -67,6 +70,32 @@ async_exported = [
+ ]
+ 
+ 
++def match_sequence(value: t.Any, length: int, star: bool) -> bool:
++    """Check whether a value can be matched by a sequence pattern with
++    ``length`` non-star items.  Strings and bytes are not sequences
++    here.
++    """
++    if not isinstance(value, abc.Sequence) or isinstance(
++        value, (str, bytes, bytearray)
++    ):
++        return False
++    if star:
++        return len(value) >= length
++    return len(value) == length
++
++
++def match_mapping(value: t.Any, keys: t.Tuple[t.Any, ...]) -> bool:
++    """Check whether a value is a mapping containing all ``keys``."""
++    return isinstance(value, abc.Mapping) and all(key in value for key in keys)
++
++
++def match_mapping_rest(
++    value: t.Mapping[t.Any, t.Any], keys: t.Tuple[t.Any, ...]
++) -> t.Dict[t.Any, t.Any]:
++    """The items of a mapping not named by a mapping pattern."""
++    return {k: v for k, v in value.items() if k not in keys}
++
++
+ def identity(x: V) -> V:
+     """Returns its argument. Useful for certain things in the
+     environment.

@@ -1,0 +1,29 @@
+id = "F7"
+kind = "feature"
+level = 3
+suites = ["standard"]
+cost_tier = "high"
+report_order = 10
+origin = "upstream-fix"
+# Upstream feature (docs/task-catalog.md): the Python SQL executor evaluates subqueries the optimizer
+# declines to rewrite -- EXISTS, scalar, IN/NOT IN, ANY/ALL/SOME, correlated and nested, with SQL NULL
+# semantics (sqlglot PR #8190, merged 2026-08-16). ~160 lines in executor/python.py, context.py, planner.py.
+# hidden_tests/tests/test_executor.py is hand-edited: test_subquery_memoization was removed (it inspects
+# the private PythonExecutor._subquery_plans cache). `build-task --force` restores it; remove it again.
+timeout_s = 3600
+budget_usd = 40.0
+max_turns = 300
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=30.0.0 uv pip install --python /opt/venv/bin/python -e . duckdb pandas numpy python-dateutil pytz pytest"
+acceptance = ["tests/test_executor.py"]
+# The project's own runner (Makefile `test`: python -m unittest). The `unit` target sets
+# SKIP_INTEGRATION=1, which skips every executor test.
+acceptance_cmd = "python -m unittest tests.test_executor.TestExecutor.test_subqueries tests.test_executor.TestExecutor.test_subquery_cardinality tests.test_executor.TestExecutor.test_subquery_execution_does_not_mutate_the_plan"
+regression = "python -m unittest"
+
+[source]
+kind = "git"
+url  = "https://github.com/tobymao/sqlglot.git"
+# parent of the squash commit
+base = "b4c9ad5abcdc8cb76be72876b30881a46077a6c4"
+# PR #8190 "feat(executor): evaluate subqueries the optimizer declines to rewrite"
+fix  = "4ff8ab3614dca6d6cf6c8c73562886694675e443"

@@ -1,0 +1,29 @@
+id = "F9"
+kind = "feature"
+level = 2
+suites = ["userloop"]
+cost_tier = "low"
+origin = "upstream-fix"
+# Upstream feature (python-tabulate issue #59, PR #221 merged as 95ae5eb): header alignment independent
+# of column alignment. The prompt is deliberately ambiguous (names, sentinel values and edge cases are
+# left out); the decisive details are in user.md for `run --user informative`.
+timeout_s = 1200
+budget_usd = 5.0
+max_turns = 60
+# The checkout has no .git (build-task strips it), so setuptools-scm needs a pretend version.
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=0.10.0 uv pip install --python /opt/venv/bin/python -e . pytest"
+acceptance = ["test/test_api.py", "test/test_output.py", "test/common.py"]
+regression = "python -m pytest -q -p no:cacheprovider test"
+
+[source]
+kind = "git"
+url  = "https://github.com/astanin/python-tabulate.git"
+# first parent of the merge commit
+base = "83fd4fb98926c8a6fdf45caa1b91ee8913b64dcb"
+# merge of PR #221 "Headers align + enhanced column align."
+fix  = "95ae5eb61ef969749e904c90ab429003238d6212"
+# README changes are documentation only. test/common.py (adds the check_warnings helper the hidden tests
+# import) is excluded because build-task does not classify test/common.py as a test file; it is copied
+# by hand to hidden_tests/test/common.py. After `build-task --force`, re-copy it:
+#   git show 95ae5eb:test/common.py > tasks/F9/hidden_tests/test/common.py   (in a python-tabulate clone)
+exclude = ["README.md", "test/common.py"]

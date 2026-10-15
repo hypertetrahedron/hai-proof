@@ -1,0 +1,26 @@
+id = "F8"
+kind = "feature"
+level = 3
+origin = "upstream-fix"
+# Upstream feature (docs/task-catalog.md): header-based cross-origin (CSRF) protection using
+# Sec-Fetch-Site with an Origin/Host fallback, a trusted_origins setting, and check_origin moved from
+# WebSocketHandler to RequestHandler so websockets share it (tornado PR #3762, merged 2026-10-06;
+# issues #3495, #3576). A later PR (#3768) changed check_origin again; this task pins #3762 alone.
+timeout_s = 3600
+budget_usd = 40.0
+max_turns = 300
+install = "uv pip install --python /opt/venv/bin/python -e . pytest"
+acceptance = ["tornado/test/web_test.py", "tornado/test/websocket_test.py"]
+# Tornado's own runner for both steps (under pytest, ~360 tests fail on the access log and warning
+# setup that runtests.main() does).
+acceptance_cmd = "python -m tornado.test.runtests tornado.test.web_test tornado.test.websocket_test"
+regression = "python -m tornado.test.runtests"
+
+[source]
+kind = "git"
+url  = "https://github.com/tornadoweb/tornado.git"
+# first parent of the merge commit
+base = "9598807ad951d6cc6f6f06b8ca966030333fdd00"
+# merge of PR #3762 "Web: Cross-origin protection"
+fix  = "80ec6222be073c7de359332c860371bbae6971dc"
+exclude = ["docs/*"]

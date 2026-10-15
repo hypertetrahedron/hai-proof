@@ -1,0 +1,33 @@
+id = "B9"
+kind = "bug"
+level = 3
+suites = ["standard"]
+cost_tier = "high"
+report_order = 11
+origin = "upstream-fix"
+# Memory leak across components (docs/task-catalog.md): websockets connections are only freed by the
+# cyclic GC because of two reference cycles (logger adapter extra, keepalive task / trio assembler).
+# Issue #1749, PR #1752 (2026-08-25).
+timeout_s = 3600
+budget_usd = 40.0
+max_turns = 300
+install = "BUILD_EXTENSION=no uv pip install --python /opt/venv/bin/python -e . pytest trio"
+acceptance = [
+    "tests/asyncio/test_connection.py",
+    "tests/sync/test_connection.py",
+    "tests/trio/test_connection.py",
+    "tests/legacy/test_protocol.py",
+]
+acceptance_cmd = "WEBSOCKETS_TESTS_TIMEOUT_FACTOR=10 python -m unittest tests.asyncio.test_connection tests.sync.test_connection tests.trio.test_connection tests.legacy.test_protocol"
+# The project's own runner (Makefile, tox.ini: `python -m unittest`). Under pytest, the logging
+# plugin keeps captured LogRecords whose tracebacks hold connections alive, which breaks reference-
+# counting tests the agent may write (docs/prompt-degradation.md). inject.patch skips the two
+# offline/timing-flaky upstream tests (test_reconnect, test_close_keeps_handlers_running).
+# Upstream timeout unit scaled x10 (tests/utils.py) — timing tests flake ~1 in 15 full runs at x1.
+regression = "WEBSOCKETS_TESTS_TIMEOUT_FACTOR=10 python -m unittest"
+
+[source]
+kind = "git"
+url  = "https://github.com/python-websockets/websockets.git"
+base = "803abd961837d5a9d932cc91b396194d3f7f8d1e"
+fix  = "5a5748f15fd38e5d0d5b7405fc05c5e9a71ba070"

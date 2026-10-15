@@ -1,0 +1,19 @@
+id = "B12"
+kind = "bug"
+level = 1
+origin = "upstream-fix"
+# Interaction bug (docs/task-catalog.md): dynaconf. Settings: dotted-key fresh reads return the default after the first call
+# (issue #1187, PR #1423, 2026-08-03).
+timeout_s = 1200
+budget_usd = 3.0
+max_turns = 40
+install = "uv pip install --python /opt/venv/bin/python -e '.[all]' pytest pytest-mock pytest-asyncio python-dotenv jinja2"
+regression = "python -m pytest -q -p no:cacheprovider tests -m 'not integration' --ignore=tests/test_flask.py --ignore=tests/test_release_utility.py --ignore=tests/test_django.py"
+# The rest of test_base.py needs a .env file that is not part of this bug.
+acceptance = ["tests/test_base.py::test_dotted_get_fresh"]
+
+[source]
+kind = "git"
+url  = "https://github.com/dynaconf/dynaconf.git"
+base = "833533d1a3b1557016a0cf190be0b021d92795cb"
+fix  = "0e26bd6d69fe22ddc17f48fff5b2046d4403b3fa"

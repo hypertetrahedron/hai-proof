@@ -1,0 +1,318 @@
+{
+ "schema": 1,
+ "entries": [
+  {
+   "model": "claude-sonnet-5-5",
+   "cli_version": "2.1.296",
+   "effort": "default",
+   "task_hash": "bd5212b20a22",
+   "samples": [
+    {
+     "run_id": "20261009-231624-c4b4",
+     "rep": 0,
+     "date": "2026-10-10",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.39501069999999994,
+     "tokens_total": 610537,
+     "tokens_output": 12436,
+     "wall_s": 168.7908756043762,
+     "turns": 17,
+     "tool_calls": 16,
+     "first_request_input_tokens": 16317,
+     "cache_read_share": 0.8910631132920691,
+     "cache_misses": 0,
+     "first_edit_s": 73.9,
+     "test_runs": 6,
+     "code_runs": 0,
+     "diff_files": 6,
+     "diff_lines": 47
+    },
+    {
+     "run_id": "20261009-231624-c4b4",
+     "rep": 1,
+     "date": "2026-10-10",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.3124456,
+     "tokens_total": 364239,
+     "tokens_output": 9581,
+     "wall_s": 107.37888062931597,
+     "turns": 9,
+     "tool_calls": 8,
+     "first_request_input_tokens": 16314,
+     "cache_read_share": 0.8461367398878209,
+     "cache_misses": 0,
+     "first_edit_s": 11.1,
+     "test_runs": 3,
+     "code_runs": 0,
+     "diff_files": 6,
+     "diff_lines": 66
+    },
+    {
+     "run_id": "20261010-085001-4eae",
+     "rep": 0,
+     "date": "2026-10-10",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.2938602,
+     "tokens_total": 344126,
+     "tokens_output": 8196,
+     "wall_s": 100.10677647590637,
+     "turns": 8,
+     "tool_calls": 7,
+     "first_request_input_tokens": 16314,
+     "cache_read_share": 0.8433015813975113,
+     "cache_misses": 0,
+     "first_edit_s": 10.3,
+     "test_runs": 3,
+     "code_runs": 0,
+     "diff_files": 6,
+     "diff_lines": 64
+    },
+    {
+     "run_id": "20261010-085001-4eae",
+     "rep": 1,
+     "date": "2026-10-10",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.3229102,
+     "tokens_total": 527047,
+     "tokens_output": 9718,
+     "wall_s": 127.74596441164613,
+     "turns": 13,
+     "tool_calls": 12,
+     "first_request_input_tokens": 16314,
+     "cache_read_share": 0.8968877538435851,
+     "cache_misses": 0,
+     "first_edit_s": 49.4,
+     "test_runs": 4,
+     "code_runs": 1,
+     "diff_files": 6,
+     "diff_lines": 49
+    },
+    {
+     "run_id": "20261010-085001-4eae",
+     "rep": 2,
+     "date": "2026-10-10",
+     "harness": null,
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "hash_assumed": true,
+     "cost_usd": 0.41383960000000003,
+     "tokens_total": 656315,
+     "tokens_output": 13779,
+     "wall_s": 152.4948025699705,
+     "turns": 18,
+     "tool_calls": 17,
+     "first_request_input_tokens": 16316,
+     "cache_read_share": 0.896240372382164,
+     "cache_misses": 0,
+     "first_edit_s": 81.4,
+     "test_runs": 4,
+     "code_runs": 0,
+     "diff_files": 6,
+     "diff_lines": 99
+    }
+   ],
+   "summary": {
+    "trials": 5,
+    "passes": 5,
+    "pass_rate": 1.0,
+    "pass_rate_wilson95": [
+     0.5655175313406071,
+     1.0
+    ],
+    "timeouts": 0,
+    "end_reasons": {
+     "completed": 5
+    },
+    "harness_versions": [
+     "unrecorded"
+    ],
+    "excluded": 0,
+    "first_date": "2026-10-10",
+    "last_date": "2026-10-10",
+    "runs": [
+     {
+      "run_id": "20261009-231624-c4b4",
+      "date": "2026-10-10",
+      "trials": 2,
+      "passes": 2,
+      "excluded": 0
+     },
+     {
+      "run_id": "20261010-085001-4eae",
+      "date": "2026-10-10",
+      "trials": 3,
+      "passes": 3,
+      "excluded": 0
+     }
+    ],
+    "metrics": {
+     "cost_usd": {
+      "n": 5,
+      "mean": 0.34761326,
+      "var": 0.0028422105927379993,
+      "sd": 0.053312386860259776,
+      "cv": 0.15336695401165013,
+      "min": 0.2938602,
+      "median": 0.3229102,
+      "max": 0.41383960000000003
+     },
+     "tokens_total": {
+      "n": 5,
+      "mean": 500452.8,
+      "var": 20027768915.2,
+      "sd": 141519.5001234812,
+      "cv": 0.2827829120418174,
+      "min": 344126.0,
+      "median": 527047.0,
+      "max": 656315.0
+     },
+     "tokens_output": {
+      "n": 5,
+      "mean": 10742.0,
+      "var": 5242904.5,
+      "sd": 2289.7389589208638,
+      "cv": 0.21315760183586518,
+      "min": 8196.0,
+      "median": 9718.0,
+      "max": 13779.0
+     },
+     "wall_s": {
+      "n": 5,
+      "mean": 131.30345993824304,
+      "var": 853.1634161102108,
+      "sd": 29.20896122956465,
+      "cv": 0.22245385798137174,
+      "min": 100.10677647590637,
+      "median": 127.74596441164613,
+      "max": 168.7908756043762
+     },
+     "turns": {
+      "n": 5,
+      "mean": 13.0,
+      "var": 20.5,
+      "sd": 4.527692569068709,
+      "cv": 0.34828404377451605,
+      "min": 8.0,
+      "median": 13.0,
+      "max": 18.0
+     },
+     "tool_calls": {
+      "n": 5,
+      "mean": 12.0,
+      "var": 20.5,
+      "sd": 4.527692569068709,
+      "cv": 0.37730771408905905,
+      "min": 7.0,
+      "median": 12.0,
+      "max": 17.0
+     },
+     "first_request_input_tokens": {
+      "n": 5,
+      "mean": 16315.0,
+      "var": 2.0,
+      "sd": 1.4142135623730951,
+      "cv": 8.668179971640179e-05,
+      "min": 16314.0,
+      "median": 16314.0,
+      "max": 16317.0
+     },
+     "cache_read_share": {
+      "n": 5,
+      "mean": 0.8747259121606301,
+      "var": 0.0007564381753419187,
+      "sd": 0.02750342115704733,
+      "cv": 0.03144233041995073,
+      "min": 0.8433015813975113,
+      "median": 0.8910631132920691,
+      "max": 0.8968877538435851
+     },
+     "cache_misses": {
+      "n": 5,
+      "mean": 0.0,
+      "var": 0.0,
+      "sd": 0.0,
+      "cv": null,
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+     },
+     "first_edit_s": {
+      "n": 5,
+      "mean": 45.220000000000006,
+      "var": 1133.1470000000002,
+      "sd": 33.662248885064116,
+      "cv": 0.7444106343446287,
+      "min": 10.3,
+      "median": 49.4,
+      "max": 81.4
+     },
+     "test_runs": {
+      "n": 5,
+      "mean": 4.0,
+      "var": 1.5,
+      "sd": 1.224744871391589,
+      "cv": 0.30618621784789724,
+      "min": 3.0,
+      "median": 4.0,
+      "max": 6.0
+     },
+     "code_runs": {
+      "n": 5,
+      "mean": 0.2,
+      "var": 0.2,
+      "sd": 0.4472135954999579,
+      "cv": 2.2360679774997894,
+      "min": 0.0,
+      "median": 0.0,
+      "max": 1.0
+     },
+     "diff_files": {
+      "n": 5,
+      "mean": 6.0,
+      "var": 0.0,
+      "sd": 0.0,
+      "cv": 0.0,
+      "min": 6.0,
+      "median": 6.0,
+      "max": 6.0
+     },
+     "diff_lines": {
+      "n": 5,
+      "mean": 65.0,
+      "var": 434.5,
+      "sd": 20.844663585675832,
+      "cv": 0.32068713208732047,
+      "min": 47.0,
+      "median": 64.0,
+      "max": 99.0
+     }
+    }
+   }
+  }
+ ],
+ "task": "B4",
+ "about": "Generated by `hai-proof baseline update`: plain-arm (unmodified Claude Code) trials only, one entry per model / CLI version / effort / task hash. Do not edit by hand.",
+ "current_task_hash": "bd5212b20a22"
+}

@@ -1,0 +1,759 @@
+import dataclasses
+import hmac
+import http
+import logging
+import socket
+import threading
+import time
+import unittest
+from unittest.mock import patch
+
+from websockets.exceptions import (
+    ConnectionClosedError,
+    ConnectionClosedOK,
+    InvalidHandshake,
+    InvalidStatus,
+    NegotiationError,
+)
+from websockets.http11 import Request, Response
+from websockets.sync.client import connect, unix_connect
+from websockets.sync.server import *
+
+from ..utils import (
+    CLIENT_CONTEXT,
+    MS,
+    SERVER_CONTEXT,
+    DeprecationTestCase,
+    LoggingTestCase,
+    temp_unix_socket_path,
+)
+from .server import (
+    EvalShellMixin,
+    get_uri,
+    handler,
+    run_server,
+    run_unix_server,
+)
+
+
+class ServerTests(EvalShellMixin, LoggingTestCase, unittest.TestCase):
+    def test_connection(self):
+        """Server receives connection from client and the handshake succeeds."""
+        with run_server() as server:
+            with connect(get_uri(server)) as client:
+                self.assertEval(client, "ws.protocol.state.name", "OPEN")
+
+    def test_connection_handler_returns(self):
+        """Connection handler returns."""
+        with run_server() as server:
+            with connect(get_uri(server) + "/no-op") as client:
+                with self.assertRaises(ConnectionClosedOK) as raised:
+                    client.recv()
+                self.assertEqual(
+                    str(raised.exception),
+                    "received 1000 (OK); then sent 1000 (OK)",
+                )
+
+    def test_connection_handler_raises_exception(self):
+        """Connection handler raises an exception."""
+        with run_server() as server:
+            with connect(get_uri(server) + "/crash") as client:
+                with self.assertRaises(ConnectionClosedError) as raised:
+                    client.recv()
+                self.assertEqual(
+                    str(raised.exception),
+                    "received 1011 (internal error); then sent 1011 (internal error)",
+                )
+
+    def test_existing_socket(self):
+        """Server receives connection using a pre-existing socket."""
+        with socket.create_server(("localhost", 0)) as sock:
+            host, port = sock.getsockname()
+            # Unset the default values of host and port set by run_server.
+            with run_server(host=None, port=None, sock=sock):
+                with connect(f"ws://{host}:{port}/") as client:
+                    self.assertEval(client, "ws.protocol.state.name", "OPEN")
+
+    def test_select_subprotocol(self):
+        """Server selects a subprotocol with the select_subprotocol callable."""
+
+        def select_subprotocol(ws, subprotocols):
+            ws.select_subprotocol_ran = True
+            assert "chat" in subprotocols
+            return "chat"
+
+        with run_server(
+            subprotocols=["chat"],
+            select_subprotocol=select_subprotocol,
+        ) as server:
+            with connect(get_uri(server), subprotocols=["chat"]) as client:
+                self.assertEval(client, "ws.select_subprotocol_ran", "True")
+                self.assertEval(client, "ws.subprotocol", "chat")
+
+    def test_select_subprotocol_rejects_handshake(self):
+        """Server rejects handshake if select_subprotocol raises NegotiationError."""
+
+        def select_subprotocol(ws, subprotocols):
+            raise NegotiationError
+
+        with run_server(select_subprotocol=select_subprotocol) as server:
+            with self.assertRaises(InvalidStatus) as raised:
+                with connect(get_uri(server)):
+                    self.fail("did not raise")
+            self.assertEqual(
+                str(raised.exception),
+                "server rejected WebSocket connection: HTTP 400",
+            )
+
+    def test_select_subprotocol_raises_exception(self):
+        """Server returns an error if select_subprotocol raises an exception."""
+
+        def select_subprotocol(ws, subprotocols):
+            raise RuntimeError
+
+        with run_server(select_subprotocol=select_subprotocol) as server:
+            with self.assertRaises(InvalidStatus) as raised:
+                with connect(get_uri(server)):
+                    self.fail("did not raise")
+            self.assertEqual(
+                str(raised.exception),
+                "server rejected WebSocket connection: HTTP 500",
+            )
+
+    def test_compression_is_enabled(self):
+        """Server enables compression by default."""
+        with run_server() as server:
+            with connect(get_uri(server)) as client:
+                self.assertEval(
+                    client,
+                    "[type(ext).__name__ for ext in ws.protocol.extensions]",
+                    "['PerMessageDeflate']",
+                )
+
+    def test_disable_compression(self):
+        """Server disables compression."""
+        with run_server(compression=None) as server:
+            with connect(get_uri(server)) as client:
+                self.assertEval(client, "ws.protocol.extensions", "[]")
+
+    def test_process_request_returns_none(self):
+        """Server runs process_request and continues the handshake."""
+
+        def process_request(ws, request):
+            self.assertIsInstance(request, Request)
+            ws.process_request_ran = True
+
+        with run_server(process_request=process_request) as server:
+            with connect(get_uri(server)) as client:
+                self.assertEval(client, "ws.process_request_ran", "True")
+
+    def test_process_request_returns_response(self):
+        """Server aborts handshake if process_request returns a response."""
+
+        def process_request(ws, request):
+            return ws.respond(http.HTTPStatus.FORBIDDEN, "Forbidden")
+
+        def handler(ws):
+            self.fail("handler must not run")
+
+        with self.assertNoLogs("websockets", logging.ERROR):
+            with run_server(handler, process_request=process_request) as server:
+                with self.assertRaises(InvalidStatus) as raised:
+                    with connect(get_uri(server)):
+                        self.fail("did not raise")
+                self.assertEqual(
+                    str(raised.exception),
+                    "server rejected WebSocket connection: HTTP 403",
+                )
+
+    def test_process_request_raises_exception(self):
+        """Server returns an error if process_request raises an exception."""
+
+        def process_request(ws, request):
+            raise RuntimeError("BOOM")
+
+        with self.assertLogs("websockets", logging.ERROR) as logs:
+            with run_server(process_request=process_request) as server:
+                with self.assertRaises(InvalidStatus) as raised:
+                    with connect(get_uri(server)):
+                        self.fail("did not raise")
+                self.assertEqual(
+                    str(raised.exception),
+                    "server rejected WebSocket connection: HTTP 500",
+                )
+        self.assertExceptionLogged(logs, "process_request failed", "BOOM")
+
+    def test_process_response_returns_none(self):
+        """Server runs process_response but keeps the handshake response."""
+
+        def process_response(ws, request, response):
+            self.assertIsInstance(request, Request)
+            self.assertIsInstance(response, Response)
+            ws.process_response_ran = True
+
+        with run_server(process_response=process_response) as server:
+            with connect(get_uri(server)) as client:
+                self.assertEval(client, "ws.process_response_ran", "True")
+
+    def test_process_response_modifies_response(self):
+        """Server runs process_response and modifies the handshake response."""
+
+        def process_response(ws, request, response):
+            response.headers["X-ProcessResponse"] = "OK"
+
+        with run_server(process_response=process_response) as server:
+            with connect(get_uri(server)) as client:
+                self.assertEqual(client.response.headers["X-ProcessResponse"], "OK")
+
+    def test_process_response_replaces_response(self):
+        """Server runs process_response and replaces the handshake response."""
+
+        def process_response(ws, request, response):
+            headers = response.headers.copy()
+            headers["X-ProcessResponse"] = "OK"
+            return dataclasses.replace(response, headers=headers)
+
+        with run_server(process_response=process_response) as server:
+            with connect(get_uri(server)) as client:
+                self.assertEqual(client.response.headers["X-ProcessResponse"], "OK")
+
+    def test_process_response_raises_exception(self):
+        """Server returns an error if process_response raises an exception."""
+
+        def process_response(ws, request, response):
+            raise RuntimeError("BOOM")
+
+        with self.assertLogs("websockets", logging.ERROR) as logs:
+            with run_server(process_response=process_response) as server:
+                with self.assertRaises(InvalidStatus) as raised:
+                    with connect(get_uri(server)):
+                        self.fail("did not raise")
+                self.assertEqual(
+                    str(raised.exception),
+                    "server rejected WebSocket connection: HTTP 500",
+                )
+        self.assertExceptionLogged(logs, "process_response failed", "BOOM")
+
+    def test_override_server_header(self):
+        """Server can override Server header with server_header."""
+        with run_server(server_header="Neo") as server:
+            with connect(get_uri(server)) as client:
+                self.assertEval(client, "ws.response.headers['Server']", "Neo")
+
+    def test_remove_server_header(self):
+        """Server can remove Server header with server_header."""
+        with run_server(server_header=None) as server:
+            with connect(get_uri(server)) as client:
+                self.assertEval(client, "'Server' in ws.response.headers", "False")
+
+    def test_keepalive_is_enabled(self):
+        """Server enables keepalive and measures latency."""
+        with run_server(ping_interval=MS) as server:
+            with connect(get_uri(server)) as client:
+                client.send("ws.latency")
+                latency = eval(client.recv())
+                self.assertEqual(latency, 0)
+                time.sleep(2 * MS)
+                client.send("ws.latency")
+                latency = eval(client.recv())
+                self.assertGreater(latency, 0)
+
+    def test_disable_keepalive(self):
+        """Server disables keepalive."""
+        with run_server(ping_interval=None) as server:
+            with connect(get_uri(server)) as client:
+                time.sleep(2 * MS)
+                client.send("ws.latency")
+                latency = eval(client.recv())
+                self.assertEqual(latency, 0)
+
+    def test_logger(self):
+        """Server accepts a logger argument."""
+        logger = logging.getLogger("test")
+        with run_server(logger=logger) as server:
+            self.assertEqual(server.logger.name, logger.name)
+
+    def test_custom_connection_factory(self):
+        """Server runs ServerConnection factory provided in create_connection."""
+
+        def create_connection(*args, **kwargs):
+            server = ServerConnection(*args, **kwargs)
+            server.create_connection_ran = True
+            return server
+
+        with run_server(create_connection=create_connection) as server:
+            with connect(get_uri(server)) as client:
+                self.assertEval(client, "ws.create_connection_ran", "True")
+
+    def test_connections(self):
+        """Server provides a connections property."""
+        with run_server() as server:
+            self.assertEqual(server.connections, set())
+            with (
+                connect(get_uri(server)) as client1,
+                connect(get_uri(server)) as client2,
+            ):
+                client1.send("ws.id")
+                client2.send("ws.id")
+                self.assertEqual(
+                    {str(connection.id) for connection in server.connections},
+                    {client1.recv(), client2.recv()},
+                )
+            self.assertEqual(server.connections, set())
+
+    def test_handshake_fails(self):
+        """Server receives connection from client but the handshake fails."""
+
+        def remove_key_header(self, request):
+            del request.headers["Sec-WebSocket-Key"]
+
+        with run_server(process_request=remove_key_header) as server:
+            with self.assertRaises(InvalidStatus) as raised:
+                with connect(get_uri(server)):
+                    self.fail("did not raise")
+            self.assertEqual(
+                str(raised.exception),
+                "server rejected WebSocket connection: HTTP 400",
+            )
+
+    def test_timeout_before_handshake_request(self):
+        """Server times out before receiving handshake request from client."""
+        with self.assertLogs("websockets", logging.DEBUG) as logs:
+            with run_server(open_timeout=MS) as server:
+                with socket.create_connection(server.socket.getsockname()) as sock:
+                    # Wait for the server to close the connection.
+                    self.assertEqual(sock.recv(4096), b"")
+
+        self.assertExceptionLogged(
+            logs,
+            "! no valid HTTP request",
+            "connection closed while reading HTTP request line",
+        )
+
+    def test_connection_closed_before_handshake_request(self):
+        """Server reads EOF before receiving handshake request from client."""
+        with self.assertLogs("websockets", logging.DEBUG) as logs:
+            with run_server() as server:
+                with socket.create_connection(server.socket.getsockname()):
+                    # Wait for the server to receive the connection, then close it.
+                    time.sleep(MS)
+
+        self.assertExceptionLogged(
+            logs,
+            "! no valid HTTP request",
+            "connection closed while reading HTTP request line",
+        )
+
+    def test_connection_closed_before_handshake_response_sync(self):
+        """Server reads EOF before sending handshake response to client."""
+
+        def process_request(ws, _request):
+            ws.socket.shutdown(socket.SHUT_RDWR)
+            ws.socket.close()
+
+        with self.assertNoLogs("websockets", logging.ERROR):
+            with run_server(process_request=process_request) as server:
+                with self.assertRaises(InvalidHandshake):
+                    with connect(get_uri(server)):
+                        self.fail("did not raise")
+
+    def test_junk_handshake_request(self):
+        """Server closes the connection when receiving non-HTTP request from client."""
+        with self.assertLogs("websockets.server", logging.DEBUG) as logs:
+            with run_server() as server:
+                with socket.create_connection(server.socket.getsockname()) as sock:
+                    sock.send(b"HELO relay.invalid\r\n")
+                    # Wait for the server to close the connection.
+                    self.assertEqual(sock.recv(4096), b"")
+
+        self.assertExceptionLogged(
+            logs,
+            "! no valid HTTP request",
+            "invalid HTTP request line: HELO relay.invalid",
+        )
+
+    def test_shutdown_stops_accepting_connections(self):
+        """Server stops accepting connections."""
+        with run_server() as server:
+            # Connect a client and disable close_connections to delay closing.
+            uri = get_uri(server)
+            with connect(uri):
+                shutdown_thread = threading.Thread(
+                    target=server.shutdown,
+                    kwargs={"close_connections": False},
+                )
+                shutdown_thread.start()
+                time.sleep(MS)
+
+                # Server cannot receive new connections.
+                with self.assertRaises(OSError):
+                    with connect(uri):
+                        self.fail("did not raise")
+
+            shutdown_thread.join()
+
+    def test_shutdown_rejects_connecting_connections(self):
+        """Server rejects connecting connections with HTTP 503."""
+
+        def process_request(ws, _request):
+            ws.server.socket_closed.wait()
+
+        def shutdown_server(server):
+            time.sleep(2 * MS)
+            server.shutdown()
+
+        with run_server(process_request=process_request) as server:
+            shutdown_thread = threading.Thread(target=shutdown_server, args=(server,))
+            shutdown_thread.start()
+            with self.assertRaises(InvalidStatus) as raised:
+                with connect(get_uri(server)):
+                    self.fail("did not raise")
+            self.assertEqual(
+                str(raised.exception),
+                "server rejected WebSocket connection: HTTP 503",
+            )
+            shutdown_thread.join(MS)
+
+    def test_shutdown_closes_open_connections(self):
+        """Server closes open connections with code 1001."""
+        with run_server() as server:
+            with connect(get_uri(server)) as client:
+                server.shutdown()
+                with self.assertRaises(ConnectionClosedOK) as raised:
+                    client.recv()
+                self.assertEqual(
+                    str(raised.exception),
+                    "received 1001 (going away); then sent 1001 (going away)",
+                )
+
+    def test_shutdown_closes_open_connections_with_code_and_reason(self):
+        """Server closes open connections with a custom code and reason."""
+        with run_server() as server:
+            with connect(get_uri(server)) as client:
+                server.shutdown(code=1012, reason="restarting")
+                with self.assertRaises(ConnectionClosedError) as raised:
+                    client.recv()
+                self.assertEqual(
+                    str(raised.exception),
+                    "received 1012 (service restart) restarting; "
+                    "then sent 1012 (service restart) restarting",
+                )
+
+    def test_shutdown_keeps_connections_open(self):
+        """Server waits for the client to close open connections."""
+        with run_server() as server:
+            with connect(get_uri(server)):
+                shutdown_thread = threading.Thread(
+                    target=server.shutdown,
+                    kwargs={"close_connections": False},
+                )
+                shutdown_thread.start()
+
+                # The server waits for the client to close the connection.
+                shutdown_thread.join(MS)
+                self.assertTrue(shutdown_thread.is_alive())
+
+            # Once the client closes the connection, the server terminates.
+            shutdown_thread.join(MS)
+            self.assertFalse(shutdown_thread.is_alive())
+
+    @patch("websockets.sync.server.Server.SHUTDOWN_POLLING_INTERVAL", MS)
+    def test_shutdown_keeps_handlers_running(self):
+        """Server waits for connection handlers to terminate."""
+        with run_server() as server:
+            with connect(get_uri(server) + "/delay") as client:
+                # Delay termination of the connection handler.
+                client.send(str(3 * MS))
+
+                shutdown_thread = threading.Thread(target=server.shutdown)
+                shutdown_thread.start()
+
+                # The server waits for the connection handler to terminate.
+                shutdown_thread.join(2 * MS)
+                self.assertTrue(shutdown_thread.is_alive())
+
+                # Set a longer timeout here, else the test becomes flaky.
+                shutdown_thread.join(5 * MS)
+                self.assertFalse(shutdown_thread.is_alive())
+
+    def test_context_manager_closes_server(self):
+        """Server closes when exiting context manager."""
+        with self.assertLogs("websockets", logging.INFO) as logs:
+            with serve(handler, "localhost", 0) as server:
+                thread = threading.Thread(target=server.serve_forever)
+                thread.start()
+                self.addCleanup(thread.join)
+                with connect(get_uri(server)) as client:
+                    self.assertEval(client, "ws.protocol.state.name", "OPEN")
+
+        self.assertEqual(logs.records[-1].getMessage(), "server closed")
+
+    def test_fileno(self):
+        """Server provides a fileno method."""
+        with run_server() as server:
+            self.assertIsInstance(server.fileno(), int)
+
+
+class SecureServerTests(EvalShellMixin, unittest.TestCase):
+    def test_connection(self):
+        """Server receives secure connection from client."""
+        with run_server(ssl=SERVER_CONTEXT) as server:
+            with connect(get_uri(server), ssl=CLIENT_CONTEXT) as client:
+                self.assertEval(client, "ws.protocol.state.name", "OPEN")
+                self.assertEval(client, "ws.socket.version()[:3]", "TLS")
+
+    def test_timeout_during_tls_handshake(self):
+        """Server times out before receiving TLS handshake request from client."""
+        with run_server(ssl=SERVER_CONTEXT, open_timeout=MS) as server:
+            with socket.create_connection(server.socket.getsockname()) as sock:
+                # Wait for the server to close the connection.
+                self.assertEqual(sock.recv(4096), b"")
+
+    def test_connection_closed_during_tls_handshake(self):
+        """Server reads EOF before receiving TLS handshake request from client."""
+        with run_server(ssl=SERVER_CONTEXT) as server:
+            with socket.create_connection(server.socket.getsockname()):
+                # Wait for the server to receive the connection, then close it.
+                time.sleep(MS)
+
+
+@unittest.skipUnless(hasattr(socket, "AF_UNIX"), "this test requires Unix sockets")
+class UnixServerTests(EvalShellMixin, unittest.TestCase):
+    def test_connection(self):
+        """Server receives connection from client over a Unix socket."""
+        with temp_unix_socket_path() as path:
+            with run_unix_server(path):
+                with unix_connect(path) as client:
+                    self.assertEval(client, "ws.protocol.state.name", "OPEN")
+
+
+@unittest.skipUnless(hasattr(socket, "AF_UNIX"), "this test requires Unix sockets")
+class SecureUnixServerTests(EvalShellMixin, unittest.TestCase):
+    def test_connection(self):
+        """Server receives secure connection from client over a Unix socket."""
+        with temp_unix_socket_path() as path:
+            with run_unix_server(path, ssl=SERVER_CONTEXT):
+                with unix_connect(path, ssl=CLIENT_CONTEXT) as client:
+                    self.assertEval(client, "ws.protocol.state.name", "OPEN")
+                    self.assertEval(client, "ws.socket.version()[:3]", "TLS")
+
+
+class ServerUsageErrorsTests(unittest.TestCase):
+    def test_host_and_sock(self):
+        """Server rejects host when sock is provided."""
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.addCleanup(sock.close)
+        with self.assertRaises(ValueError) as raised:
+            serve(handler, host="localhost", sock=sock)
+        self.assertEqual(
+            str(raised.exception),
+            "host is incompatible with sock",
+        )
+
+    def test_port_and_sock(self):
+        """Server rejects port when sock is provided."""
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.addCleanup(sock.close)
+        with self.assertRaises(ValueError) as raised:
+            serve(handler, port=0, sock=sock)
+        self.assertEqual(
+            str(raised.exception),
+            "port is incompatible with sock",
+        )
+
+    def test_unix_without_path_or_sock(self):
+        """Unix server requires path when sock isn't provided."""
+        with self.assertRaises(ValueError) as raised:
+            unix_serve(handler)
+        self.assertEqual(
+            str(raised.exception),
+            "missing path argument",
+        )
+
+    def test_unix_with_path_and_sock(self):
+        """Unix server rejects path when sock is provided."""
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.addCleanup(sock.close)
+        with self.assertRaises(ValueError) as raised:
+            unix_serve(handler, path="/", sock=sock)
+        self.assertEqual(
+            str(raised.exception),
+            "path is incompatible with sock",
+        )
+
+    def test_invalid_subprotocol(self):
+        """Server rejects single value of subprotocols."""
+        with self.assertRaises(TypeError) as raised:
+            serve(handler, subprotocols="chat")
+        self.assertEqual(
+            str(raised.exception),
+            "subprotocols must be a list, not a str",
+        )
+
+    def test_unsupported_compression(self):
+        """Server rejects incorrect value of compression."""
+        with self.assertRaises(ValueError) as raised:
+            serve(handler, compression=False)
+        self.assertEqual(
+            str(raised.exception),
+            "unsupported compression: False",
+        )
+
+
+class BasicAuthTests(EvalShellMixin, unittest.IsolatedAsyncioTestCase):
+    def test_valid_authorization(self):
+        """basic_auth authenticates client with HTTP Basic Authentication."""
+        with run_server(
+            process_request=basic_auth(credentials=("hello", "iloveyou")),
+        ) as server:
+            with connect(
+                get_uri(server),
+                additional_headers={"Authorization": "Basic aGVsbG86aWxvdmV5b3U="},
+            ) as client:
+                self.assertEval(client, "ws.username", "hello")
+
+    def test_missing_authorization(self):
+        """basic_auth rejects client without credentials."""
+        with run_server(
+            process_request=basic_auth(credentials=("hello", "iloveyou")),
+        ) as server:
+            with self.assertRaises(InvalidStatus) as raised:
+                with connect(get_uri(server)):
+                    self.fail("did not raise")
+            self.assertEqual(
+                str(raised.exception),
+                "server rejected WebSocket connection: HTTP 401",
+            )
+
+    def test_unsupported_authorization(self):
+        """basic_auth rejects client with unsupported credentials."""
+        with run_server(
+            process_request=basic_auth(credentials=("hello", "iloveyou")),
+        ) as server:
+            with self.assertRaises(InvalidStatus) as raised:
+                with connect(
+                    get_uri(server),
+                    additional_headers={"Authorization": "Negotiate ..."},
+                ):
+                    self.fail("did not raise")
+            self.assertEqual(
+                str(raised.exception),
+                "server rejected WebSocket connection: HTTP 401",
+            )
+
+    def test_authorization_with_unknown_username(self):
+        """basic_auth rejects client with unknown username."""
+        with run_server(
+            process_request=basic_auth(credentials=("hello", "iloveyou")),
+        ) as server:
+            with self.assertRaises(InvalidStatus) as raised:
+                with connect(
+                    get_uri(server),
+                    additional_headers={"Authorization": "Basic YnllOnlvdWxvdmVtZQ=="},
+                ):
+                    self.fail("did not raise")
+            self.assertEqual(
+                str(raised.exception),
+                "server rejected WebSocket connection: HTTP 401",
+            )
+
+    def test_authorization_with_incorrect_password(self):
+        """basic_auth rejects client with incorrect password."""
+        with run_server(
+            process_request=basic_auth(credentials=("hello", "changeme")),
+        ) as server:
+            with self.assertRaises(InvalidStatus) as raised:
+                with connect(
+                    get_uri(server),
+                    additional_headers={"Authorization": "Basic aGVsbG86aWxvdmV5b3U="},
+                ):
+                    self.fail("did not raise")
+            self.assertEqual(
+                str(raised.exception),
+                "server rejected WebSocket connection: HTTP 401",
+            )
+
+    def test_list_of_credentials(self):
+        """basic_auth accepts a list of hard coded credentials."""
+        with run_server(
+            process_request=basic_auth(
+                credentials=[
+                    ("hello", "iloveyou"),
+                    ("bye", "youloveme"),
+                ]
+            ),
+        ) as server:
+            with connect(
+                get_uri(server),
+                additional_headers={"Authorization": "Basic YnllOnlvdWxvdmVtZQ=="},
+            ) as client:
+                self.assertEval(client, "ws.username", "bye")
+
+    def test_check_credentials_function(self):
+        """basic_auth accepts a check_credentials function."""
+
+        def check_credentials(username, password):
+            self.assertEqual(username, "hello")
+            return hmac.compare_digest(password, "iloveyou")
+
+        with run_server(
+            process_request=basic_auth(check_credentials=check_credentials),
+        ) as server:
+            with connect(
+                get_uri(server),
+                additional_headers={"Authorization": "Basic aGVsbG86aWxvdmV5b3U="},
+            ) as client:
+                self.assertEval(client, "ws.username", "hello")
+
+    def test_without_credentials_or_check_credentials(self):
+        """basic_auth requires either credentials or check_credentials."""
+        with self.assertRaises(ValueError) as raised:
+            basic_auth()
+        self.assertEqual(
+            str(raised.exception),
+            "provide either credentials or check_credentials",
+        )
+
+    def test_with_credentials_and_check_credentials(self):
+        """basic_auth requires only one of credentials and check_credentials."""
+        with self.assertRaises(ValueError) as raised:
+            basic_auth(
+                credentials=("hello", "iloveyou"),
+                check_credentials=lambda: False,  # pragma: no cover
+            )
+        self.assertEqual(
+            str(raised.exception),
+            "provide either credentials or check_credentials",
+        )
+
+    def test_bad_credentials(self):
+        """basic_auth receives an unsupported credentials argument."""
+        with self.assertRaises(TypeError) as raised:
+            basic_auth(credentials=42)
+        self.assertEqual(
+            str(raised.exception),
+            "invalid credentials argument: 42",
+        )
+
+    def test_bad_list_of_credentials(self):
+        """basic_auth receives an unsupported credentials argument."""
+        with self.assertRaises(TypeError) as raised:
+            basic_auth(credentials=[42])
+        self.assertEqual(
+            str(raised.exception),
+            "invalid credentials argument: [42]",
+        )
+
+
+class BackwardsCompatibilityTests(DeprecationTestCase):
+    def test_ssl_context_argument(self):
+        """Server supports the deprecated ssl_context argument."""
+        with self.assertDeprecationWarning("ssl_context was renamed to ssl"):
+            with run_server(ssl_context=SERVER_CONTEXT) as server:
+                with connect(get_uri(server), ssl=CLIENT_CONTEXT):
+                    pass
+
+    def test_web_socket_server_class(self):
+        with self.assertDeprecationWarning("WebSocketServer was renamed to Server"):
+            from websockets.sync.server import WebSocketServer
+        self.assertIs(WebSocketServer, Server)

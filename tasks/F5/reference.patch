@@ -1,0 +1,1068 @@
+diff --git a/README.rst b/README.rst
+index 06c8448..8784f4a 100644
+--- a/README.rst
++++ b/README.rst
+@@ -252,6 +252,34 @@ To use the extensions below you must import from `jsonpath_ng.ext`.
+ |              | - ``$.objects[*].cow + $.objects[*].cat``        |
+ +--------------+--------------------------------------------------+
+ 
++RFC 9535 JSONPath
++-----------------
++
++``jsonpath_ng.rfc9535`` is a strict implementation of `RFC 9535
++<https://www.rfc-editor.org/rfc/rfc9535>`__, separate from the dialect above:
++
++.. code:: python
++
++    >>> from jsonpath_ng.rfc9535 import parse, normalized_path
++    >>> matches = parse("$.a[?@ > 1]").find({"a": [1, 2, 3]})
++    >>> [(normalized_path(m), m.value) for m in matches]
++    [("$['a'][1]", 2), ("$['a'][2]", 3)]
++
++Invalid or ill-typed queries raise ``JsonPathParserError``. The standard
++functions ``length``, ``count``, ``match``, ``search`` and ``value`` are built
++in; more can be passed to ``parse`` as ``FunctionExtension`` objects:
++
++.. code:: python
++
++    >>> from jsonpath_ng.rfc9535 import FunctionExtension, ValueType
++    >>> upper = FunctionExtension(lambda v: v.upper() if isinstance(v, str) else v,
++    ...                           (ValueType,), ValueType)
++    >>> [m.value for m in parse("$[?upper(@) == 'A']", functions={"upper": upper}).find(["a", "b"])]
++    ['a']
++
++On the command line, ``jsonpath_ng --rfc9535 QUERY [FILE ...]`` prints each
++match as JSON, and ``--paths`` prefixes it with its normalized path.
++
+ About arithmetic and string
+ ---------------------------
+ 
+diff --git a/src/jsonpath_ng/bin/jsonpath.py b/src/jsonpath_ng/bin/jsonpath.py
+index f72a72b..e13c0db 100644
+--- a/src/jsonpath_ng/bin/jsonpath.py
++++ b/src/jsonpath_ng/bin/jsonpath.py
+@@ -13,6 +13,8 @@ import argparse
+ 
+ # JsonPath-RW imports
+ from jsonpath_ng import parse
++from jsonpath_ng import rfc9535
++from jsonpath_ng.exceptions import JSONPathError
+ 
+ def find_matches_for_file(expr, f):
+     return expr.find(json.load(f))
+@@ -20,6 +22,14 @@ def find_matches_for_file(expr, f):
+ def print_matches(matches):
+     print('\n'.join(['{0}'.format(match.value) for match in matches]))
+ 
++def print_rfc9535_matches(matches, with_paths):
++    for match in matches:
++        value = json.dumps(match.value, ensure_ascii=False)
++        if with_paths:
++            print('{0}\t{1}'.format(rfc9535.normalized_path(match), value))
++        else:
++            print(value)
++
+ 
+ def main(*argv):
+     parser = argparse.ArgumentParser(
+@@ -48,21 +58,39 @@ def main(*argv):
+ 
+     parser.add_argument('expression', help='A JSONPath expression.')
+     parser.add_argument('files', metavar='file', nargs='*', help='Files to search (if none, searches stdin)')
++    parser.add_argument('--rfc9535', action='store_true',
++                        help='Use strict RFC 9535 syntax and print each match as JSON.')
++    parser.add_argument('--paths', action='store_true',
++                        help='With --rfc9535, print the normalized path and a tab before each match.')
+ 
+     args = parser.parse_args(argv[1:])
+ 
+-    expr = parse(args.expression)
++    if args.paths and not args.rfc9535:
++        parser.error('--paths requires --rfc9535')
++
++    if args.rfc9535:
++        try:
++            expr = rfc9535.parse(args.expression)
++        except JSONPathError as e:
++            parser.error(str(e))
++
++        def output(matches):
++            print_rfc9535_matches(matches, args.paths)
++    else:
++        expr = parse(args.expression)
++        output = print_matches
++
+     glob_patterns = args.files
+ 
+     if len(glob_patterns) == 0:
+         # stdin mode
+-        print_matches(find_matches_for_file(expr, sys.stdin))
++        output(find_matches_for_file(expr, sys.stdin))
+     else:
+         # file paths mode
+         for pattern in glob_patterns:
+             for filename in glob.glob(pattern):
+-                with open(filename) as f:
+-                    print_matches(find_matches_for_file(expr, f))
++                with open(filename, encoding='utf-8') as f:
++                    output(find_matches_for_file(expr, f))
+ 
+ def entry_point():
+     main(*sys.argv)
+diff --git a/src/jsonpath_ng/rfc9535.py b/src/jsonpath_ng/rfc9535.py
+new file mode 100644
+index 0000000..93a2ace
+--- /dev/null
++++ b/src/jsonpath_ng/rfc9535.py
+@@ -0,0 +1,951 @@
++"""
++JSONPath as standardised by RFC 9535.
++
++This is a separate, strict implementation that lives next to the classic
++``jsonpath_ng.parse`` dialect::
++
++    >>> from jsonpath_ng.rfc9535 import parse, normalized_path
++    >>> [normalized_path(m) for m in parse("$.a[?@ > 1]").find({"a": [1, 2, 3]})]
++    ["$['a'][1]", "$['a'][2]"]
++
++Queries are parsed into an immutable :class:`JSONPathQuery`; ``find()`` returns
++the RFC nodelist as :class:`~jsonpath_ng.jsonpath.DatumInContext` objects.
++"""
++from __future__ import annotations
++
++import enum
++import re
++import sys
++import unicodedata
++from dataclasses import dataclass
++from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
++
++from .exceptions import JsonPathParserError
++from .jsonpath import DatumInContext, Fields, Index, Root
++
++__all__ = [
++    "FunctionExtension",
++    "FunctionType",
++    "JSONPathQuery",
++    "LogicalType",
++    "NOTHING",
++    "NodesType",
++    "ValueType",
++    "normalized_path",
++    "parse",
++]
++
++
++class _Nothing:
++    """The special result 'Nothing' (RFC 9535, section 2.4.1)."""
++
++    _instance = None
++
++    def __new__(cls):
++        if cls._instance is None:
++            cls._instance = super().__new__(cls)
++        return cls._instance
++
++    def __repr__(self):
++        return "NOTHING"
++
++    def __bool__(self):
++        return False
++
++
++NOTHING = _Nothing()
++
++
++class FunctionType(enum.Enum):
++    """Declared types of function extension parameters and results."""
++
++    VALUE = "ValueType"
++    LOGICAL = "LogicalType"
++    NODES = "NodesType"
++
++
++ValueType = FunctionType.VALUE
++LogicalType = FunctionType.LOGICAL
++NodesType = FunctionType.NODES
++
++
++@dataclass(frozen=True)
++class FunctionExtension:
++    """A function extension (RFC 9535, section 2.4).
++
++    ``func`` is called with one argument per declared parameter: a JSON value or
++    :data:`NOTHING` for ``ValueType``, a ``bool`` for ``LogicalType`` and a list
++    of ``DatumInContext`` for ``NodesType``. It returns the matching kind of
++    value for its declared ``result`` type.
++    """
++
++    func: Callable[..., Any]
++    parameters: Tuple[FunctionType, ...]
++    result: FunctionType
++
++
++_FUNCTION_NAME = re.compile(r"[a-z][a-z0-9_]*\Z")
++_MAX_INT = 2 ** 53 - 1
++_BLANK = " \t\n\r"
++
++
++# -- JSON value helpers ---------------------------------------------------------
++
++
++def _is_number(value: Any) -> bool:
++    return isinstance(value, (int, float)) and not isinstance(value, bool)
++
++
++def _equal(a: Any, b: Any) -> bool:
++    if a is NOTHING or b is NOTHING:
++        return a is b
++    if isinstance(a, bool) or isinstance(b, bool):
++        return isinstance(a, bool) and isinstance(b, bool) and a == b
++    if a is None or b is None:
++        return a is None and b is None
++    if _is_number(a) and _is_number(b):
++        return a == b
++    if isinstance(a, str) and isinstance(b, str):
++        return a == b
++    if isinstance(a, list) and isinstance(b, list):
++        return len(a) == len(b) and all(_equal(x, y) for x, y in zip(a, b))
++    if isinstance(a, dict) and isinstance(b, dict):
++        return a.keys() == b.keys() and all(_equal(a[k], b[k]) for k in a)
++    return False
++
++
++def _less(a: Any, b: Any) -> bool:
++    if _is_number(a) and _is_number(b):
++        return a < b
++    if isinstance(a, str) and isinstance(b, str):
++        return a < b
++    return False
++
++
++_COMPARISONS: Dict[str, Callable[[Any, Any], bool]] = {
++    "==": _equal,
++    "!=": lambda a, b: not _equal(a, b),
++    "<": _less,
++    "<=": lambda a, b: _less(a, b) or _equal(a, b),
++    ">": lambda a, b: _less(b, a),
++    ">=": lambda a, b: _less(b, a) or _equal(a, b),
++}
++
++
++def _children(datum: DatumInContext) -> Iterator[DatumInContext]:
++    value = datum.value
++    if isinstance(value, list):
++        for i, item in enumerate(value):
++            yield DatumInContext(item, path=Index(i), context=datum)
++    elif isinstance(value, dict):
++        for key, item in value.items():
++            yield DatumInContext(item, path=Fields(key), context=datum)
++
++
++def _descendants(datum: DatumInContext) -> Iterator[DatumInContext]:
++    """The node itself, then its descendants, in document order."""
++    stack = [datum]
++    while stack:
++        node = stack.pop()
++        yield node
++        stack.extend(reversed(list(_children(node))))
++
++
++# -- I-Regexp (RFC 9485) --------------------------------------------------------
++
++_category_ranges: Dict[str, str] = {}
++
++
++def _category_class(name: str) -> str:
++    """Character class body (without brackets) for a Unicode category."""
++    if name not in _category_ranges:
++        ranges: List[Tuple[int, int]] = []
++        start = None
++        for cp in range(sys.maxunicode + 1):
++            cat = unicodedata.category(chr(cp))
++            inside = cat == name or (len(name) == 1 and cat[0] == name)
++            if inside and start is None:
++                start = cp
++            elif not inside and start is not None:
++                ranges.append((start, cp - 1))
++                start = None
++        if start is not None:
++            ranges.append((start, sys.maxunicode))
++        _category_ranges[name] = "".join(
++            f"\\U{a:08x}" if a == b else f"\\U{a:08x}-\\U{b:08x}" for a, b in ranges
++        )
++    return _category_ranges[name]
++
++
++_CATEGORIES = {
++    "L", "Lu", "Ll", "Lt", "Lm", "Lo", "M", "Mn", "Mc", "Me", "N", "Nd", "Nl", "No",
++    "P", "Pc", "Pd", "Ps", "Pe", "Pi", "Pf", "Po", "Z", "Zs", "Zl", "Zp",
++    "S", "Sm", "Sc", "Sk", "So", "C", "Cc", "Cf", "Co", "Cn",
++}
++
++_regex_cache: Dict[str, Optional["re.Pattern[str]"]] = {}
++
++
++def _compile_iregexp(pattern: str) -> Optional["re.Pattern[str]"]:
++    """Translate an I-Regexp to a Python regex, or ``None`` if it is invalid."""
++    if pattern in _regex_cache:
++        return _regex_cache[pattern]
++    out: List[str] = []
++    in_class = False
++    i = 0
++    result: Optional[re.Pattern[str]]
++    try:
++        while i < len(pattern):
++            c = pattern[i]
++            if c == "\\":
++                if i + 1 >= len(pattern):
++                    raise ValueError("dangling backslash")
++                nxt = pattern[i + 1]
++                if nxt in "pP":
++                    end = pattern.index("}", i)
++                    if pattern[i + 2] != "{":
++                        raise ValueError("bad property escape")
++                    name = pattern[i + 3:end]
++                    if name not in _CATEGORIES:
++                        raise ValueError(f"unknown category {name}")
++                    body = _category_class(name)
++                    if in_class:
++                        if nxt == "P":
++                            raise ValueError("\\P inside a class is not supported")
++                        out.append(body)
++                    else:
++                        out.append(f"[{'^' if nxt == 'P' else ''}{body}]")
++                    i = end + 1
++                    continue
++                out.append(c + nxt)
++                i += 2
++                continue
++            if in_class:
++                if c == "]":
++                    in_class = False
++                out.append(c)
++            elif c == "[":
++                in_class = True
++                out.append(c)
++                # a ']' or '^]' right after '[' is literal
++                if pattern[i + 1:i + 2] == "^":
++                    out.append("^")
++                    i += 1
++            elif c == ".":
++                out.append("[^\\n\\r]")
++            else:
++                out.append(c)
++            i += 1
++        result = re.compile("".join(out))
++    except (ValueError, IndexError, re.error):
++        result = None
++    _regex_cache[pattern] = result
++    return result
++
++
++# -- standard functions -----------------------------------------------------------
++
++
++def _length(value: Any) -> Any:
++    if isinstance(value, (str, list, dict)):
++        return len(value)
++    return NOTHING
++
++
++def _count(nodes: Sequence[DatumInContext]) -> int:
++    return len(nodes)
++
++
++def _match(value: Any, pattern: Any) -> bool:
++    if not isinstance(value, str) or not isinstance(pattern, str):
++        return False
++    regex = _compile_iregexp(pattern)
++    return regex is not None and regex.fullmatch(value) is not None
++
++
++def _search(value: Any, pattern: Any) -> bool:
++    if not isinstance(value, str) or not isinstance(pattern, str):
++        return False
++    regex = _compile_iregexp(pattern)
++    return regex is not None and regex.search(value) is not None
++
++
++def _value(nodes: Sequence[DatumInContext]) -> Any:
++    if len(nodes) == 1:
++        return nodes[0].value
++    return NOTHING
++
++
++STANDARD_FUNCTIONS: Dict[str, FunctionExtension] = {
++    "length": FunctionExtension(_length, (ValueType,), ValueType),
++    "count": FunctionExtension(_count, (NodesType,), ValueType),
++    "match": FunctionExtension(_match, (ValueType, ValueType), LogicalType),
++    "search": FunctionExtension(_search, (ValueType, ValueType), LogicalType),
++    "value": FunctionExtension(_value, (NodesType,), ValueType),
++}
++
++
++# -- syntax tree --------------------------------------------------------------------
++
++
++class _Selector:
++    def select(self, datum: DatumInContext, root: DatumInContext) -> Iterator[DatumInContext]:
++        raise NotImplementedError
++
++
++@dataclass(frozen=True)
++class _NameSelector(_Selector):
++    name: str
++
++    def select(self, datum, root):
++        if isinstance(datum.value, dict) and self.name in datum.value:
++            yield DatumInContext(datum.value[self.name], path=Fields(self.name), context=datum)
++
++
++class _WildcardSelector(_Selector):
++    def select(self, datum, root):
++        return _children(datum)
++
++
++@dataclass(frozen=True)
++class _IndexSelector(_Selector):
++    index: int
++
++    def select(self, datum, root):
++        value = datum.value
++        if isinstance(value, list):
++            i = self.index + len(value) if self.index < 0 else self.index
++            if 0 <= i < len(value):
++                yield DatumInContext(value[i], path=Index(i), context=datum)
++
++
++@dataclass(frozen=True)
++class _SliceSelector(_Selector):
++    start: Optional[int]
++    end: Optional[int]
++    step: Optional[int]
++
++    def select(self, datum, root):
++        value = datum.value
++        if not isinstance(value, list):
++            return
++        n = len(value)
++        step = 1 if self.step is None else self.step
++        if step == 0:
++            return
++
++        def normalize(i: int) -> int:
++            return i if i >= 0 else n + i
++
++        if step > 0:
++            start = 0 if self.start is None else normalize(self.start)
++            end = n if self.end is None else normalize(self.end)
++            lower, upper = min(max(start, 0), n), min(max(end, 0), n)
++            i = lower
++            while i < upper:
++                yield DatumInContext(value[i], path=Index(i), context=datum)
++                i += step
++        else:
++            start = n - 1 if self.start is None else normalize(self.start)
++            end = -n - 1 if self.end is None else normalize(self.end)
++            upper, lower = min(max(start, -1), n - 1), min(max(end, -1), n - 1)
++            i = upper
++            while lower < i:
++                yield DatumInContext(value[i], path=Index(i), context=datum)
++                i += step
++
++
++@dataclass(frozen=True)
++class _FilterSelector(_Selector):
++    expression: "_Expr"
++
++    def select(self, datum, root):
++        for child in _children(datum):
++            if self.expression.evaluate(child, root):
++                yield child
++
++
++@dataclass(frozen=True)
++class _Segment:
++    selectors: Tuple[_Selector, ...]
++    descendant: bool
++
++    def apply(self, nodes: List[DatumInContext], root: DatumInContext) -> List[DatumInContext]:
++        result: List[DatumInContext] = []
++        for node in nodes:
++            targets = _descendants(node) if self.descendant else (node,)
++            for target in targets:
++                for selector in self.selectors:
++                    result.extend(selector.select(target, root))
++        return result
++
++
++def _run_segments(segments: Sequence[_Segment], start: DatumInContext, root: DatumInContext) -> List[DatumInContext]:
++    nodes = [start]
++    for segment in segments:
++        nodes = segment.apply(nodes, root)
++        if not nodes:
++            break
++    return nodes
++
++
++class _Expr:
++    """Base class of filter expressions; logical expressions return bool."""
++
++    def evaluate(self, current: DatumInContext, root: DatumInContext) -> Any:
++        raise NotImplementedError
++
++
++@dataclass(frozen=True)
++class _Literal(_Expr):
++    value: Any
++
++    def evaluate(self, current, root):
++        return self.value
++
++
++@dataclass(frozen=True)
++class _FilterQuery(_Expr):
++    relative: bool
++    segments: Tuple[_Segment, ...]
++
++    @property
++    def singular(self) -> bool:
++        return all(
++            not s.descendant
++            and len(s.selectors) == 1
++            and isinstance(s.selectors[0], (_NameSelector, _IndexSelector))
++            for s in self.segments
++        )
++
++    def nodes(self, current, root) -> List[DatumInContext]:
++        return _run_segments(self.segments, current if self.relative else root, root)
++
++    def evaluate(self, current, root):
++        # used as a comparable (singular queries only)
++        nodes = self.nodes(current, root)
++        return nodes[0].value if nodes else NOTHING
++
++
++@dataclass(frozen=True)
++class _Exists(_Expr):
++    query: _FilterQuery
++
++    def evaluate(self, current, root):
++        return bool(self.query.nodes(current, root))
++
++
++@dataclass(frozen=True)
++class _NodesTest(_Expr):
++    function: "_FunctionCall"
++
++    def evaluate(self, current, root):
++        return bool(self.function.evaluate(current, root))
++
++
++@dataclass(frozen=True)
++class _FunctionCall(_Expr):
++    name: str
++    extension: FunctionExtension
++    arguments: Tuple[_Expr, ...]
++
++    def evaluate(self, current, root):
++        args = []
++        for param, arg in zip(self.extension.parameters, self.arguments):
++            if param is NodesType:
++                if isinstance(arg, _FilterQuery):
++                    args.append(arg.nodes(current, root))
++                else:
++                    args.append(list(arg.evaluate(current, root)))
++            elif param is LogicalType:
++                args.append(bool(arg.evaluate(current, root)))
++            else:
++                args.append(arg.evaluate(current, root))
++        result = self.extension.func(*args)
++        if self.extension.result is LogicalType:
++            return bool(result)
++        return result
++
++
++@dataclass(frozen=True)
++class _Comparison(_Expr):
++    op: str
++    left: _Expr
++    right: _Expr
++
++    def evaluate(self, current, root):
++        return _COMPARISONS[self.op](self.left.evaluate(current, root), self.right.evaluate(current, root))
++
++
++@dataclass(frozen=True)
++class _Not(_Expr):
++    operand: _Expr
++
++    def evaluate(self, current, root):
++        return not self.operand.evaluate(current, root)
++
++
++@dataclass(frozen=True)
++class _And(_Expr):
++    operands: Tuple[_Expr, ...]
++
++    def evaluate(self, current, root):
++        return all(o.evaluate(current, root) for o in self.operands)
++
++
++@dataclass(frozen=True)
++class _Or(_Expr):
++    operands: Tuple[_Expr, ...]
++
++    def evaluate(self, current, root):
++        return any(o.evaluate(current, root) for o in self.operands)
++
++
++_LOGICAL = (_Exists, _NodesTest, _Comparison, _Not, _And, _Or)
++
++
++# -- parser -----------------------------------------------------------------------
++
++
++class _Parser:
++    def __init__(self, query: str, functions: Mapping[str, FunctionExtension]):
++        self.query = query
++        self.pos = 0
++        self.functions = functions
++
++    def fail(self, message: str) -> "NoReturn":  # type: ignore[name-defined]
++        raise JsonPathParserError(f"{message} at position {self.pos} in JSONPath query {self.query!r}")
++
++    def peek(self, n: int = 1) -> str:
++        return self.query[self.pos:self.pos + n]
++
++    def skip_blank(self) -> None:
++        while self.pos < len(self.query) and self.query[self.pos] in _BLANK:
++            self.pos += 1
++
++    def expect(self, text: str) -> None:
++        if not self.query.startswith(text, self.pos):
++            self.fail(f"expected {text!r}")
++        self.pos += len(text)
++
++    # queries
++
++    def parse(self) -> Tuple[_Segment, ...]:
++        self.expect("$")
++        segments = self.parse_segments()
++        if self.pos != len(self.query):
++            self.fail("unexpected character")
++        return segments
++
++    def parse_segments(self) -> Tuple[_Segment, ...]:
++        segments = []
++        while True:
++            save = self.pos
++            self.skip_blank()
++            if self.peek(2) == "..":
++                self.pos += 2
++                if self.peek() == "[":
++                    segments.append(_Segment(self.parse_bracketed(), True))
++                else:
++                    segments.append(_Segment((self.parse_dot_member(),), True))
++            elif self.peek() == ".":
++                self.pos += 1
++                segments.append(_Segment((self.parse_dot_member(),), False))
++            elif self.peek() == "[":
++                segments.append(_Segment(self.parse_bracketed(), False))
++            else:
++                self.pos = save
++                return tuple(segments)
++
++    def parse_dot_member(self) -> _Selector:
++        if self.peek() == "*":
++            self.pos += 1
++            return _WildcardSelector()
++        return _NameSelector(self.parse_member_name())
++
++    def parse_member_name(self) -> str:
++        start = self.pos
++        while self.pos < len(self.query):
++            c = self.query[self.pos]
++            cp = ord(c)
++            first = self.pos == start
++            if (
++                ("a" <= c <= "z")
++                or ("A" <= c <= "Z")
++                or c == "_"
++                or (0x80 <= cp <= 0xD7FF)
++                or (0xE000 <= cp <= 0x10FFFF)
++                or (not first and "0" <= c <= "9")
++            ):
++                self.pos += 1
++            else:
++                break
++        if self.pos == start:
++            self.fail("expected a member name")
++        return self.query[start:self.pos]
++
++    def parse_bracketed(self) -> Tuple[_Selector, ...]:
++        self.expect("[")
++        self.skip_blank()
++        selectors = [self.parse_selector()]
++        while True:
++            self.skip_blank()
++            if self.peek() == ",":
++                self.pos += 1
++                self.skip_blank()
++                selectors.append(self.parse_selector())
++            elif self.peek() == "]":
++                self.pos += 1
++                return tuple(selectors)
++            else:
++                self.fail("expected ',' or ']'")
++
++    def parse_selector(self) -> _Selector:
++        c = self.peek()
++        if c in ("'", '"'):
++            return _NameSelector(self.parse_string())
++        if c == "*":
++            self.pos += 1
++            return _WildcardSelector()
++        if c == "?":
++            self.pos += 1
++            self.skip_blank()
++            return _FilterSelector(self.as_logical(self.parse_or(), "filter"))
++        if c == ":" or c == "-" or c.isdigit():
++            start = None if c == ":" else self.parse_int()
++            save = self.pos
++            self.skip_blank()
++            if self.peek() != ":":
++                self.pos = save
++                if start is None:
++                    self.fail("expected a selector")
++                return _IndexSelector(start)
++            self.pos += 1
++            self.skip_blank()
++            end = self.parse_int() if self.peek() == "-" or self.peek().isdigit() else None
++            self.skip_blank()
++            step = None
++            if self.peek() == ":":
++                self.pos += 1
++                self.skip_blank()
++                if self.peek() == "-" or self.peek().isdigit():
++                    step = self.parse_int()
++            return _SliceSelector(start, end, step)
++        self.fail("expected a selector")
++
++    def parse_int(self) -> int:
++        start = self.pos
++        if self.peek() == "-":
++            self.pos += 1
++        if self.peek() == "0":
++            self.pos += 1
++            if self.query[start] == "-":
++                self.fail("'-0' is not a valid integer")
++        elif self.peek().isdigit() and self.peek() != "0":
++            while self.peek() and self.peek() in "0123456789":
++                self.pos += 1
++        else:
++            self.fail("expected an integer")
++        if self.peek() and self.peek() in "0123456789":
++            self.fail("leading zeros are not allowed")
++        value = int(self.query[start:self.pos])
++        if abs(value) > _MAX_INT:
++            self.fail("integer out of range")
++        return value
++
++    def parse_string(self) -> str:
++        quote = self.query[self.pos]
++        self.pos += 1
++        out: List[str] = []
++        escapes = {"b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "/": "/", "\\": "\\", quote: quote}
++        while True:
++            if self.pos >= len(self.query):
++                self.fail("unterminated string")
++            c = self.query[self.pos]
++            if c == quote:
++                self.pos += 1
++                return "".join(out)
++            if c == "\\":
++                e = self.query[self.pos + 1:self.pos + 2]
++                if e in escapes:
++                    out.append(escapes[e])
++                    self.pos += 2
++                elif e == "u":
++                    self.pos += 2
++                    cp = self.parse_hex4()
++                    if 0xDC00 <= cp <= 0xDFFF:
++                        self.fail("unpaired low surrogate")
++                    if 0xD800 <= cp <= 0xDBFF:
++                        if self.peek(2) != "\\u":
++                            self.fail("unpaired high surrogate")
++                        self.pos += 2
++                        low = self.parse_hex4()
++                        if not 0xDC00 <= low <= 0xDFFF:
++                            self.fail("invalid low surrogate")
++                        cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00)
++                    out.append(chr(cp))
++                else:
++                    self.fail("invalid escape sequence")
++                continue
++            if ord(c) < 0x20:
++                self.fail("control character in string")
++            out.append(c)
++            self.pos += 1
++
++    def parse_hex4(self) -> int:
++        digits = self.peek(4)
++        if len(digits) != 4 or any(d not in "0123456789abcdefABCDEF" for d in digits):
++            self.fail("expected four hex digits")
++        self.pos += 4
++        return int(digits, 16)
++
++    # filter expressions
++
++    def as_logical(self, expr: _Expr, where: str) -> _Expr:
++        if isinstance(expr, _LOGICAL):
++            return expr
++        if isinstance(expr, _FilterQuery):
++            return _Exists(expr)
++        if isinstance(expr, _FunctionCall):
++            if expr.extension.result is LogicalType:
++                return expr
++            if expr.extension.result is NodesType:
++                return _NodesTest(expr)
++            self.fail(f"function {expr.name}() returns ValueType and cannot be used as a test in a {where}")
++        self.fail(f"a literal cannot be used as a test in a {where}")
++
++    def as_comparable(self, expr: _Expr) -> _Expr:
++        if isinstance(expr, _Literal):
++            return expr
++        if isinstance(expr, _FilterQuery):
++            if not expr.singular:
++                self.fail("only singular queries can be compared")
++            return expr
++        if isinstance(expr, _FunctionCall):
++            if expr.extension.result is not ValueType:
++                self.fail(f"result of {expr.name}() cannot be compared")
++            return expr
++        self.fail("logical expressions cannot be compared")
++
++    def parse_or(self, bare: bool = False) -> _Expr:
++        operands = [self.parse_and(bare)]
++        while True:
++            save = self.pos
++            self.skip_blank()
++            if self.peek(2) != "||":
++                self.pos = save
++                break
++            self.pos += 2
++            self.skip_blank()
++            operands.append(self.parse_and(bare))
++        if len(operands) == 1:
++            return operands[0]
++        return _Or(tuple(self.as_logical(o, "logical expression") for o in operands))
++
++    def parse_and(self, bare: bool) -> _Expr:
++        operands = [self.parse_basic(bare)]
++        while True:
++            save = self.pos
++            self.skip_blank()
++            if self.peek(2) != "&&":
++                self.pos = save
++                break
++            self.pos += 2
++            self.skip_blank()
++            operands.append(self.parse_basic(bare))
++        if len(operands) == 1:
++            return operands[0]
++        return _And(tuple(self.as_logical(o, "logical expression") for o in operands))
++
++    def parse_basic(self, bare: bool) -> _Expr:
++        if self.peek() == "!":
++            self.pos += 1
++            self.skip_blank()
++            if self.peek() == "(":
++                return _Not(self.parse_paren())
++            operand = self.parse_primary()
++            if isinstance(operand, _Literal):
++                self.fail("'!' cannot be applied to a literal")
++            return _Not(self.as_logical(operand, "negation"))
++        if self.peek() == "(":
++            return self.parse_paren()
++        left = self.parse_primary()
++        save = self.pos
++        self.skip_blank()
++        for op in ("==", "!=", "<=", ">=", "<", ">"):
++            if self.query.startswith(op, self.pos):
++                self.pos += len(op)
++                self.skip_blank()
++                right = self.parse_primary()
++                return _Comparison(op, self.as_comparable(left), self.as_comparable(right))
++        self.pos = save
++        if bare:
++            return left
++        return self.as_logical(left, "filter")
++
++    def parse_paren(self) -> _Expr:
++        self.expect("(")
++        self.skip_blank()
++        expr = self.as_logical(self.parse_or(), "parenthesized expression")
++        self.skip_blank()
++        self.expect(")")
++        return expr
++
++    def parse_primary(self) -> _Expr:
++        c = self.peek()
++        if c in ("@", "$"):
++            self.pos += 1
++            return _FilterQuery(c == "@", self.parse_segments())
++        if c in ("'", '"'):
++            return _Literal(self.parse_string())
++        if c == "-" or c.isdigit():
++            return _Literal(self.parse_number())
++        for word, value in (("true", True), ("false", False), ("null", None)):
++            if self.query.startswith(word, self.pos):
++                self.pos += len(word)
++                return _Literal(value)
++        if "a" <= c <= "z":
++            return self.parse_function()
++        self.fail("expected a filter expression")
++
++    def parse_number(self) -> Any:
++        m = re.compile(r"-?(?:0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)?").match(self.query, self.pos)
++        if m is None:
++            self.fail("invalid number")
++        text = m.group(0)
++        self.pos = m.end()
++        if self.peek() and (self.peek() in "0123456789." or self.peek() in "eE"):
++            self.fail("invalid number")
++        if m.group(1) is None and m.group(2) is None and text != "-0":
++            return int(text)
++        return float(text)
++
++    def parse_function(self) -> _FunctionCall:
++        start = self.pos
++        while self.pos < len(self.query) and (
++            "a" <= self.query[self.pos] <= "z" or self.query[self.pos] in "0123456789_"
++        ):
++            self.pos += 1
++        name = self.query[start:self.pos]
++        if self.peek() != "(":
++            self.fail(f"expected '(' after function name {name!r}")
++        extension = self.functions.get(name)
++        if extension is None:
++            self.fail(f"unknown function {name!r}")
++        self.pos += 1
++        self.skip_blank()
++        args: List[_Expr] = []
++        if self.peek() != ")":
++            while True:
++                args.append(self.parse_or(bare=True))
++                self.skip_blank()
++                if self.peek() == ",":
++                    self.pos += 1
++                    self.skip_blank()
++                    continue
++                break
++        self.expect(")")
++        if len(args) != len(extension.parameters):
++            self.fail(f"{name}() takes {len(extension.parameters)} argument(s), got {len(args)}")
++        checked = tuple(self.check_argument(name, param, arg) for param, arg in zip(extension.parameters, args))
++        return _FunctionCall(name, extension, checked)
++
++    def check_argument(self, name: str, param: FunctionType, arg: _Expr) -> _Expr:
++        if param is ValueType:
++            if isinstance(arg, _Literal):
++                return arg
++            if isinstance(arg, _FilterQuery) and arg.singular:
++                return arg
++            if isinstance(arg, _FunctionCall) and arg.extension.result is ValueType:
++                return arg
++        elif param is LogicalType:
++            if isinstance(arg, _LOGICAL):
++                return arg
++            if isinstance(arg, _FilterQuery):
++                return _Exists(arg)
++            if isinstance(arg, _FunctionCall) and arg.extension.result in (LogicalType, NodesType):
++                return self.as_logical(arg, "argument")
++        elif param is NodesType:
++            if isinstance(arg, _FilterQuery):
++                return arg
++            if isinstance(arg, _FunctionCall) and arg.extension.result is NodesType:
++                return arg
++        self.fail(f"argument of {name}() is not well-typed for a {param.value} parameter")
++
++
++# -- public API --------------------------------------------------------------------
++
++
++class JSONPathQuery:
++    """A parsed RFC 9535 query."""
++
++    def __init__(self, query: str, segments: Tuple[_Segment, ...]):
++        self._query = query
++        self._segments = segments
++
++    def find(self, document: Any) -> List[DatumInContext]:
++        """Return the nodelist selected from ``document``."""
++        root = DatumInContext(document, path=Root(), context=None)
++        return _run_segments(self._segments, root, root)
++
++    def __str__(self) -> str:
++        return self._query
++
++    def __repr__(self) -> str:
++        return f"{self.__class__.__name__}({self._query!r})"
++
++    def __eq__(self, other: object) -> bool:
++        return isinstance(other, JSONPathQuery) and self._query == other._query
++
++    def __hash__(self) -> int:
++        return hash(self._query)
++
++
++def parse(query: str, functions: Optional[Mapping[str, FunctionExtension]] = None) -> JSONPathQuery:
++    """Parse an RFC 9535 JSONPath query.
++
++    ``functions`` adds function extensions to (or replaces) the standard
++    ``length``, ``count``, ``match``, ``search`` and ``value`` functions.
++
++    Raises:
++        JsonPathParserError: If the query is not valid and well-typed.
++    """
++    if not isinstance(query, str):
++        raise TypeError("query must be a str")
++    registry = dict(STANDARD_FUNCTIONS)
++    for name, extension in (functions or {}).items():
++        if not _FUNCTION_NAME.match(name):
++            raise ValueError(f"invalid function name {name!r}")
++        if not isinstance(extension, FunctionExtension):
++            raise TypeError(f"function {name!r} must be a FunctionExtension")
++        registry[name] = extension
++    return JSONPathQuery(query, _Parser(query, registry).parse())
++
++
++_NAME_ESCAPES = {"\b": "\\b", "\f": "\\f", "\n": "\\n", "\r": "\\r", "\t": "\\t", "'": "\\'", "\\": "\\\\"}
++
++
++def _normalized_name(name: str) -> str:
++    out = []
++    for c in name:
++        if c in _NAME_ESCAPES:
++            out.append(_NAME_ESCAPES[c])
++        elif ord(c) < 0x20:
++            out.append(f"\\u{ord(c):04x}")
++        else:
++            out.append(c)
++    return "['" + "".join(out) + "']"
++
++
++def normalized_path(datum: DatumInContext) -> str:
++    """The RFC 9535 normalized path (section 2.7) of a node returned by ``find()``."""
++    parts: List[str] = []
++    node: Optional[DatumInContext] = datum
++    while node is not None:
++        path = node.path
++        if isinstance(path, Fields):
++            parts.append(_normalized_name(path.fields[0]))
++        elif isinstance(path, Index):
++            parts.append(f"[{path.indices[0]}]")
++        node = node.context
++    return "$" + "".join(reversed(parts))

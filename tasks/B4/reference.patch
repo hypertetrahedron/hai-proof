@@ -1,0 +1,158 @@
+diff --git b/tinycss2/color4.py a/tinycss2/color4.py
+index aa945ec..8087323 100644
+--- b/tinycss2/color4.py
++++ a/tinycss2/color4.py
+@@ -182,7 +182,7 @@ def parse_color(input):
+         if name == 'color':
+             space, *tokens = tokens
+         length = len(tokens)
+-        if length == 5 and all(token == ',' for token in tokens[1::2]):
++        if length in (5, 7) and all(token == ',' for token in tokens[1::2]):
+             old_syntax = True
+             tokens = tokens[::2]
+         elif length == 3:
+@@ -226,7 +226,7 @@ def _parse_alpha(args):
+         if args[0].type == 'number':
+             return min(1, max(0, args[0].value))
+         elif args[0].type == 'percentage':
+-            return min(1, max(0, args[0].value))
++            return min(1, max(0, args[0].value / 100))
+ 
+ 
+ def _parse_rgb(args, alpha):
+@@ -305,7 +305,7 @@ def _parse_lab(args, alpha):
+         None if args[1].type == 'ident' else (
+             args[1].value * (1 if args[1].type == 'number' else 1.25)),
+         None if args[2].type == 'ident' else (
+-            args[2].value * (1 if args[2].type == 'number' else 1.5)),
++            args[2].value * (1 if args[2].type == 'number' else 1.25)),
+     ]
+     return Color('lab', coordinates, alpha)
+ 
+@@ -349,7 +349,7 @@ def _parse_oklab(args, alpha):
+         None if args[1].type == 'ident' else (
+             args[1].value * (1 if args[1].type == 'number' else 0.004)),
+         None if args[2].type == 'ident' else (
+-            args[2].value * (1 if args[2].type == 'number' else 0.04)),
++            args[2].value * (1 if args[2].type == 'number' else 0.004)),
+     ]
+     return Color('oklab', coordinates, alpha)
+ 
+diff --git b/tinycss2/color5.py a/tinycss2/color5.py
+index 200cab7..b9d0066 100644
+--- b/tinycss2/color5.py
++++ a/tinycss2/color5.py
+@@ -101,7 +101,7 @@ def _parse_device_cmyk(args, alpha, old_syntax):
+         arg.value if arg.type == 'number' else
+         arg.value / 100 if arg.type == 'percentage' else None
+         for arg in args]
+-    cmyk = [max(0., float(channel)) for channel in cmyk]
++    cmyk = [max(0., min(1., float(channel))) for channel in cmyk]
+     return Color('device-cmyk', cmyk, alpha)
+ 
+ 
+diff --git b/tinycss2/nth.py a/tinycss2/nth.py
+index a7b5cec..c5e924b 100644
+--- b/tinycss2/nth.py
++++ a/tinycss2/nth.py
+@@ -81,7 +81,7 @@ def parse_b(tokens, a):
+     elif token == '-':
+         return parse_signless_b(tokens, a, -1)
+     elif (token.type == 'number' and token.is_integer and
+-          token.representation[0] == '-'):
++          token.representation[0] in '-+'):
+         return parse_end(tokens, a, token.int_value)
+ 
+ 
+diff --git b/tinycss2/parser.py a/tinycss2/parser.py
+index ad31612..66bbd72 100644
+--- b/tinycss2/parser.py
++++ a/tinycss2/parser.py
+@@ -136,7 +136,7 @@ def _parse_declaration(first_token, tokens, nested=True):
+             state = 'bang'
+             bang_position = i
+         elif (state == 'bang' and token.type == 'ident'
+-                and token.value == 'important'):
++                and token.lower_value == 'important'):
+             state = 'important'
+         elif token.type not in ('whitespace', 'comment'):
+             state = 'value'
+@@ -475,6 +475,8 @@ def _consume_at_rule(at_keyword, tokens):
+             # https://drafts.csswg.org/css-syntax-3/#consume-at-rule
+             content = token.content
+             break
++        elif token == ';':
++            break
+         prelude.append(token)
+     return AtRule(
+         at_keyword.source_line, at_keyword.source_column, at_keyword.value,
+diff --git b/tinycss2/serializer.py a/tinycss2/serializer.py
+index f0eef52..032b924 100644
+--- b/tinycss2/serializer.py
++++ a/tinycss2/serializer.py
+@@ -50,6 +50,7 @@ def serialize_identifier(value):
+         r'\A ' if c == '\n' else
+         r'\D ' if c == '\r' else
+         r'\C ' if c == '\f' else
++        '\\%X ' % ord(c) if c in '0123456789' else
+         '\\' + c
+     )
+     result += serialize_name(value[1:])
+@@ -141,5 +142,5 @@ BAD_PAIRS = set(
+     [('@', b) for b in ('ident', 'function', 'url', 'unicode-range', '-')] +
+     [('unicode-range', b) for b in ('ident', 'function', '?')] +
+     [(a, '=') for a in '$*^~|'] +
+-    [('ident', '() block'), ('|', '|')]
++    [('ident', '() block'), ('|', '|'), ('/', '*')]
+ )
+diff --git b/tinycss2/tokenizer.py a/tinycss2/tokenizer.py
+index f98ddfc..5278c93 100644
+--- b/tinycss2/tokenizer.py
++++ a/tinycss2/tokenizer.py
+@@ -10,8 +10,8 @@ from .ast import (  # isort: skip
+     WhitespaceToken)
+ from .serializer import serialize_string_value, serialize_url
+ 
+-_NUMBER_RE = re.compile(r'[-+]?([0-9]*\.)?[0-9]+([eE][+]?[0-9]+)?')
+-_HEX_ESCAPE_RE = re.compile(r'([0-9A-Fa-f]{1,6})[ \t]?')
++_NUMBER_RE = re.compile(r'[-+]?([0-9]*\.)?[0-9]+([eE][+-]?[0-9]+)?')
++_HEX_ESCAPE_RE = re.compile(r'([0-9A-Fa-f]{1,6})[ \n\t]?')
+ 
+ 
+ def parse_component_value_list(css, skip_comments=False):
+@@ -60,6 +60,10 @@ def parse_component_value_list(css, skip_comments=False):
+             start, end, pos = _consume_unicode_range(css, pos + 2)
+             tokens.append(UnicodeRangeToken(line, column, start, end))
+             continue
++        elif css.startswith('-->', pos):  # Check before identifiers
++            tokens.append(LiteralToken(line, column, '-->'))
++            pos += 3
++            continue
+         elif _is_ident_start(css, pos):
+             value, pos = _consume_ident(css, pos)
+             if not css.startswith('(', pos):  # Not a function
+@@ -123,6 +127,7 @@ def parse_component_value_list(css, skip_comments=False):
+             if pos < length and (
+                     css[pos] in '0123456789abcdefghijklmnopqrstuvwxyz'
+                                 '-_ABCDEFGHIJKLMNOPQRSTUVWXYZ' or
++                    ord(css[pos]) > 0x7F or  # Non-ASCII
+                     # Valid escape:
+                     (css[pos] == '\\' and not css.startswith('\\\n', pos))):
+                 is_identifier = _is_ident_start(css, pos)
+@@ -297,7 +302,7 @@ def _consume_escape(css, pos):
+     if hex_match:
+         codepoint = int(hex_match.group(1), 16)
+         return (
+-            chr(codepoint) if 0 <= codepoint <= sys.maxunicode else '\uFFFD',
++            chr(codepoint) if 0 < codepoint <= sys.maxunicode else '\uFFFD',
+             hex_match.end())
+     elif pos < len(css):
+         return css[pos], pos + 1
+@@ -409,6 +414,7 @@ def _consume_unicode_range(css, pos):
+           css[pos + 1] in '0123456789abcdefABCDEF'):
+         pos += 1
+         start_pos = pos
++        max_pos = min(pos + 6, length)
+         while pos < max_pos and css[pos] in '0123456789abcdefABCDEF':
+             pos += 1
+         end = css[start_pos:pos]

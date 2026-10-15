@@ -1,6 +1,9 @@
 id = "F3"
 kind = "feature"
 level = 3
+suites = ["standard"]
+cost_tier = "low"
+report_order = 6
 origin = "authored"
 timeout_s = 2400
 budget_usd = 8.0

@@ -1,6 +1,7 @@
 id = "B1"
 kind = "bug"
 level = 1
+suites = ["smoke"]
 origin = "injected"
 timeout_s = 1200
 budget_usd = 3.0

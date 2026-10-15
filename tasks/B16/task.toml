@@ -1,0 +1,19 @@
+id = "B16"
+kind = "bug"
+level = 1
+origin = "upstream-fix"
+# Same defect across parallel logger implementations (docs/task-catalog.md): CallsiteParameterAdder
+# reports the executor thread instead of the caller's for async log methods of the native and stdlib
+# bound loggers (structlog issue #710, PR #805, 2026-05-10).
+timeout_s = 1200
+budget_usd = 3.0
+max_turns = 40
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=25.5.0 uv pip install --python /opt/venv/bin/python -e . pytest pytest-asyncio simplejson time-machine"
+acceptance = ["tests/processors/test_processors.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests"
+
+[source]
+kind = "git"
+url  = "https://github.com/hynek/structlog.git"
+base = "c6e7cad18ffe91febf2b97dac03a465134b1a5d1"
+fix  = "ba04ac275291ea1754aba24643d17cb8e5638c66"

@@ -1,0 +1,324 @@
+diff --git b/src/jsonpath_rfc9535/_parser.py a/src/jsonpath_rfc9535/_parser.py
+index d281109..f20b1b1 100644
+--- b/src/jsonpath_rfc9535/_parser.py
++++ a/src/jsonpath_rfc9535/_parser.py
+@@ -14,13 +14,7 @@ from .exceptions import (
+     JSONPathSyntaxError,
+     JSONPathTypeError,
+ )
+-from .functions import (
+-    LOGICAL_TYPE,
+-    NODES_TYPE,
+-    VALUE_TYPE,
+-    ExpressionType,
+-    FunctionExtension,
+-)
++from .functions import LOGICAL_TYPE, NODES_TYPE, VALUE_TYPE, ExpressionType
+ from .query import JSONPathQuery
+ 
+ if TYPE_CHECKING:
+@@ -130,27 +124,73 @@ class Parser_(ABC):
+             raise JSONPathRecursionError("maximum recursion depth reached")
+ 
+     def raise_for_not_compared(self, expr: Expression, token: Token) -> None:
+-        if expr[0] == FUNCTION_EXPR:
+-            self._get_function(expr[2], token)
++        if self.is_literal_expression(expr):
++            raise JSONPathTypeError(
++                "filter expression literals must be compared",
++                token,
++                self.source,
++            )
++
++        if expr[0] != FUNCTION_EXPR:
++            return
++
++        name = expr[2]
++        func = self.env.functions.get(name)
++
++        if not func:
++            raise JSONPathNameError(
++                f"unknown function {name!r}",
++                token,
++                self.source,
++            )
++
++        if func.return_type == VALUE_TYPE:
++            raise JSONPathTypeError(
++                f"result of {name!r} must be compared",
++                token,
++                self.source,
++            )
+ 
+     def raise_for_not_comparable(self, expr: Expression, token: Token) -> None:
+-        if expr[0] == FUNCTION_EXPR:
+-            self._get_function(expr[2], token)
++        if self.is_query_expression(expr) and not self.is_singular_query(expr):
++            raise JSONPathTypeError(
++                "non-singular query is not comparable",
++                token,
++                self.source,
++            )
++
++        if expr[0] != FUNCTION_EXPR:
++            return
+ 
+-    def _get_function(self, name: str, token: Token) -> FunctionExtension:
++        name = expr[2]
+         func = self.env.functions.get(name)
++
+         if not func:
+             raise JSONPathNameError(
+                 f"unknown function {name!r}",
+                 token,
+                 self.source,
+             )
+-        return func
++
++        if func.return_type != VALUE_TYPE:
++            raise JSONPathTypeError(
++                f"result of {name!r} is not comparable",
++                token,
++                self.source,
++            )
+ 
+     def validate_function_signature(
+         self, token: Token, name: str, args: list[Expression]
+     ) -> None:
+-        func = self._get_function(name, token)
++        func = self.env.functions.get(name)
++
++        if not func:
++            raise JSONPathNameError(
++                f"unknown function {name!r}",
++                token,
++                self.source,
++            )
++
+         count = len(func.arg_types)
+ 
+         if len(args) != count:
+@@ -160,6 +200,33 @@ class Parser_(ABC):
+                 self.source,
+             )
+ 
++        for i, (arg, typ) in enumerate(zip(args, func.arg_types)):
++            if typ == VALUE_TYPE and not self.is_value_type_expression(arg):
++                raise JSONPathTypeError(
++                    f"{name}() argument {i} must be a value type",
++                    token,
++                    self.source,
++                )
++
++            if typ == LOGICAL_TYPE and not (
++                self.is_query_expression(arg) or self.is_infix_expression(arg)
++            ):
++                raise JSONPathTypeError(
++                    f"{name}() argument {i} must be a logical type",
++                    token,
++                    self.source,
++                )
++
++            if typ == NODES_TYPE and not (
++                self.is_query_expression(arg)
++                or self.function_return_type(arg) == NODES_TYPE
++            ):
++                raise JSONPathTypeError(
++                    f"{name}() argument {i} must be a nodes type",
++                    token,
++                    self.source,
++                )
++
+     def parse_i_json_int(self, token: Token) -> int:
+         value = token_value(token, self.source)
+ 
+diff --git b/src/jsonpath_rfc9535/_resolve_standard.py a/src/jsonpath_rfc9535/_resolve_standard.py
+index d246a86..ac7c831 100644
+--- b/src/jsonpath_rfc9535/_resolve_standard.py
++++ a/src/jsonpath_rfc9535/_resolve_standard.py
+@@ -186,6 +186,17 @@ class StandardResolver(Resolver_):
+                     for arg in args
+                 ]
+ 
++                for i, arg in enumerate(args_):
++                    if isinstance(arg, NodeList) and func.arg_types[i] != NODES_TYPE:
++                        if len(arg) == 0:
++                            # If the query results in an empty nodelist, the
++                            # argument is the special result Nothing.
++                            args_[i] = NOTHING
++                        elif len(arg) == 1:
++                            # If the query results in a nodelist consisting of a
++                            # single node, the argument is the value of the node.
++                            args_[i] = arg[0][0]
++
+                 return func(*args_)
+ 
+     def visit(self, node: Node) -> Iterable[Node]:
+diff --git b/src/jsonpath_rfc9535/_resolver.py a/src/jsonpath_rfc9535/_resolver.py
+index 274c6ec..5b6c50c 100644
+--- b/src/jsonpath_rfc9535/_resolver.py
++++ a/src/jsonpath_rfc9535/_resolver.py
+@@ -30,23 +30,88 @@ class BasicResolver(Protocol):
+ 
+ 
+ class Resolver_:
+-    def unwrap(self, obj: object) -> object:
+-        """Reduce a single-node node list to its value, and any other node list to NOTHING."""
+-        if type(obj) is NodeList:
+-            return obj[0][0] if len(obj) == 1 else NOTHING
+-        if type(obj) is BasicNodeList:
+-            return obj[0] if len(obj) == 1 else NOTHING
+-        return obj
+-
+     def truthy(self, obj: object) -> bool:
+-        obj = self.unwrap(obj)
+-        return obj is not NOTHING and bool(obj)
++        if isinstance(obj, BasicNodeList | NodeList):
++            return len(obj) > 0
++        if obj is NOTHING:
++            return False
++        if obj is None:
++            return True
++        return bool(obj)
+ 
+     def eq(self, left: object, right: object) -> bool:
+-        return self.unwrap(left) == self.unwrap(right)
++        if type(left) is NodeList:
++            if len(left) == 0:
++                left = NOTHING
++            elif len(left) == 1:
++                left = left[0][0]
++            else:
++                return False
++        elif type(left) is BasicNodeList:
++            if len(left) == 0:
++                left = NOTHING
++            elif len(left) == 1:
++                left = left[0]
++            else:
++                return False
++
++        if type(right) is NodeList:
++            if len(right) == 0:
++                right = NOTHING
++            elif len(right) == 1:
++                right = right[0][0]
++            else:
++                return False
++        elif type(right) is BasicNodeList:
++            if len(right) == 0:
++                right = NOTHING
++            elif len(right) == 1:
++                right = right[0]
++            else:
++                return False
++
++        if left is NOTHING and right is NOTHING:
++            return True
++
++        # Remember 1 == True and 0 == False in Python
++        if isinstance(left, bool):
++            return isinstance(right, bool) and left == right
++
++        if isinstance(right, bool):
++            return False
++
++        return left == right
+ 
+     def lt(self, left: object, right: object) -> bool:
+-        try:
+-            return self.unwrap(left) < self.unwrap(right)  # type: ignore[operator]
+-        except TypeError:
++        if type(left) is NodeList:
++            if len(left) == 1:
++                left = left[0][0]
++            else:
++                return False
++        elif type(left) is BasicNodeList:
++            if len(left) == 1:
++                left = left[0]
++            else:
++                return False
++
++        if type(right) is NodeList:
++            if len(right) == 1:
++                right = right[0][0]
++            else:
++                return False
++        elif type(right) is BasicNodeList:
++            if len(right) == 1:
++                right = right[0]
++            else:
++                return False
++
++        if isinstance(left, bool) or isinstance(right, bool):
+             return False
++
++        if isinstance(left, str) and isinstance(right, str):
++            return left < right
++
++        if isinstance(left, (int, float)) and isinstance(right, (int, float)):
++            return left < right
++
++        return False
+diff --git b/src/jsonpath_rfc9535/_resolver_basic.py a/src/jsonpath_rfc9535/_resolver_basic.py
+index 2910ef2..5770785 100644
+--- b/src/jsonpath_rfc9535/_resolver_basic.py
++++ a/src/jsonpath_rfc9535/_resolver_basic.py
+@@ -184,6 +184,20 @@ class BasicResolver(Resolver_):
+                     for arg in args
+                 ]
+ 
++                for i, arg in enumerate(args_):
++                    if (
++                        isinstance(arg, BasicNodeList)
++                        and func.arg_types[i] != NODES_TYPE
++                    ):
++                        if len(arg) == 0:
++                            # If the query results in an empty nodelist, the
++                            # argument is the special result Nothing.
++                            args_[i] = NOTHING
++                        elif len(arg) == 1:
++                            # If the query results in a nodelist consisting of a
++                            # single node, the argument is the value of the node.
++                            args_[i] = arg[0]
++
+                 return func(*args_)
+ 
+     def visit(self, node: object) -> Iterable[object]:
+diff --git b/src/jsonpath_rfc9535/_serialize.py a/src/jsonpath_rfc9535/_serialize.py
+index 314a4f7..467c0d7 100644
+--- b/src/jsonpath_rfc9535/_serialize.py
++++ a/src/jsonpath_rfc9535/_serialize.py
+@@ -7,7 +7,12 @@ from ._ast import Expression, Segment, Selector
+ 
+ def canonical_string(value: str) -> str:
+     """Return `value` as a canonically formatted string including quotes."""
+-    return "'" + value.replace("'", "\\'") + "'"
++    single_quoted = (
++        json.dumps(value, ensure_ascii=False)[1:-1]
++        .replace('\\"', '"')
++        .replace("'", "\\'")
++    )
++    return f"'{single_quoted}'"
+ 
+ 
+ def canonical_path(segments: Sequence[Segment]) -> str:
+diff --git b/src/jsonpath_rfc9535/functions.py a/src/jsonpath_rfc9535/functions.py
+index 28f8854..15c733f 100644
+--- b/src/jsonpath_rfc9535/functions.py
++++ a/src/jsonpath_rfc9535/functions.py
+@@ -99,8 +99,12 @@ class CachingRegexFunction(FunctionExtension):
+             return self._debug_or_false("invalid pattern from cache")
+ 
+         if pattern_ is None:
++            if not check(pattern):
++                self.cache[pattern] = self.INVALID_PATTERN
++                return self._debug_or_false("I-Regexp check failed")
++
+             try:
+-                pattern_ = re.compile(pattern, re.VERSION1)
++                pattern_ = re.compile(map_re(pattern), re.VERSION1)
+             except re.error as err:
+                 self.cache[pattern] = self.INVALID_PATTERN
+                 return self._debug_or_false(str(err))

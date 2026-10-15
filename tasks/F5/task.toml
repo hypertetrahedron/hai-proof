@@ -1,0 +1,20 @@
+id = "F5"
+kind = "feature"
+level = 3
+suites = ["standard"]
+cost_tier = "high"
+report_order = 13
+origin = "authored"
+# Sized for ~30 min of agent time (see docs/task-catalog.md). inject.patch only adds the RFC texts
+# under docs/rfc/ as reference material; it does not introduce a bug.
+timeout_s = 3600
+budget_usd = 40.0
+max_turns = 300
+install = "uv pip install --python /opt/venv/bin/python -e . pytest hypothesis"
+acceptance = ["tests/hai_proof/test_f5.py"]
+
+[source]
+kind = "git"
+url  = "https://github.com/jsonpath-ng/jsonpath-ng.git"
+# tag v1.9.1
+base = "fe6c78913395d0fa6e6aca14011c3aacb75c25f5"

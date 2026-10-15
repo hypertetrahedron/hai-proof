@@ -1,0 +1,18 @@
+id = "B14"
+kind = "bug"
+level = 1
+origin = "upstream-fix"
+# Interaction bug (docs/task-catalog.md): a plugin with several implementations of one hook keeps one
+# firing after unregister() (pluggy issue #431, PR #646, 2026-02-25).
+timeout_s = 1200
+budget_usd = 3.0
+max_turns = 40
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=1.6.0 uv pip install --python /opt/venv/bin/python -e . pytest"
+acceptance = ["testing/test_pluginmanager.py"]
+regression = "python -m pytest -q -p no:cacheprovider testing"
+
+[source]
+kind = "git"
+url  = "https://github.com/pytest-dev/pluggy.git"
+base = "6e1d0f13a259776bbf137f90bd7ab8b4474f68e7"
+fix  = "20d8143f127a4d7526dbbea441857b4b80ec8bdd"

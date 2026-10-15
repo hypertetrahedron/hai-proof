@@ -1,0 +1,461 @@
+diff --git a/src/websockets/asyncio/client.py b/src/websockets/asyncio/client.py
+index 586a78c..6c6c114 100644
+--- a/src/websockets/asyncio/client.py
++++ b/src/websockets/asyncio/client.py
+@@ -93,12 +93,12 @@ class ClientConnection(Connection):
+         Perform the opening handshake.
+ 
+         """
++        self.request = self.protocol.connect()
++        if additional_headers is not None:
++            self.request.headers.update(additional_headers)
++        if user_agent_header is not None:
++            self.request.headers.setdefault("User-Agent", user_agent_header)
+         async with self.send_context(expected_state=CONNECTING):
+-            self.request = self.protocol.connect()
+-            if additional_headers is not None:
+-                self.request.headers.update(additional_headers)
+-            if user_agent_header is not None:
+-                self.request.headers.setdefault("User-Agent", user_agent_header)
+             self.protocol.send_request(self.request)
+ 
+         await asyncio.wait(
+diff --git a/src/websockets/asyncio/server.py b/src/websockets/asyncio/server.py
+index 63fe060..5c5b9c1 100644
+--- a/src/websockets/asyncio/server.py
++++ b/src/websockets/asyncio/server.py
+@@ -137,69 +137,71 @@ class ServerConnection(Connection):
+         )
+ 
+         if self.request is not None:
+-            async with self.send_context(expected_state=CONNECTING):
+-                response = None
+-
+-                if process_request is not None:
+-                    try:
+-                        response = process_request(self, self.request)
+-                        if isinstance(response, Awaitable):
+-                            response = await response
+-                    except Exception as exc:
+-                        self.protocol.handshake_exc = exc
+-                        self.logger.error("process_request failed", exc_info=True)
+-                        response = self.protocol.reject(
+-                            http.HTTPStatus.INTERNAL_SERVER_ERROR,
+-                            (
+-                                "Failed to open a WebSocket connection.\n"
+-                                "See server log for more information.\n"
+-                            ),
+-                        )
+-
+-                if response is None:
+-                    self.response = self.protocol.accept(self.request)
+-                else:
+-                    assert isinstance(response, Response)  # help mypy
+-                    self.response = response
+-
+-                if server_header is not None:
+-                    self.response.headers["Server"] = server_header
+-
+-                response = None
+-
+-                if process_response is not None:
+-                    try:
+-                        response = process_response(self, self.request, self.response)
+-                        if isinstance(response, Awaitable):
+-                            response = await response
+-                    except Exception as exc:
+-                        self.protocol.handshake_exc = exc
+-                        self.logger.error("process_response failed", exc_info=True)
+-                        response = self.protocol.reject(
+-                            http.HTTPStatus.INTERNAL_SERVER_ERROR,
+-                            (
+-                                "Failed to open a WebSocket connection.\n"
+-                                "See server log for more information.\n"
+-                            ),
+-                        )
+-
+-                if response is not None:
+-                    assert isinstance(response, Response)  # help mypy
+-                    self.response = response
+-
+-                # Reject the connection if the server started closing during the
+-                # opening handshake. Don't yield before send_response() to avoid
+-                # a race condition after checking if the server is closing.
+-                if (
+-                    self.response.status_code == http.HTTPStatus.SWITCHING_PROTOCOLS
+-                    and not self.server.is_serving()
+-                ):
+-                    self.response = self.protocol.reject(
+-                        http.HTTPStatus.SERVICE_UNAVAILABLE,
+-                        "Server is shutting down.\n",
++            response = None
++
++            if process_request is not None:
++                try:
++                    response = process_request(self, self.request)
++                    if isinstance(response, Awaitable):
++                        response = await response
++                except Exception as exc:
++                    self.protocol.handshake_exc = exc
++                    self.logger.error("process_request failed", exc_info=True)
++                    response = self.protocol.reject(
++                        http.HTTPStatus.INTERNAL_SERVER_ERROR,
++                        (
++                            "Failed to open a WebSocket connection.\n"
++                            "See server log for more information.\n"
++                        ),
+                     )
+ 
+-                self.protocol.send_response(self.response)
++            if response is None:
++                self.response = self.protocol.accept(self.request)
++            else:
++                assert isinstance(response, Response)  # help mypy
++                self.response = response
++
++            if server_header is not None:
++                self.response.headers["Server"] = server_header
++
++            response = None
++
++            if process_response is not None:
++                try:
++                    response = process_response(self, self.request, self.response)
++                    if isinstance(response, Awaitable):
++                        response = await response
++                except Exception as exc:
++                    self.protocol.handshake_exc = exc
++                    self.logger.error("process_response failed", exc_info=True)
++                    response = self.protocol.reject(
++                        http.HTTPStatus.INTERNAL_SERVER_ERROR,
++                        (
++                            "Failed to open a WebSocket connection.\n"
++                            "See server log for more information.\n"
++                        ),
++                    )
++
++            if response is not None:
++                assert isinstance(response, Response)  # help mypy
++                self.response = response
++
++            # Reject the connection if the server started closing during the
++            # opening handshake. Don't yield before send_response() to avoid
++            # a race condition after checking if the server is closing.
++            if (
++                self.response.status_code == http.HTTPStatus.SWITCHING_PROTOCOLS
++                and not self.server.is_serving()
++            ):
++                self.response = self.protocol.reject(
++                    http.HTTPStatus.SERVICE_UNAVAILABLE,
++                    "Server is shutting down.\n",
++                )
++
++            # Don't respond if the connection was closed during the handshake.
++            if self.state is CONNECTING:
++                async with self.send_context(expected_state=CONNECTING):
++                    self.protocol.send_response(self.response)
+ 
+     def process_event(self, event: Event) -> None:
+         """
+diff --git a/src/websockets/sync/client.py b/src/websockets/sync/client.py
+index 118e72f..509eb9d 100644
+--- a/src/websockets/sync/client.py
++++ b/src/websockets/sync/client.py
+@@ -84,12 +84,12 @@ class ClientConnection(Connection):
+         Perform the opening handshake.
+ 
+         """
++        self.request = self.protocol.connect()
++        if additional_headers is not None:
++            self.request.headers.update(additional_headers)
++        if user_agent_header is not None:
++            self.request.headers.setdefault("User-Agent", user_agent_header)
+         with self.send_context(expected_state=CONNECTING):
+-            self.request = self.protocol.connect()
+-            if additional_headers is not None:
+-                self.request.headers.update(additional_headers)
+-            if user_agent_header is not None:
+-                self.request.headers.setdefault("User-Agent", user_agent_header)
+             self.protocol.send_request(self.request)
+ 
+         if not self.response_rcvd.wait(timeout):
+diff --git a/src/websockets/sync/server.py b/src/websockets/sync/server.py
+index 7e4bafa..fc0a81d 100644
+--- a/src/websockets/sync/server.py
++++ b/src/websockets/sync/server.py
+@@ -144,63 +144,65 @@ class ServerConnection(Connection):
+             raise TimeoutError("timed out while waiting for handshake request")
+ 
+         if self.request is not None:
+-            with self.send_context(expected_state=CONNECTING):
+-                response = None
+-
+-                if process_request is not None:
+-                    try:
+-                        response = process_request(self, self.request)
+-                    except Exception as exc:
+-                        self.protocol.handshake_exc = exc
+-                        self.logger.error("process_request failed", exc_info=True)
+-                        response = self.protocol.reject(
+-                            http.HTTPStatus.INTERNAL_SERVER_ERROR,
+-                            (
+-                                "Failed to open a WebSocket connection.\n"
+-                                "See server log for more information.\n"
+-                            ),
+-                        )
+-
+-                if response is None:
+-                    self.response = self.protocol.accept(self.request)
+-                else:
+-                    self.response = response
++            response = None
+ 
+-                if server_header is not None:
+-                    self.response.headers["Server"] = server_header
+-
+-                response = None
+-
+-                if process_response is not None:
+-                    try:
+-                        response = process_response(self, self.request, self.response)
+-                    except Exception as exc:
+-                        self.protocol.handshake_exc = exc
+-                        self.logger.error("process_response failed", exc_info=True)
+-                        response = self.protocol.reject(
+-                            http.HTTPStatus.INTERNAL_SERVER_ERROR,
+-                            (
+-                                "Failed to open a WebSocket connection.\n"
+-                                "See server log for more information.\n"
+-                            ),
+-                        )
+-
+-                    if response is not None:
+-                        self.response = response
+-
+-                # Reject the connection if the server started closing during the
+-                # opening handshake. shutdown() runs a loop to catch cases where
+-                # the server shuts down between this check and send_response().
+-                if (
+-                    self.response.status_code == http.HTTPStatus.SWITCHING_PROTOCOLS
+-                    and self.server.socket_closed.is_set()
+-                ):
+-                    self.response = self.protocol.reject(
+-                        http.HTTPStatus.SERVICE_UNAVAILABLE,
+-                        "Server is shutting down.\n",
++            if process_request is not None:
++                try:
++                    response = process_request(self, self.request)
++                except Exception as exc:
++                    self.protocol.handshake_exc = exc
++                    self.logger.error("process_request failed", exc_info=True)
++                    response = self.protocol.reject(
++                        http.HTTPStatus.INTERNAL_SERVER_ERROR,
++                        (
++                            "Failed to open a WebSocket connection.\n"
++                            "See server log for more information.\n"
++                        ),
+                     )
+ 
+-                self.protocol.send_response(self.response)
++            if response is None:
++                self.response = self.protocol.accept(self.request)
++            else:
++                self.response = response
++
++            if server_header is not None:
++                self.response.headers["Server"] = server_header
++
++            response = None
++
++            if process_response is not None:
++                try:
++                    response = process_response(self, self.request, self.response)
++                except Exception as exc:
++                    self.protocol.handshake_exc = exc
++                    self.logger.error("process_response failed", exc_info=True)
++                    response = self.protocol.reject(
++                        http.HTTPStatus.INTERNAL_SERVER_ERROR,
++                        (
++                            "Failed to open a WebSocket connection.\n"
++                            "See server log for more information.\n"
++                        ),
++                    )
++
++                if response is not None:
++                    self.response = response
++
++            # Reject the connection if the server started closing during the
++            # opening handshake. shutdown() runs a loop to catch cases where
++            # the server shuts down between this check and send_response().
++            if (
++                self.response.status_code == http.HTTPStatus.SWITCHING_PROTOCOLS
++                and self.server.socket_closed.is_set()
++            ):
++                self.response = self.protocol.reject(
++                    http.HTTPStatus.SERVICE_UNAVAILABLE,
++                    "Server is shutting down.\n",
++                )
++
++            # Don't respond if the connection was closed during the handshake.
++            if self.state is CONNECTING:
++                with self.send_context(expected_state=CONNECTING):
++                    self.protocol.send_response(self.response)
+ 
+     def process_event(self, event: Event) -> None:
+         """
+diff --git a/src/websockets/trio/client.py b/src/websockets/trio/client.py
+index 77b4437..57c9925 100644
+--- a/src/websockets/trio/client.py
++++ b/src/websockets/trio/client.py
+@@ -98,12 +98,12 @@ class ClientConnection(Connection):
+         Perform the opening handshake.
+ 
+         """
++        self.request = self.protocol.connect()
++        if additional_headers is not None:
++            self.request.headers.update(additional_headers)
++        if user_agent_header is not None:
++            self.request.headers.setdefault("User-Agent", user_agent_header)
+         async with self.send_context(expected_state=CONNECTING):
+-            self.request = self.protocol.connect()
+-            if additional_headers is not None:
+-                self.request.headers.update(additional_headers)
+-            if user_agent_header is not None:
+-                self.request.headers.setdefault("User-Agent", user_agent_header)
+             self.protocol.send_request(self.request)
+ 
+         await race_events(self.response_rcvd, self.stream_closed)
+diff --git a/src/websockets/trio/server.py b/src/websockets/trio/server.py
+index 4ddd17a..e87748a 100644
+--- a/src/websockets/trio/server.py
++++ b/src/websockets/trio/server.py
+@@ -136,69 +136,71 @@ class ServerConnection(Connection):
+         await race_events(self.request_rcvd, self.stream_closed)
+ 
+         if self.request is not None:
+-            async with self.send_context(expected_state=CONNECTING):
+-                response = None
+-
+-                if process_request is not None:
+-                    try:
+-                        response = process_request(self, self.request)
+-                        if isinstance(response, Awaitable):
+-                            response = await response
+-                    except Exception as exc:
+-                        self.protocol.handshake_exc = exc
+-                        self.logger.error("process_request failed", exc_info=True)
+-                        response = self.protocol.reject(
+-                            http.HTTPStatus.INTERNAL_SERVER_ERROR,
+-                            (
+-                                "Failed to open a WebSocket connection.\n"
+-                                "See server log for more information.\n"
+-                            ),
+-                        )
++            response = None
+ 
+-                if response is None:
+-                    self.response = self.protocol.accept(self.request)
+-                else:
+-                    assert isinstance(response, Response)  # help mypy
+-                    self.response = response
+-
+-                if server_header is not None:
+-                    self.response.headers["Server"] = server_header
+-
+-                response = None
+-
+-                if process_response is not None:
+-                    try:
+-                        response = process_response(self, self.request, self.response)
+-                        if isinstance(response, Awaitable):
+-                            response = await response
+-                    except Exception as exc:
+-                        self.protocol.handshake_exc = exc
+-                        self.logger.error("process_response failed", exc_info=True)
+-                        response = self.protocol.reject(
+-                            http.HTTPStatus.INTERNAL_SERVER_ERROR,
+-                            (
+-                                "Failed to open a WebSocket connection.\n"
+-                                "See server log for more information.\n"
+-                            ),
+-                        )
++            if process_request is not None:
++                try:
++                    response = process_request(self, self.request)
++                    if isinstance(response, Awaitable):
++                        response = await response
++                except Exception as exc:
++                    self.protocol.handshake_exc = exc
++                    self.logger.error("process_request failed", exc_info=True)
++                    response = self.protocol.reject(
++                        http.HTTPStatus.INTERNAL_SERVER_ERROR,
++                        (
++                            "Failed to open a WebSocket connection.\n"
++                            "See server log for more information.\n"
++                        ),
++                    )
+ 
+-                if response is not None:
+-                    assert isinstance(response, Response)  # help mypy
+-                    self.response = response
++            if response is None:
++                self.response = self.protocol.accept(self.request)
++            else:
++                assert isinstance(response, Response)  # help mypy
++                self.response = response
+ 
+-                # Reject the connection if the server started closing during the
+-                # opening handshake. Don't yield before send_response() to avoid
+-                # a race condition after checking if the server is closing.
+-                if (
+-                    self.response.status_code == http.HTTPStatus.SWITCHING_PROTOCOLS
+-                    and self.server.closing
+-                ):
+-                    self.response = self.protocol.reject(
+-                        http.HTTPStatus.SERVICE_UNAVAILABLE,
+-                        "Server is shutting down.\n",
++            if server_header is not None:
++                self.response.headers["Server"] = server_header
++
++            response = None
++
++            if process_response is not None:
++                try:
++                    response = process_response(self, self.request, self.response)
++                    if isinstance(response, Awaitable):
++                        response = await response
++                except Exception as exc:
++                    self.protocol.handshake_exc = exc
++                    self.logger.error("process_response failed", exc_info=True)
++                    response = self.protocol.reject(
++                        http.HTTPStatus.INTERNAL_SERVER_ERROR,
++                        (
++                            "Failed to open a WebSocket connection.\n"
++                            "See server log for more information.\n"
++                        ),
+                     )
+ 
+-                self.protocol.send_response(self.response)
++            if response is not None:
++                assert isinstance(response, Response)  # help mypy
++                self.response = response
++
++            # Reject the connection if the server started closing during the
++            # opening handshake. Don't yield before send_response() to avoid
++            # a race condition after checking if the server is closing.
++            if (
++                self.response.status_code == http.HTTPStatus.SWITCHING_PROTOCOLS
++                and self.server.closing
++            ):
++                self.response = self.protocol.reject(
++                    http.HTTPStatus.SERVICE_UNAVAILABLE,
++                    "Server is shutting down.\n",
++                )
++
++            # Don't respond if the connection was closed during the handshake.
++            if self.state is CONNECTING:
++                async with self.send_context(expected_state=CONNECTING):
++                    self.protocol.send_response(self.response)
+ 
+     def process_event(self, event: Event) -> None:
+         """

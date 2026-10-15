@@ -1,0 +1,31 @@
+id = "F10"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Underspecified feature with a user in the loop (docs/task-catalog.md). Upstream: sdispater/tomlkit
+# issue #288 "Support Decimal serialization?"; PR #296 "feat: allow users to register custom encoders"
+# (squash-merged 2023-06-28, fix a3cb8a2). The maintainer had proposed a different API in PR #294
+# (`item(value, encoder=...)`), so the prompt does not name the API and user.md holds the decisive design.
+timeout_s = 1800
+budget_usd = 5.0
+max_turns = 60
+# tests/conftest.py lists tests/toml-test/tests/{valid,invalid} at collection time; the submodule is not
+# checked out, so create the empty directories it expects. They are untracked, so an agent's `git stash -u`
+# or `git clean` deletes them (seen in run 20261014-211242-0728); hidden_tests/ carries .gitkeep files so they
+# exist again at grading. Re-add them after `build-task --force`.
+install = "uv pip install --python /opt/venv/bin/python -e . pytest && mkdir -p tests/toml-test/tests/valid tests/toml-test/tests/invalid"
+# tests/toml-test and tests/toml-spec-tests are git submodules and need PyYAML, so only offline files run.
+acceptance = ["tests/test_items.py::test_custom_encoders"]
+# test_custom_encoders is graded by acceptance. The two other deselected tests fail at base on the container's Python (datetime.replace() on Date/Time
+# subclasses), unrelated to this feature.
+regression = "python -m pytest -q -p no:cacheprovider --deselect tests/test_items.py::test_custom_encoders --deselect tests/test_items.py::test_dates_behave_like_dates --deselect tests/test_items.py::test_times_behave_like_times tests/test_items.py tests/test_api.py tests/test_write.py tests/test_toml_document.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/sdispater/tomlkit.git"
+# parent of the squash-merge commit (tomlkit 0.11.8 + development)
+base = "5f0e9542b8fc9f2fce971d2fc5268974feabd446"
+# PR #296 "feat: allow users to register custom encoders"
+fix  = "a3cb8a2b71bd70001d13e5455177d5fe96208256"
+exclude = ["CHANGELOG.md"]

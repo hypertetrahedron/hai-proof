@@ -1,0 +1,31 @@
+id = "F6"
+kind = "feature"
+level = 3
+suites = ["standard"]
+cost_tier = "medium"
+report_order = 8
+origin = "upstream-fix"
+# Upstream feature (docs/task-catalog.md): Lark.scan(), finding non-overlapping grammar matches embedded
+# in arbitrary text (lark PR #1592, merged 2026-07-18). ~200 lines across lark.py, lexer.py and
+# parser_frontends.py. Hidden tests: tests/test_scan.py plus the scan tests added to test_parser.py
+# (every lexer variant) and test_tools.py (standalone parser).
+timeout_s = 3600
+budget_usd = 40.0
+max_turns = 300
+install = "uv pip install --python /opt/venv/bin/python -e . interegular regex pytest"
+acceptance = ["tests/test_scan.py", "tests/test_parser.py", "tests/test_tools.py"]
+# The project's own runner (tox.ini: `python -m tests`, unittest). -k scan selects the new tests in
+# test_parser.py/test_tools.py; every test in test_scan.py has "scan" in its name.
+acceptance_cmd = "python -m unittest -k scan tests.test_scan tests.test_parser tests.test_tools"
+regression = "python -m tests"
+
+[source]
+kind = "git"
+url  = "https://github.com/lark-parser/lark.git"
+# first parent of the merge commit
+base = "c169b26a5bec9d47e590bf4be83691bcbdfe7b6b"
+# merge of PR #1592 "Add Lark.scan() for finding grammar matches in text, and parsing them."
+fix  = "802dee0ddefd4e4c5b6dc34d701051c7f62b650f"
+# Docs and the example are not part of what is graded; test_typing.py needs mypy. test_trees.py only
+# adds a Token deepcopy/pickle check, an upstream implementation detail the prompt cannot require.
+exclude = ["docs/*", "examples/*", "tests/test_typing.py", "tests/test_trees.py"]

@@ -1,0 +1,17 @@
+id = "B4"
+kind = "bug"
+level = 2
+origin = "injected"
+# Built as a ~30 min L3 candidate; the pilot took 2.5 min, so it is collected as L2 (docs/task-catalog.md). The css-parsing-tests
+# submodule is not cloned, so the agent has no conformance corpus; the hidden tests vendor it.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest"
+acceptance = ["tests/hai_proof/test_b4.py"]
+
+[source]
+kind = "git"
+url  = "https://github.com/Kozea/tinycss2.git"
+# tag v1.5.0
+base = "282de7e6e835c21f05dfee15841b0dbf3d904c61"

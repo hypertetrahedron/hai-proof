@@ -1,0 +1,44 @@
+diff --git a/changelog/431.bugfix.rst b/changelog/431.bugfix.rst
+new file mode 100644
+index 0000000..5c813c2
+--- /dev/null
++++ b/changelog/431.bugfix.rst
+@@ -0,0 +1 @@
++Fix ``HookCaller._remove_plugin()`` to remove all hook implementations for a plugin in a single call, instead of only the first one. Also fix ``PluginManager.get_hookcallers()`` to not return duplicate ``HookCaller`` entries when a plugin has multiple implementations on the same hook (e.g. via ``specname``).
+diff --git a/src/pluggy/_hooks.py b/src/pluggy/_hooks.py
+index 7fde78c..cdd3085 100644
+--- a/src/pluggy/_hooks.py
++++ b/src/pluggy/_hooks.py
+@@ -440,11 +440,11 @@ class HookCaller:
+         return self._call_history is not None
+ 
+     def _remove_plugin(self, plugin: _Plugin) -> None:
+-        for i, method in enumerate(self._hookimpls):
+-            if method.plugin == plugin:
+-                del self._hookimpls[i]
+-                return
+-        raise ValueError(f"plugin {plugin!r} not found")
++        """Remove all hook implementations registered by the given plugin."""
++        remaining = [impl for impl in self._hookimpls if impl.plugin != plugin]
++        if len(remaining) == len(self._hookimpls):
++            raise ValueError(f"plugin {plugin!r} not found")
++        self._hookimpls[:] = remaining
+ 
+     def get_hookimpls(self) -> list[HookImpl]:
+         """Get all registered hook implementations for this hook."""
+diff --git a/src/pluggy/_manager.py b/src/pluggy/_manager.py
+index 1b994f2..c20105c 100644
+--- a/src/pluggy/_manager.py
++++ b/src/pluggy/_manager.py
+@@ -442,9 +442,8 @@ class PluginManager:
+             return None
+         hookcallers = []
+         for hookcaller in self.hook.__dict__.values():
+-            for hookimpl in hookcaller.get_hookimpls():
+-                if hookimpl.plugin is plugin:
+-                    hookcallers.append(hookcaller)
++            if any(impl.plugin is plugin for impl in hookcaller.get_hookimpls()):
++                hookcallers.append(hookcaller)
+         return hookcallers
+ 
+     def add_hookcall_monitoring(

@@ -1,0 +1,19 @@
+id = "F4"
+kind = "feature"
+level = 3
+suites = ["standard"]
+cost_tier = "high"
+report_order = 12
+origin = "authored"
+# Sized for ~30 min of agent time (see docs/task-authoring.md calibration notes).
+timeout_s = 3600
+budget_usd = 40.0
+max_turns = 300
+install = "uv pip install --python /opt/venv/bin/python -e . pytest trio"
+acceptance = ["tests/hai_proof/test_f4.py"]
+
+[source]
+kind = "git"
+url  = "https://github.com/pallets/jinja.git"
+# tag 3.1.6
+base = "15206881c006c79667fe5154fe80c01c65410679"

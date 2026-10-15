@@ -1,0 +1,20 @@
+id = "B13"
+kind = "bug"
+level = 1
+suites = ["smoke"]
+origin = "upstream-fix"
+# Interaction bug (docs/task-catalog.md): nested validators.disabled() / disabled() after
+# set_run_validators(False) re-enables validators globally (attrs PR #1513, 2026-03-14).
+timeout_s = 1200
+budget_usd = 3.0
+max_turns = 40
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=25.4.0 uv pip install --python /opt/venv/bin/python -e . cloudpickle hypothesis pympler pytest"
+# mypy plugin tests (tests/test_mypy.yml) need pytest-mypy-plugins; not part of this bug.
+regression = "python -m pytest -q -p no:cacheprovider tests"
+acceptance = ["tests/test_validators.py"]
+
+[source]
+kind = "git"
+url  = "https://github.com/python-attrs/attrs.git"
+base = "ab7f8b2f4c0f747d5b1575247ce35e5adaad182e"
+fix  = "af9c510912ce604a94896cc35c27368d5baf6ae6"

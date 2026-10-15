@@ -1,0 +1,184 @@
+diff --git a/lib/sqlalchemy/ext/asyncio/base.py b/lib/sqlalchemy/ext/asyncio/base.py
+index a6d7890de..c30b109b1 100644
+--- a/lib/sqlalchemy/ext/asyncio/base.py
++++ b/lib/sqlalchemy/ext/asyncio/base.py
+@@ -8,6 +8,7 @@
+ from __future__ import annotations
+ 
+ import abc
++import asyncio
+ import functools
+ from typing import Any
+ from typing import AsyncGenerator
+@@ -15,6 +16,7 @@ from typing import AsyncIterator
+ from typing import Awaitable
+ from typing import Callable
+ from typing import ClassVar
++from typing import Coroutine
+ from typing import Dict
+ from typing import Generator
+ from typing import Generic
+@@ -37,6 +39,35 @@ _T_co = TypeVar("_T_co", bound=Any, covariant=True)
+ _PT = TypeVar("_PT", bound=Any)
+ 
+ 
++async def _run_to_completion(coro: Coroutine[Any, Any, _T]) -> _T:
++    """Run ``coro`` in a task of its own and wait for it to complete, even
++    if the calling task is cancelled meanwhile.
++
++    Used for cleanup, such as the ``close()`` performed by an async context
++    manager on exit, that must not be abandoned partway through.  A
++    cancellation received while waiting is re-raised once ``coro`` has
++    completed, so that the caller does not return before its cleanup has
++    finished; were it to return early, the cleanup would carry on in the
++    background, where for example it could return a connection into a pool
++    that the application has meanwhile disposed of.
++
++    """
++    task = asyncio.create_task(coro)
++    cancelled = None
++    while True:
++        try:
++            result = await asyncio.shield(task)
++        except asyncio.CancelledError as err:
++            if task.done():
++                raise
++            cancelled = err
++        else:
++            break
++    if cancelled is not None:
++        raise cancelled
++    return result
++
++
+ class ReversibleProxy(Generic[_PT]):
+     _proxy_objects: ClassVar[
+         Dict[weakref.ref[Any], weakref.ref[ReversibleProxy[Any]]]
+diff --git a/lib/sqlalchemy/ext/asyncio/engine.py b/lib/sqlalchemy/ext/asyncio/engine.py
+index 472ba559b..775ca2f10 100644
+--- a/lib/sqlalchemy/ext/asyncio/engine.py
++++ b/lib/sqlalchemy/ext/asyncio/engine.py
+@@ -6,7 +6,6 @@
+ # the MIT License: https://www.opensource.org/licenses/mit-license.php
+ from __future__ import annotations
+ 
+-import asyncio
+ import contextlib
+ from typing import Any
+ from typing import AsyncIterator
+@@ -24,6 +23,7 @@ from typing import TypeVar
+ from typing import Union
+ 
+ from . import exc as async_exc
++from .base import _run_to_completion
+ from .base import asyncstartablecontext
+ from .base import GeneratorStartableContext
+ from .base import ProxyComparable
+@@ -606,8 +606,7 @@ class AsyncConnection(  # type: ignore[misc]
+         except GeneratorExit:
+             pass
+         else:
+-            task = asyncio.create_task(ar.close())
+-            await asyncio.shield(task)
++            await _run_to_completion(ar.close())
+ 
+     @overload
+     async def execute(
+@@ -913,8 +912,7 @@ class AsyncConnection(  # type: ignore[misc]
+         return self.start().__await__()
+ 
+     async def __aexit__(self, type_: Any, value: Any, traceback: Any) -> None:
+-        task = asyncio.create_task(self.close())
+-        await asyncio.shield(task)
++        await _run_to_completion(self.close())
+ 
+     # START PROXY METHODS AsyncConnection
+ 
+diff --git a/lib/sqlalchemy/ext/asyncio/session.py b/lib/sqlalchemy/ext/asyncio/session.py
+index 8beee9846..b9e0e297d 100644
+--- a/lib/sqlalchemy/ext/asyncio/session.py
++++ b/lib/sqlalchemy/ext/asyncio/session.py
+@@ -6,7 +6,6 @@
+ # the MIT License: https://www.opensource.org/licenses/mit-license.php
+ from __future__ import annotations
+ 
+-import asyncio
+ from typing import Any
+ from typing import Awaitable
+ from typing import Callable
+@@ -30,6 +29,7 @@ from typing import Union
+ 
+ from . import engine
+ from . import exc as async_exc
++from .base import _run_to_completion
+ from .base import ReversibleProxy
+ from .base import StartableContext
+ from .result import _ensure_sync_result
+@@ -1375,8 +1375,7 @@ class AsyncSession(ReversibleProxy[Session]):
+         return self
+ 
+     async def __aexit__(self, type_: Any, value: Any, traceback: Any) -> None:
+-        task = asyncio.create_task(self.close())
+-        await asyncio.shield(task)
++        await _run_to_completion(self.close())
+ 
+     def _maker_context_manager(self: _AS) -> _AsyncSessionContextManager[_AS]:
+         return _AsyncSessionContextManager(self)
+@@ -2121,8 +2120,7 @@ class _AsyncSessionContextManager(Generic[_AS]):
+             await self.trans.__aexit__(type_, value, traceback)
+             await self.async_session.__aexit__(type_, value, traceback)
+ 
+-        task = asyncio.create_task(go())
+-        await asyncio.shield(task)
++        await _run_to_completion(go())
+ 
+ 
+ class AsyncSessionTransaction(
+diff --git a/lib/sqlalchemy/pool/base.py b/lib/sqlalchemy/pool/base.py
+index 8a80bc2be..5b477007b 100644
+--- a/lib/sqlalchemy/pool/base.py
++++ b/lib/sqlalchemy/pool/base.py
+@@ -733,10 +733,21 @@ class _ConnectionRecord(ConnectionPoolEntry):
+     def _checkin_failed(
+         self, err: BaseException, _fairy_was_created: bool = True
+     ) -> None:
+-        self.invalidate(e=err)
+-        self.checkin(
+-            _fairy_was_created=_fairy_was_created,
+-        )
++        try:
++            self.invalidate(e=err)
++        finally:
++            if self.dbapi_connection is not None:
++                # invalidate() was itself interrupted, such as by a second
++                # cancellation, before it could close the connection.  keep
++                # the connection so that its close can be retried, but
++                # have the next checkout recycle it rather than use it
++                self._soft_invalidate_time = time.time()
++
++            # the record must be returned in any case; nothing else will
++            # ever return it, as no _ConnectionFairy refers to it
++            self.checkin(
++                _fairy_was_created=_fairy_was_created,
++            )
+ 
+     def checkin(self, _fairy_was_created: bool = True) -> None:
+         if self.fairy_ref is None and _fairy_was_created:
+@@ -1017,10 +1028,15 @@ def _finalize_fairy(
+             pool.logger.error(
+                 "Exception during reset or similar", exc_info=True
+             )
+-            if connection_record:
+-                connection_record.invalidate(e=e)
+             if not isinstance(e, Exception):
++                # a cancellation or similar propagates from here, so the
++                # checkin() below is not reached; return the record now,
++                # rather than leaving it to garbage collection of the fairy
++                if connection_record:
++                    connection_record._checkin_failed(e)
+                 raise
++            if connection_record:
++                connection_record.invalidate(e=e)
+         finally:
+             if detach and is_gc_cleanup and dont_restore_gced:
+                 message = (

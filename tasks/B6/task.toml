@@ -1,0 +1,30 @@
+id = "B6"
+kind = "bug"
+level = 2
+suites = ["standard"]
+cost_tier = "medium"
+report_order = 9
+origin = "injected"
+# Long bug (docs/task-catalog.md): a "simplification refactor" breaks RFC 9535 filter semantics in
+# four connected places; fixing it means re-deriving them from the RFC (texts under docs/rfc/).
+# The CTS submodule is not cloned; the hidden tests vendor it, plus the repo tests that cover filters.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest"
+acceptance = [
+    "tests/test_compliance.py",
+    "tests/test_ietf_well_typedness.py",
+    "tests/test_ietf_examples.py",
+    "tests/test_canonical_paths.py",
+    "tests/test_cli.py",
+    "tests/test_errors.py",
+    "tests/test_issues.py",
+    "tests/test_regex_cache.py",
+]
+
+[source]
+kind = "git"
+url  = "https://github.com/jg-rp/python-jsonpath-rfc9535.git"
+# tag v2.0.1
+base = "8393f7c6446d8bbad6a3c1f93b48bbd2f999f992"

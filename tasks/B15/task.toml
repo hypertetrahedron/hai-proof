@@ -1,0 +1,31 @@
+id = "B15"
+kind = "bug"
+level = 1
+origin = "upstream-fix"
+# Same defect in three parallel implementations (docs/task-catalog.md): websockets servers log an
+# "unexpected internal error" when the peer drops the TCP connection during process_request, in the
+# asyncio, sync and trio servers (PR #1744, 2026-07-28).
+timeout_s = 1200
+budget_usd = 3.0
+max_turns = 40
+install = "BUILD_EXTENSION=no uv pip install --python /opt/venv/bin/python -e . pytest trio"
+# The new regression test in each implementation. (The whole files include the timing-flaky
+# test_close_keeps_handlers_running, see B9.)
+acceptance = [
+    "tests/asyncio/test_server.py::ServerTests::test_connection_closed_before_handshake_response",
+    "tests/sync/test_server.py::ServerTests::test_connection_closed_before_handshake_response_sync",
+    "tests/trio/test_server.py::ServerTests::test_connection_closed_before_handshake_response",
+]
+acceptance_cmd = "WEBSOCKETS_TESTS_TIMEOUT_FACTOR=10 python -m unittest tests.asyncio.test_server.ServerTests.test_connection_closed_before_handshake_response tests.sync.test_server.ServerTests.test_connection_closed_before_handshake_response_sync tests.trio.test_server.ServerTests.test_connection_closed_before_handshake_response"
+# The project's own runner (Makefile, tox.ini: `python -m unittest`). Under pytest, the logging
+# plugin keeps captured LogRecords whose tracebacks hold connections alive, which breaks reference-
+# counting tests the agent may write (docs/prompt-degradation.md). inject.patch skips the two
+# offline/timing-flaky upstream tests (test_reconnect, test_close_keeps_handlers_running).
+# Upstream timeout unit scaled x10 (tests/utils.py) — timing tests flake ~1 in 15 full runs at x1.
+regression = "WEBSOCKETS_TESTS_TIMEOUT_FACTOR=10 python -m unittest"
+
+[source]
+kind = "git"
+url  = "https://github.com/python-websockets/websockets.git"
+base = "02653c73bb30236607a0202b4349846407d9d290"
+fix  = "686f4924bbb60a39c441d04fde70b79c0c0df7c6"

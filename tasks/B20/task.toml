@@ -1,0 +1,24 @@
+id = "B20"
+kind = "bug"
+level = 1
+suites = ["standard"]
+cost_tier = "low"
+report_order = 2
+origin = "upstream-fix"
+# Long-investigation leak (docs/task-catalog.md): repeatedly selecting rows of a Table indexed on a
+# MaskedColumn grows memory without bound; gc does not help. Open 2.5 years (27 comments, failed PRs
+# #16092 and #18426); the cause is numpy's MaskedArray._optinfo carrying the column's `indices` into
+# derived arrays, so slices of slices deep-copy the whole index (issue #16089, PR #20456, 2026-09-22).
+# Acceptance is the behavioural leak test only; the PR's other test inspects `_optinfo` directly.
+timeout_s = 1200
+budget_usd = 3.0
+max_turns = 40
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=8.1.0.dev0 uv pip install --python /opt/venv/bin/python -e '.[test]'"
+acceptance = ["astropy/table/tests/test_index.py::test_indexed_masked_column_slicing_does_not_leak_memory"]
+regression = "python -m pytest -q -p no:cacheprovider astropy/table/tests"
+
+[source]
+kind = "git"
+url  = "https://github.com/astropy/astropy.git"
+base = "1c0d7ec0424f6a0b626ca769e95a43b8835de10b"
+fix  = "7974082de017992415535748212a7161c0f8030c"

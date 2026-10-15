@@ -1,0 +1,35 @@
+id = "B21"
+kind = "bug"
+level = 2
+suites = ["standard"]
+cost_tier = "low"
+report_order = 5
+origin = "upstream-fix"
+# Concurrency defect in a large system (docs/task-catalog.md): cancelling a task while an asyncio
+# context manager (AsyncConnection / AsyncSession) closes on exit lets the task finish while the close
+# carries on in the background, so a connection is returned into an already-disposed pool and leaks;
+# related pool paths lose slots on a cancellation during reset. Issue #12710 (30 comments, earlier
+# "extra shielding" attempt), fix 6f899879 (2026-09-30, via Gerrit).
+# hidden_tests is hand-assembled; `build-task --force` breaks it, so re-apply after a rebuild:
+# - lib/sqlalchemy/testing/cancellation.py: the fix's new sweep harness (it asserts lost pool slots).
+#   It is test infrastructure whose docstrings describe the cause, so it is excluded from the
+#   reference and only overlaid at grading.
+# - test/ext/asyncio/test_cancellation.py: upstream's, minus RunToCompletionTest and its import of the
+#   new private helper `_run_to_completion` (implementation-specific).
+# The PostgreSQL/Oracle-only sweeps (recycle, double cancel) are skipped on aiosqlite.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest aiosqlite greenlet"
+acceptance = ["test/ext/asyncio/test_cancellation.py"]
+acceptance_args = ["--dburi", "sqlite+aiosqlite:///:memory:"]
+# Pool tests on the default sqlite (test_recycle_pool_no_race fails under aiosqlite at the start state);
+# the asyncio extension on aiosqlite. The grader's --ignore flags land on the second command.
+regression = "python -m pytest -q -p no:cacheprovider test/engine/test_pool.py && python -m pytest -q -p no:cacheprovider test/ext/asyncio --dburi sqlite+aiosqlite:///:memory:"
+
+[source]
+kind = "git"
+url  = "https://github.com/sqlalchemy/sqlalchemy.git"
+base = "bc8982869d887a47a535ba45d80eb9a6f4595530"
+fix  = "6f8998793074ffdafe2c867cbc05509056d32c17"
+exclude = ["lib/sqlalchemy/testing/cancellation.py", "doc/*"]

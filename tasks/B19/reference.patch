@@ -1,0 +1,203 @@
+diff --git a/tornado/iostream.py b/tornado/iostream.py
+index df8b1246..05467670 100644
+--- a/tornado/iostream.py
++++ b/tornado/iostream.py
+@@ -635,7 +635,10 @@ class BaseIOStream:
+                     self._ssl_connect_future.set_exception(self.error)
+                 else:
+                     self._ssl_connect_future.set_exception(StreamClosedError())
+-            self._ssl_connect_future.exception()
++            try:
++                self._ssl_connect_future.exception()
++            except asyncio.CancelledError:
++                pass
+             self._ssl_connect_future = None
+         if self._close_callback is not None:
+             cb = self._close_callback
+@@ -1201,7 +1204,7 @@ class IOStream(BaseIOStream):
+         server_side: bool,
+         ssl_options: dict[str, Any] | ssl.SSLContext | None = None,
+         server_hostname: str | None = None,
+-    ) -> Awaitable["SSLIOStream"]:
++    ) -> "Future[SSLIOStream]":
+         """Convert this `IOStream` to an `SSLIOStream`.
+ 
+         This enables protocols that begin in clear-text mode and
+@@ -1235,6 +1238,10 @@ class IOStream(BaseIOStream):
+            SSL certificates are validated by default; pass
+            ``ssl_options=dict(cert_reqs=ssl.CERT_NONE)`` or a
+            suitably-configured `ssl.SSLContext` to disable.
++
++        .. versionchanged:: 6.6
++           Cancelling the returned `.Future` before the handshake completes
++           now closes the new stream and its socket.
+         """
+         if (
+             self._read_future
+@@ -1270,6 +1277,13 @@ class IOStream(BaseIOStream):
+         ssl_stream._ssl_connect_future = future
+         ssl_stream.max_buffer_size = self.max_buffer_size
+         ssl_stream.read_chunk_size = self.read_chunk_size
++        # The socket now belongs to ssl_stream, which the caller can't see
++        # until the handshake completes. If the caller gives up (e.g. on a
++        # timeout) and cancels the future, close the stream so the socket
++        # is not leaked.
++        future.add_done_callback(
++            lambda f: ssl_stream.close() if f.cancelled() else None
++        )
+         return future
+ 
+     def _handle_connect(self) -> None:
+diff --git a/tornado/simple_httpclient.py b/tornado/simple_httpclient.py
+index a124c038..d428bf21 100644
+--- a/tornado/simple_httpclient.py
++++ b/tornado/simple_httpclient.py
+@@ -325,19 +325,22 @@ class _HTTPConnection(httputil.HTTPMessageDelegate):
+                 timeout = self.request.request_timeout
+             else:
+                 timeout = 0
+-            if timeout:
+-                self._timeout = self.io_loop.add_timeout(
+-                    self.start_time + timeout,
+-                    functools.partial(self._on_timeout, "while connecting"),
++            try:
++                stream = await self.tcp_client.connect(
++                    host,
++                    port,
++                    af=af,
++                    ssl_options=ssl_options,
++                    max_buffer_size=self.max_buffer_size,
++                    source_ip=source_ip,
++                    timeout=(
++                        self.start_time + timeout - self.io_loop.time()
++                        if timeout
++                        else None
++                    ),
+                 )
+-            stream = await self.tcp_client.connect(
+-                host,
+-                port,
+-                af=af,
+-                ssl_options=ssl_options,
+-                max_buffer_size=self.max_buffer_size,
+-                source_ip=source_ip,
+-            )
++            except gen.TimeoutError:
++                raise HTTPTimeoutError("Timeout while connecting") from None
+ 
+             if self.final_callback is None:
+                 # final_callback is cleared if we've hit our timeout.
+diff --git a/tornado/tcpclient.py b/tornado/tcpclient.py
+index 742e537d..09be9203 100644
+--- a/tornado/tcpclient.py
++++ b/tornado/tcpclient.py
+@@ -99,10 +99,13 @@ class _Connector:
+         timeout: float = _INITIAL_CONNECT_TIMEOUT,
+         connect_timeout: float | datetime.timedelta | None = None,
+     ) -> "Future[Tuple[socket.AddressFamily, Any, IOStream]]":
+-        self.try_connect(iter(self.primary_addrs))
++        # Set the timeouts first: try_connect may fail synchronously, and
++        # on_connect_done will then skip ahead to the secondary addresses.
+         self.set_timeout(timeout)
+         if connect_timeout is not None:
+             self.set_connect_timeout(connect_timeout)
++        self.try_connect(iter(self.primary_addrs))
++        future_add_done_callback(self.future, self.on_future_done)
+         return self.future
+ 
+     def try_connect(self, addrs: Iterator[tuple[socket.AddressFamily, tuple]]) -> None:
+@@ -117,8 +120,16 @@ class _Connector:
+                     self.last_error or IOError("connection failed")
+                 )
+             return
+-        stream, future = self.connect(af, addr)
+-        self.streams.add(stream)
++        try:
++            stream, future = self.connect(af, addr)
++        except Exception as e:
++            # Report synchronous errors (e.g. an address family that is
++            # not supported on this system) through the same path as
++            # asynchronous ones, so we move on to the next address.
++            future = Future()
++            future.set_exception(e)
++        else:
++            self.streams.add(stream)
+         future_add_done_callback(
+             future, functools.partial(self.on_connect_done, addrs, af, addr)
+         )
+@@ -155,6 +166,16 @@ class _Connector:
+             self.future.set_result((af, addr, stream))
+             self.close_streams()
+ 
++    def on_future_done(
++        self, future: "Future[Tuple[socket.AddressFamily, Any, IOStream]]"
++    ) -> None:
++        if future.cancelled():
++            # The caller gave up (e.g. asyncio.wait_for). Close any
++            # connection attempts that are still in progress instead of
++            # leaving them open until the OS gives up on them.
++            self.clear_timeouts()
++            self.close_streams()
++
+     def set_timeout(self, timeout: float) -> None:
+         self.timeout = self.io_loop.add_timeout(
+             self.io_loop.time() + timeout, self.on_timeout
+@@ -272,17 +293,20 @@ class TCPClient:
+         # information here and reuse it on subsequent connections to
+         # the same host. (http://tools.ietf.org/html/rfc6555#section-4.2)
+         if ssl_options is not None:
+-            if timeout is not None:
+-                stream = await gen.with_timeout(
+-                    timeout,
+-                    stream.start_tls(
+-                        False, ssl_options=ssl_options, server_hostname=host
+-                    ),
+-                )
+-            else:
+-                stream = await stream.start_tls(
+-                    False, ssl_options=ssl_options, server_hostname=host
+-                )
++            tls_future = stream.start_tls(
++                False, ssl_options=ssl_options, server_hostname=host
++            )
++            try:
++                if timeout is not None:
++                    stream = await gen.with_timeout(timeout, tls_future)
++                else:
++                    stream = await tls_future
++            finally:
++                # If we're exiting early (timeout or cancellation), cancel
++                # the handshake so the new SSLIOStream (which now owns the
++                # socket) is closed. with_timeout does not do this for us.
++                # This is a no-op if the handshake has already completed.
++                tls_future.cancel()
+         return stream
+ 
+     def _create_stream(
+@@ -305,19 +329,12 @@ class TCPClient:
+             # - 127.0.0.1 for IPv4
+             # - ::1 for IPv6
+         socket_obj = socket.socket(af)
+-        if source_port_bind or source_ip_bind:
+-            # If the user requires binding also to a specific IP/port.
+-            try:
+-                socket_obj.bind((source_ip_bind, source_port_bind))
+-            except OSError:
+-                socket_obj.close()
+-                # Fail loudly if unable to use the IP/port.
+-                raise
+         try:
++            if source_port_bind or source_ip_bind:
++                # If the user requires binding also to a specific IP/port.
++                socket_obj.bind((source_ip_bind, source_port_bind))
+             stream = IOStream(socket_obj, max_buffer_size=max_buffer_size)
+-        except OSError as e:
+-            fu: Future[IOStream] = Future()
+-            fu.set_exception(e)
+-            return stream, fu
+-        else:
+-            return stream, stream.connect(addr)
++        except BaseException:
++            socket_obj.close()
++            raise
++        return stream, stream.connect(addr)

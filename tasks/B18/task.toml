@@ -1,0 +1,46 @@
+id = "B18"
+kind = "bug"
+level = 1
+origin = "upstream-fix"
+# Incomplete first fix (docs/task-catalog.md): code that awaits a cancelled future hangs instead of
+# failing, in request handlers, @gen.coroutine, multi, with_timeout and chain_future (issues #2990,
+# #3537). The first fix, PR #3695 (2026-09-25), covered only RequestHandler._execute; PR #3749
+# (2026-09-30) finished it. Base is before both. #3749 also hardened websocket, HTTP1Connection and
+# tcpclient error paths; those are separate changes and are excluded below.
+timeout_s = 1200
+budget_usd = 3.0
+max_turns = 40
+install = "uv pip install --python /opt/venv/bin/python -e . pytest"
+# The new tests only.
+acceptance = [
+    "tornado/test/concurrent_test.py::ChainFutureTest::test_cancelled",
+    "tornado/test/concurrent_test.py::ChainFutureTest::test_cancelled_concurrent_futures",
+    "tornado/test/gen_test.py::GenBasicTest::test_multi_cancelled",
+    "tornado/test/gen_test.py::GenCoroutineTest::test_sync_raise_cancelled",
+    "tornado/test/gen_test.py::GenCoroutineTest::test_async_raise_cancelled",
+    "tornado/test/gen_test.py::GenCoroutineTest::test_yield_cancelled_future",
+    "tornado/test/gen_test.py::GenCoroutineTest::test_catch_cancelled_future",
+    "tornado/test/gen_test.py::WithTimeoutTest::test_cancelled_before_timeout",
+    "tornado/test/web_test.py::ErrorResponseTest::test_cancelled_error",
+    "tornado/test/web_test.py::CancellationTest",
+]
+acceptance_cmd = "python -m tornado.test.runtests tornado.test.concurrent_test.ChainFutureTest.test_cancelled tornado.test.concurrent_test.ChainFutureTest.test_cancelled_concurrent_futures tornado.test.gen_test.GenBasicTest.test_multi_cancelled tornado.test.gen_test.GenCoroutineTest.test_sync_raise_cancelled tornado.test.gen_test.GenCoroutineTest.test_async_raise_cancelled tornado.test.gen_test.GenCoroutineTest.test_yield_cancelled_future tornado.test.gen_test.GenCoroutineTest.test_catch_cancelled_future tornado.test.gen_test.WithTimeoutTest.test_cancelled_before_timeout tornado.test.web_test.ErrorResponseTest.test_cancelled_error tornado.test.web_test.CancellationTest"
+# Tornado's own runner for both steps: under pytest ~360 tests fail on the access log and warning
+# setup that runtests.main() does.
+regression = "python -m tornado.test.runtests"
+
+[source]
+kind = "git"
+url  = "https://github.com/tornadoweb/tornado.git"
+base = "89afbd1d7e069721cd9476b7ee5760f54217c925"
+fix  = "d0d900a9b8b1bafebd404d718043cf77abc1caaa"
+exclude = [
+    ".github/*",
+    "tornado/websocket.py",
+    "tornado/http1connection.py",
+    "tornado/tcpclient.py",
+    "tornado/test/websocket_test.py",
+    "tornado/test/http1connection_test.py",
+    "tornado/test/simple_httpclient_test.py",
+    "tornado/test/tcpclient_test.py",
+]

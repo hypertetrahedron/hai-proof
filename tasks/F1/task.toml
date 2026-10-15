@@ -1,6 +1,7 @@
 id = "F1"
 kind = "feature"
 level = 1
+suites = ["smoke"]
 origin = "authored"
 timeout_s = 1200
 budget_usd = 3.0

@@ -1,0 +1,26 @@
+id = "B10"
+kind = "bug"
+level = 1
+origin = "upstream-fix"
+# Data-dependent defect, symptom far from cause (docs/task-catalog.md): multipart uploads lose 1 byte
+# when a part ends in CR at a particular buffer offset (werkzeug issue #3077, PR #3081, 2026-01-02).
+timeout_s = 1200
+budget_usd = 3.0
+max_turns = 40
+install = "uv pip install --python /opt/venv/bin/python -e . pytest pytest-timeout ephemeral-port-reserve watchdog cryptography"
+# Only the user-visible regression test. Upstream's fix also changed internal chunking expectations in
+# tests/sansio/test_multipart.py, which reject other correct fixes, so that file is left as in the repo
+# (hidden_tests holds the repo's own copy).
+acceptance = ["tests/test_formparser.py"]
+# dev_server tests start real servers in subprocesses; keep regression to the in-process suite.
+# test_decoder_data_start_with_different_newline_positions pins how data is split into events at a
+# chunk boundary; the original and the fixed expectations each reject other correct fixes.
+regression = "python -m pytest -q -p no:cacheprovider tests -m 'not dev_server' --deselect tests/sansio/test_multipart.py::test_decoder_data_start_with_different_newline_positions"
+
+[source]
+kind = "git"
+url  = "https://github.com/pallets/werkzeug.git"
+# first parent of the merge commit
+base = "b48878cf16dfca3c89ac58aca47ab1ecfcb71354"
+# merge of PR #3081 "Correct parsing up to a potential partial boundary"
+fix  = "0f76c353b10afc2f8129aa3684ccc3262516a0c0"

@@ -1,0 +1,12 @@
+diff --git a/dynaconf/utils/__init__.py b/dynaconf/utils/__init__.py
+index ccd6703..614cf85 100644
+--- a/dynaconf/utils/__init__.py
++++ b/dynaconf/utils/__init__.py
+@@ -125,6 +125,7 @@ def object_merge(
+                 # but the new value on the end of full path is the same
+                 if (
+                     existing_value is not None
++                    and len(full_path) == 1
+                     and old_key.lower() == full_path[-1].lower()
+                     and existing_value is value
+                 ):

@@ -1,0 +1,38 @@
+# Fission-AI/OpenSpec 1.13.2 (npm @fission-ai/openspec, MIT, published 2026-09-23; 1.14.1 is the latest but
+# was under two weeks old on 2026-10-13). Package reviewed 2026-10-13: no install scripts; the only network
+# calls are PostHog telemetry (edge.openspec.dev) and an npm version check, both off via the env below (and
+# blocked by the egress proxy anyway). `openspec init --tools claude` writes, in /work before the baseline
+# commit: .claude/commands/opsx/{propose,apply,archive,explore,sync,update}.md, the matching
+# .claude/skills/openspec-*/SKILL.md, and openspec/config.yaml (schema spec-driven); nothing in $HOME.
+#
+# Workflow (DESIGN §3.8): /opsx:propose writes proposal, specs, design and tasks under openspec/changes/
+# and is written to stop there ("authorizes planning only ... wait for a new user request") and to ask
+# about material ambiguity. /opsx:apply then implements the tasks. Run with `--user ...` or conventional:
+# both scripted turns are sent in every mode.
+name = "openspec"
+prompt_prefix = ""
+
+[env]
+OPENSPEC_TELEMETRY = "0"
+DO_NOT_TRACK = "1"
+OPENSPEC_NO_UPDATE_CHECK = "1"
+
+[[requires]]
+name = "openspec"
+install = "npm install -g --ignore-scripts @fission-ai/openspec@1.13.2 && npm cache clean --force"
+check = "openspec --version | grep -qx 1.13.2"
+
+[setup]
+commands = ["OPENSPEC_TELEMETRY=0 DO_NOT_TRACK=1 OPENSPEC_NO_UPDATE_CHECK=1 openspec init --tools claude --no-animation < /dev/null"]
+artifacts = ["openspec/"]
+
+[workflow]
+turns = ["/opsx:propose {task_prompt}", "/opsx:apply"]
+
+[network]
+allow = []
+
+[expect]
+plugins = []
+mcp_servers = []
+skills = ["opsx:propose", "opsx:apply"]

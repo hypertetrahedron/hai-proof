@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "plugins": {
+    "superpowers@hai-proof-pinned": [
+      {
+        "scope": "user",
+        "installPath": "/home/agent/.claude/plugins/cache/hai-proof-pinned/superpowers/6.4.1",
+        "version": "6.4.1",
+        "installedAt": "2026-10-11T02:06:14.855Z",
+        "lastUpdated": "2026-10-11T02:06:14.855Z"
+      }
+    ]
+  }
+}

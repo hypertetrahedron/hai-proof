@@ -1,0 +1,22 @@
+# obra/superpowers 6.4.1 at 5bf4e78011075bcfc0dc295f0724994cd123ee71 (the SHA pinned by the official
+# claude-plugins-official marketplace). user/ is a CLAUDE_CONFIG_DIR produced by `claude plugin install`
+# from a local directory marketplace at user/hai-proof-mkt (the plugin runs from there) in hai-proof-base 2.1.296, offline; .claude.json and backups/ removed so
+# the plugin is the only difference from plain. SessionStart hook injects the using-superpowers skill.
+name = "superpowers"
+prompt_prefix = ""
+
+# Windows checkouts lose exec bits and hai-proof's tar marks only *.sh / shebang files executable, so
+# restore the upstream 100755 files (hooks/run-hook.cmd is a cmd/sh polyglot with no shebang).
+[setup]
+commands = ["cd /home/agent/.claude/hai-proof-mkt/superpowers && chmod +x hooks/run-hook.cmd hooks/session-start skills/brainstorming/scripts/start-server.sh skills/brainstorming/scripts/stop-server.sh skills/executing-plans/scripts/task-done skills/executing-plans/scripts/task-start skills/subagent-driven-development/scripts/review-package skills/subagent-driven-development/scripts/sdd-workspace skills/subagent-driven-development/scripts/task-brief skills/systematic-debugging/find-polluter.sh skills/writing-skills/render-graphs.js && cd /home/agent/.claude/plugins/cache/hai-proof-pinned/superpowers/6.4.1 && chmod +x hooks/run-hook.cmd hooks/session-start skills/brainstorming/scripts/start-server.sh skills/brainstorming/scripts/stop-server.sh skills/executing-plans/scripts/task-done skills/executing-plans/scripts/task-start skills/subagent-driven-development/scripts/review-package skills/subagent-driven-development/scripts/sdd-workspace skills/subagent-driven-development/scripts/task-brief skills/systematic-debugging/find-polluter.sh skills/writing-skills/render-graphs.js"]
+artifacts = []
+
+[env]
+
+[network]
+allow = []
+
+[expect]
+plugins = ["superpowers"]
+mcp_servers = []
+skills = []

@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "plugins": {
+    "ponytail@hai-proof-pinned": [
+      {
+        "scope": "user",
+        "installPath": "/home/agent/.claude/plugins/cache/hai-proof-pinned/ponytail/5.1.0",
+        "version": "5.1.0",
+        "installedAt": "2026-10-11T02:06:17.062Z",
+        "lastUpdated": "2026-10-11T02:06:17.062Z"
+      }
+    ]
+  }
+}

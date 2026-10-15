@@ -1,0 +1,19 @@
+# DietrichGebert/ponytail 5.1.0 at tag v5.1.0 (9cc65d03aa2da1db7121b912d03596409ee340b8). user/ is a
+# CLAUDE_CONFIG_DIR produced by `claude plugin install` from a local directory marketplace at
+# user/hai-proof-mkt (the plugin runs from there) in
+# hai-proof-base 2.1.296, offline; .claude.json and backups/ removed. Hooks (node): SessionStart injects
+# the ruleset (default mode) plus a `git ls-files` codebase map; SubagentStart and UserPromptSubmit track
+# mode. user/.ponytail-statusline-nudged is pre-created, as on an established install, so the first
+# session isn't told to "proactively offer" statusline setup.
+name = "ponytail"
+prompt_prefix = ""
+
+[env]
+
+[network]
+allow = []
+
+[expect]
+plugins = ["ponytail"]
+mcp_servers = []
+skills = []

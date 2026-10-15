@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "hai-proof-pinned": {
+      "source": {
+        "source": "directory",
+        "path": "/home/agent/.claude/hai-proof-mkt"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "superpowers@hai-proof-pinned": true
+  }
+}

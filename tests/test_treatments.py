@@ -49,10 +49,16 @@ skills = ["s"]
     assert t.prompt_prefix == "Use skills. "
 
 
+def test_prompt_variant(tmp_path):
+    assert load_treatment(_mk(tmp_path, 'prompt_variant = "degraded"\n')).prompt_variant == "degraded"
+    assert load_treatment(_mk(tmp_path, "", name="t2")).prompt_variant == ""
+
+
 @pytest.mark.parametrize("body,msg", [
     ('foo = 1\nbar = 2\n', "bar, foo"),
     ('[[requires]]\nname = "x"\ninstall = "i"\n', "check"),
     ('name = "bad name"\n', "name"),
+    ('prompt_variant = "a/b"\n', "prompt_variant"),
     ('[setup]\nartifacts = ["../x"]\n', "artifact"),
     ('[setup]\nartifacts = ["/abs"]\n', "artifact"),
     ('[setup]\nwhat = 1\n', "unknown keys in \\[setup\\]"),

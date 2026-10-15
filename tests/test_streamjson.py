@@ -8,6 +8,7 @@ from hai_proof.streamjson import (
     init_snapshot,
     is_auth_failure,
     is_rate_limited,
+    usage_limit,
     isolation_problems,
     iter_tool_results,
     iter_tool_uses,
@@ -77,6 +78,20 @@ def test_metrics_usage_fallback_and_snake_case():
     )
     m2 = metrics_from_transcript(snake, wall_s=1)
     assert (m2.tokens_input, m2.tokens_output, m2.tokens_cache_read, m2.tokens_cache_write) == (1, 2, 3, 4)
+
+
+def test_metrics_multiple_results_sum_turns():
+    # background work + wake-ups: totals come from the last result, turns are summed
+    t = parse_transcript(
+        '{"type":"result","subtype":"success","num_turns":57,"total_cost_usd":4.6,"duration_api_ms":1000,'
+        '"modelUsage":{"m":{"inputTokens":10}}}\n'
+        '{"type":"result","subtype":"success","num_turns":1,"total_cost_usd":4.7,"duration_api_ms":1200,'
+        '"modelUsage":{"m":{"inputTokens":12}}}'
+    )
+    m = metrics_from_transcript(t, wall_s=1)
+    assert m.turns == 58
+    assert m.cost_usd == pytest.approx(4.7) and m.api_s == pytest.approx(1.2)
+    assert m.tokens_input == 12
 
 
 def test_metrics_no_result():
@@ -213,3 +228,26 @@ def test_network_leakage_ignores_repo_url_in_local_files():
     assert network_leakage_flags(t, [url]) == [f"WebFetch request targets {url!r}"]
     t = _tool_transcript(("Bash", {"command": "git clone https://github.com/Textualize/rich /tmp/r"}))
     assert len(network_leakage_flags(t, [url])) == 1
+    # writing a link to the upstream issue into a file is not a request
+    t = _tool_transcript(("Bash", {"command": "cat >> CHANGES.md <<'EOF'\n- Fix ([#1](https://github.com/Textualize/rich/issues/1))\nEOF"}))
+    assert network_leakage_flags(t, [url]) == []
+    t = _tool_transcript(("Bash", {"command": "python -c \"import urllib.request as u; u.urlopen('https://github.com/Textualize/rich/pull/1')\""}))
+    assert len(network_leakage_flags(t, [url])) == 1
+
+
+def test_parse_transcript_keeps_unicode_line_separators():
+    # JSON.stringify leaves U+2028 unescaped; splitlines() would cut this event in two and drop it.
+    text = '{"type":"assistant","message":{"content":[{"type":"text","text":"a\u2028b"}]}}\n{"type":"result"}\n'
+    tr = parse_transcript(text)
+    assert [e["type"] for e in tr.events] == ["assistant", "result"]
+
+
+def test_usage_limit_detected():
+    res = {"type": "result", "subtype": "success", "is_error": True, "terminal_reason": "api_error",
+           "api_error_status": 429, "api_error": "usage_limit_reached", "result": "You've hit your session limit",
+           "api_error_params": {"rate_limit_info": {"status": "rejected", "resetsAt": 1791820200,
+                                                    "rateLimitType": "five_hour"}}}
+    t = parse_transcript(__import__("json").dumps(res) + "\n")
+    assert usage_limit(t) == {"resets_at": 1791820200.0, "type": "five_hour"}
+    assert is_rate_limited(t)
+    assert usage_limit(load("success.jsonl")) is None and usage_limit(load("rate_limited.jsonl")) is None

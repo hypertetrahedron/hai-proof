@@ -9,8 +9,9 @@ ARG UV_VERSION=0.8.0
 
 RUN test -n "${CLAUDE_CODE_VERSION}" || (echo "CLAUDE_CODE_VERSION build arg is required" >&2; exit 1)
 
+# gcc: tasks whose packages build C extensions from source at the pinned SHA (B20, astropy).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git curl ca-certificates procps tini \
+ && apt-get install -y --no-install-recommends git curl ca-certificates procps tini gcc libc6-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # Node.js (official binary tarball, arch-aware, pinned)

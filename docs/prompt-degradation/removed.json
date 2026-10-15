@@ -1,0 +1,23 @@
+{
+ "B1": "open). Closed bounds with `clamp=True` still behave correctly.",
+ "B2": "Whether the bad quantity is caught depends on what the other records in the batch contain; if every record has a `qty` it is rejected correctly.",
+ "B3": "If we build a brand new `Layout` with the new numbers it renders correctly, so the numbers themselves are fine.",
+ "B4": "What we've seen so far (all through the public API: `parse_component_value_list`, `parse_stylesheet`, `parse_one_declaration`, `serialize`, `tinycss2.nth.parse_nth` and the `parse_color` functions in `color3`, `color4` and `color5`):",
+ "B5": "A typical traceback ends like this:\n\n```\n  File \".../dateparser/date.py\", line 676, in _get_applicable_locales\n    if self._is_applicable_locale(locale, s, ignore_surrounding_text):\n  File \".../dateparser/languages/locale.py\", line 93, in is_applicable\n    return dictionary.are_tokens_valid(date_tokens)\n  File \".../dateparser/languages/dictionary.py\", line 145, in are_tokens_valid\n    match_relative_regex = self._get_match_relative_regex_cache()\n  ...\n  File \".../dateparser/languages/dictionary.py\", line 347, in _get_sorted_relative_strings_from_cache\n    return self._sorted_relative_strings_cache[self._settings.registry_key][\nKeyError: '86f0601c4589570a9b883f716c3e92b3'\n```",
+ "B6": "Index, slice and the basic selectors all look fine, as does everything not involving filters, function extensions or path output.",
+ "B7": "When we dumped the stuck task with `asyncio` debugging, the waiting coroutine was somewhere under `distributed.comm.core.connect`, but we couldn't work out why it never finishes. The other side seemed to have moved on.",
+ "B8": "lookups that happen early in each request, before things like the database connection exist yet. Django",
+ "B9": "- Turning logging down or off (NullHandler, `propagate=False`, raising the level) changes nothing.",
+ "B10": "- Our chunking code: if we POST the same chunk as a raw `application/octet-stream` body and read `request.get_data()`, all bytes are there. Only the multipart route loses one.",
+ "B11": "It also seems to depend on the data: in another service, where the two flags have different values, both keys survive. That made us suspect our own config loading for a long time.",
+ "B12": "Top-level keys reloaded the same way keep working, and restarting the process",
+ "B13": "- Which record fails depends on the order of the dump. It always comes right after a record whose type goes through one particular helper. That helper also uses `with attr.validators.disabled():` around its own conversion step, because it's called from other places too.",
+ "B14": "It only happens for some plugins. The affected ones implement the same hook more than once, using `@hookimpl(specname=...)` to register a second method for a hook they already implement. Plugins with one implementation per hook reload cleanly.",
+ "B15": "- It happens when a client gives up while the server is still deciding whether to accept the connection. Our `process_request` hook does an authentication lookup that can take a while, and impatient mobile clients drop the TCP connection in the meantime.",
+ "B16": "The same calls without `await` (`log.info(...)`) report the correct thread.",
+ "B17": "It hangs with other test orders too, not only this one.",
+ "B18": "- `gen.with_timeout(...)` wrapping a future that is cancelled waits for the full timeout instead of reacting to the cancellation.",
+ "B19": "- The worst offender is a partner endpoint that accepts the TCP connection but then stalls during the TLS handshake. Every attempt against it leaves a socket behind.",
+ "B20": "`gc.collect()` does not release anything, and the growth stops if we drop the index or use a plain `Column` instead of a `MaskedColumn`.",
+ "B21": ", and with `logging.getLogger(\"sqlalchemy.pool\").setLevel(logging.DEBUG)` we can see a connection being \"returned to pool\" *after* the \"Pool disposed\" message, i.e. after every task that used the engine had already finished."
+}

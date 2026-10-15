@@ -17,3 +17,7 @@ tasks/*/source.lock.json
 
 # Per-user config (execution host aliases, local overrides); template is hai-proof.example.toml
 hai-proof.toml
+
+# Claude Code worktrees and Git Bash crash dumps
+.claude/worktrees/
+*.stackdump

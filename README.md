@@ -43,15 +43,29 @@ uv run hai-proof run --host <alias> --treatment <name> --mode lightning
 
 | | |
 |---|---|
-| `--treatment X` | plain Claude Code (A) vs X (B) — full verdict |
+| `--treatment X` | plain Claude Code (A) vs X (B) — pass@1, pass@k and B ÷ A ratios |
 | `--arm-a X --arm-b Y` | A/B between two configurations; `--arm-a plain --arm-b plain` is the A/A calibration |
-| `--treatment X --no-control` | single arm, absolute metrics, no verdict |
+| `--treatment X --no-control` | single arm, pass@1/pass@k and absolute metrics, no ratios |
 | `--mode lightning \| quick \| full` | 1 / 3 / 5 repetitions (quick drops level-3 tasks); `--reps N` overrides |
+| `--suite standard \| smoke \| diagnosis \| all` | which tasks run (default `standard`, 13 tasks; see [docs/task-catalog.md](docs/task-catalog.md#suites)); `--tasks A,B` picks ids instead |
 | `--analysis NAME` | post-run analysis per trial or per arm (see `analyses/`) |
+| `--user conventional \| uninformative \| informative` | who answers the agent between turns. The default `conventional` is the single-session test. The two stand-in modes run each trial as several `claude -p` calls on one session, with a user stand-in that replies to questions: always "use your best judgement" (`uninformative`), or from the task's `user.md` (`informative`). `--user-a` / `--user-b` set one arm. Treatment `[workflow] turns` script multi-step workflows such as plan → apply (DESIGN §3.8) |
+| `--ask-tool off \| on \| hidden` | offer the agent AskUserQuestion, which `claude -p` alone never does. `on` runs each call in the SDK's stream-json stdio mode and answers the tool's questions like `--user` does (from `user.md` when informative, otherwise "use your best judgement"). `hidden` is the same mode without the tool, the control for `on`. `--ask-tool-a` / `--ask-tool-b` set one arm (DESIGN §3.8) |
+| treatment `prompt_variant = "<name>"` | same harness in both arms; B gets each task's `prompts/<name>.md` (prompt-quality experiments, see [docs/prompt-degradation.md](docs/prompt-degradation.md)) |
 
 Results land in `results/<run-id>/`: `run.json`, `trials.jsonl`, per-trial artifacts (transcript, timing,
-session patch, grade, analyses), `summary.json` and `report.html`. Regenerate with
+session patch, grade, analyses, Claude Code's own records in `claude_home/` with `claude_data.json` and
+`session.html`), `resources.jsonl`, `summary.json` and `report.html`. Regenerate with
 `uv run hai-proof report results/<run-id>`.
+
+Before every pair the runner checks resources and logs a snapshot to `resources.jsonl`:
+- **Memory:** free memory on the controller machine (at least 2 GB) and on the execution host (both arms'
+  memory limits + 2 GB).
+- **Leaks:** this run's leftover trial containers are removed, and containers from other runs are reported.
+- **Controller memory:** growth of the controller's own memory is tracked.
+
+While memory is short it waits, polling for up to 15 minutes, and then stops the run cleanly with teardown and
+a report. A final snapshot after teardown shows anything still left behind.
 
 ## Commands
 
@@ -61,8 +75,11 @@ session patch, grade, analyses), `summary.json` and `report.html`. Regenerate wi
 | `build-task <dir>` | materialise an open-repo task (`repo/`, `source.lock.json`) from its pinned `[source]` |
 | `validate-task` | prove tasks are well-formed on the execution host (no API spend) |
 | `build` | build base / treatment / trial images on the execution host |
-| `run` | run an evaluation (`--dry-run` prints the plan; `-y` skips the spend confirmation) |
+| `run` | run an evaluation (`--dry-run` prints the plan; `-y` skips the spend confirmation; `--max-spend USD` stops cleanly before a pair that could pass USD; `--resume <results-dir>` with the original arguments continues an interrupted run, keeping finished pairs) |
 | `report <results-dir>` | regenerate `summary.json` and `report.html` |
+| `regrade <results-dir> [--trials A/B7/0,...] [--all] [--write]` | re-grade trials' `session.patch` in fresh offline containers with the current grader (no API spend; default: failed trials only); `--write` records changed results. Check each change before writing: a randomized test (e.g. Hypothesis) can pass on a re-grade by chance |
+| `baseline update [results-dirs] \| show` | long-run plain-arm aggregates per task and model / CLI version (`tasks/<ID>/baseline.json`; `run` updates them automatically; see docs/task-authoring.md#baselines-baselinejson) |
+| `sessions [results-dirs] [--task ID]` | compare Claude Code sessions across trials and runs: phases, first edit, test/reproduction runs, timelines (`results/sessions.html`; see docs/session-analysis.md) |
 
 ## Repository layout
 
@@ -70,7 +87,8 @@ session patch, grade, analyses), `summary.json` and `report.html`. Regenerate wi
 src/hai_proof/        controller: CLI, config, executor (local/SSH), images, trial lifecycle, stats, report
 image/base/           trial image: Claude Code + in-container wrapper and grader
 image/proxy/          egress allowlist sidecar
-tasks/B1..B3, F1..F3  published 6-task suite (bug / feature tracks); repo/ snapshots are generated, not committed
+tasks/                task library (B* bugs, B-DP-* degraded-prompt bugs, F* features), tagged into suites and
+                      cost tiers; baseline.json holds plain-arm aggregates; repo/ snapshots are generated, not committed
 examples/             example task and treatment (openspec-beads) to copy from
 analyses/             post-run analysis definitions
 docs/                 task-authoring guide and calibration notes

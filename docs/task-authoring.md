@@ -3,12 +3,16 @@
 A task is one coding job that both arms of a run attempt. The published suite uses **public Python
 repos pinned by commit SHA** (DESIGN §4.1), so anyone can rebuild and rerun it.
 
+Every built or piloted task, with its pilot results, plus candidate and rejected ideas, is recorded in
+[task-catalog.md](task-catalog.md). Add a row there whenever a task is piloted.
+
 ## Layout
 
 ```
 tasks/<ID>/
   task.toml          # metadata, source pin, install, acceptance tests
   prompt.md          # what a developer would type — never mentions hidden tests
+  user.md            # optional: the user brief for `run --user informative` (DESIGN §3.8)
   inject.patch       # bug tasks only: author-written bug, applied on top of `base`
   hidden_tests/      # mirrors repo paths; copied onto the repo only AFTER the agent exits
   reference.patch    # the fix / feature, applied on top of the start state
@@ -26,14 +30,27 @@ origin = "injected"       # injected (author-written bug) | authored (author-wri
 timeout_s = 1200
 budget_usd = 3.0          # L1 3.0 · L2 5.0 · L3 8.0
 max_turns = 40            # L1 40 · L2 60 · L3 80
+# suites = ["standard"]   # optional: named sets `run --suite NAME` selects; `run` with no --tasks/--suite
+#   uses "standard" (or every task if none is tagged). "all" is reserved.
+# cost_tier = "low"       # optional: low | medium | high, the report group (docs/task-catalog.md#cost-tiers-and-report-order)
+# report_order = 1        # optional: fixed position in reports; set once from plain-arm data, never re-ranked per run
 install = "uv pip install --python /opt/venv/bin/python -e . pytest"   # runs in /work at image build
 acceptance = ["tests/hai_proof/test_b1.py"]
-# regression = "python -m pytest -q -p no:cacheprovider tests"         # optional override
+# acceptance_args = ["--dburi", "sqlite+aiosqlite:///:memory:"]       # optional extra pytest args (B21)
+# acceptance_cmd = "python -m unittest tests.x.test_y"                 # optional: run acceptance with the
+#   project's own runner instead of pytest (exit 0 = pass); `acceptance` still lists the hidden test files
+# regression = "python -m pytest -q -p no:cacheprovider tests"         # optional override; a non-pytest
+#   runner (e.g. "python -m tornado.test.runtests") is fine, but then it also runs the hidden test files
+# Use the project's own runner (its Makefile/tox/CI command) for both steps. The agent checks its work
+# with that runner, and its own new tests are graded too, so a different runner can fail correct work
+# (B9: pytest's log capture kept connections alive in the agent's refcount tests).
 
 [source]
 kind = "git"
 url  = "https://github.com/<org>/<project>.git"
 base = "<full 40-hex commit SHA>"
+# fix = "<full 40-hex commit SHA>"   # upstream fix: derives hidden_tests/ and reference.patch
+# exclude = ["pkg/other.py", "tests/test_other.py"]   # parts of the fix that belong to other defects
 ```
 
 ## Rules
@@ -49,12 +66,19 @@ base = "<full 40-hex commit SHA>"
   - L1: existing tests may catch it; the prompt includes the failing call and traceback.
   - L2/L3: the pre-existing suite must still PASS with the bug injected (pick an untested path), so
     the agent has to diagnose from the reported symptom.
-- **Feature tasks**: no `inject.patch`; `reference.patch` implements the feature following the
+- **Feature tasks**: no `inject.patch`, except to add reference material the agent needs and cannot download (the
+  container has no internet), e.g. F5 adds RFC texts under `docs/rfc/`; `reference.patch` implements the feature following the
   project's existing patterns (docstrings, type hints, changelog entry if the project keeps one is
   optional — hidden tests must not depend on docs).
 - **prompt.md** reads like a real issue or a colleague's request. Never mention hidden tests, the
   `tests/hai_proof/` path, or hai-proof. Don't tell the agent how to fix it beyond what a reporter
   would know. Don't say "run the tests".
+- **user.md** (optional) is what the requesting user wants and knows, for the informative stand-in
+  (`run --user informative`; DESIGN §3.8). Write the intent and preferences a real requester would have
+  (formats, edge cases they care about, constraints), not the fix. Never mention hidden tests (`load_task`
+  rejects it), the reference patch or file paths of the solution. It is most useful on underspecified
+  prompts, e.g. the B-DP tasks, where it holds the detail the prompt leaves out. It is not part of the task
+  hash (it never reaches a conventional trial); run.json records its own `brief_hash` per task.
 - `diff_categories` overrides are rarely needed; leave them out unless the repo has unusual layout.
 
 ## Difficulty
@@ -98,3 +122,40 @@ Lessons from tuning:
   161 s by spanning Table, Panel and Tree with a shared renderable.
 - Earlier absolute targets (L2 2–5 min, L3 5–15 min) were not reachable with these repos; the suite is
   calibrated on ordering. Harder L3 work likely needs a larger repo or a longer feature.
+- 2026-10-08: to reach ~30 min per L3 task, F4 (Jinja2 `{% match %}`) uses a larger codebase and a long spec: parser + AST + compiler + scoping + `meta` + async/sandbox/native. Its limits are raised to `timeout_s = 3600`, `budget_usd = 40`, `max_turns = 300`. Uncalibrated until its pilot runs.
+
+## Baselines (`baseline.json`)
+
+Each task directory may hold a generated `baseline.json`: long-run aggregates of every plain-arm (unmodified
+Claude Code) trial of the task. Do not edit it by hand; commit it with the task.
+
+- `hai-proof run` folds the run's plain-arm trials in when it finishes. `hai-proof baseline update [results-dirs]`
+  does it for existing runs (default: all of them); re-running is safe, as samples are keyed by run id and rep.
+  `hai-proof baseline show` prints the entries for the current task content.
+- One entry per **model / CLI version / effort / task hash**. The task hash (`TaskSpec.content_hash`, also recorded
+  in `run.json`) covers everything that can change a trial: the manifest's limits, install, acceptance and
+  regression, the prompts, `inject.patch`, `reference.patch`, `hidden_tests/`, `grade.sh`, `source.lock.json`, and
+  `repo/` for tasks without `[source]`. It leaves out `suites`, `cost_tier`, `report_order` and `baseline.json`.
+  Changing a task therefore starts a new entry instead of mixing versions.
+- Each entry keeps every sample and a `summary` recomputed from them. A sample holds the run id, rep, date,
+  harness code hash, status, pass, timed_out, end reason, and these metrics:
+  - cost, total and output tokens, wall time, turns, tool calls;
+  - `first_request_input_tokens`: the fixed context every session starts with (system prompt, tools), which
+    moves with CLI versions;
+  - `cache_read_share` (cache reads / total tokens) and `cache_misses` (main-conversation requests that re-read
+    less than half of the previous request's cached prefix; see `claudedata.cache_misses`);
+  - `first_edit_s`, `test_runs`, `code_runs`: diagnosis time vs verification effort (main session);
+  - `diff_files`, `diff_lines`: solution size from the trial's git diff.
+- The summary has trials, passes, pass rate with a Wilson 95% interval, timeouts, excluded trials, `end_reasons`
+  (`completed`, `timeout`, `error_max_turns`, `error_max_budget_usd`, ...: shows when a limit decides the
+  result), `harness_versions`, per-run pass counts, and for each metric n, mean, variance, sd, cv, min, median and
+  max. Only scored trials (status ok, rep >= 0) count; probes and warm-ups never do.
+- Re-importing a run refreshes its samples in place (never duplicates them), so `baseline update` after a parser
+  fix brings old samples up to date. Session metrics are read from each trial's `claude_data.json`.
+- Runs recorded before task hashes existed need `--legacy` (assume the current task content) plus `--skip TASK:RUN_ID`
+  for every run made before a later change to that task. The 2026-10-11 backfill used the cutoffs listed in
+  docs/task-catalog.md#cost-tiers-and-report-order.
+- Harness changes (grader, container setup) are not part of the task hash. Runs record `harness` in run.json
+  (hai-proof version, a hash of `src/hai_proof/` and `image/`, git commit and dirty flag) and each sample carries
+  the code hash, so results can be split by harness version. Runs before 2026-10-11 show `unrecorded`.
+

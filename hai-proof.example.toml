@@ -11,6 +11,7 @@ results_dir = "results"
 ssh_binary = "ssh"
 analyses = []                     # analyses attached to every run, e.g. ["non-code-changes"]
 egress = "proxy"                  # "proxy" = allowlist sidecar (API + treatment hosts); "open" = no restriction
+stand_in_model = "claude-sonnet-5-5"  # user stand-in for `run --user uninformative|informative` (DESIGN §3.8)
 
 [limits]
 cpus = 4

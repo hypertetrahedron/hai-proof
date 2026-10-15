@@ -1,4 +1,4 @@
-"""Paired efficiency statistics and verdict rules (DESIGN §6, §7). Pure Python."""
+"""Pass rates and paired efficiency statistics (DESIGN §6). Pure Python."""
 
 from __future__ import annotations
 
@@ -157,122 +157,62 @@ def pass_k(trials: Sequence[TrialResult], arm: str) -> dict[str, dict]:
     return out
 
 
-@dataclass
-class Verdict:
-    code: str
-    label: str
-    indicative: bool
-    reasons: list[str] = field(default_factory=list)
+def _task_pass_rates(trials: Sequence[TrialResult], arm: str, k: int) -> dict[str, tuple[float, float]]:
+    """Per task: (pass@1, pass@k). pass@k is the unbiased 1 - C(n-c, k)/C(n, k); k = n when n < k."""
+    out = {}
+    for task, d in pass_k(trials, arm).items():
+        n, c = d["runs"], d["passes"]
+        kk = min(k, n)
+        out[task] = (c / n, 1.0 - math.comb(n - c, kk) / math.comb(n, kk))
+    return out
 
 
-_LABELS = {
-    "comparative": {
-        "HARMFUL": "HARMFUL",
-        "COSTLIER": "COSTS MORE THAN IT'S WORTH",
-        "CHEAPER": "PAYS FOR ITSELF",
-        "NO_DIFFERENCE": "NO MEANINGFUL DIFFERENCE",
-        "INCONCLUSIVE": "INCONCLUSIVE",
-    },
-    "ab": {
-        "HARMFUL": "B HARMFUL VS A",
-        "COSTLIER": "B COSTS MORE THAN A",
-        "CHEAPER": "B CHEAPER THAN A",
-        "NO_DIFFERENCE": "NO MEANINGFUL DIFFERENCE",
-        "INCONCLUSIVE": "INCONCLUSIVE",
-    },
-    "lightning": {
-        "HARMFUL": "LIKELY HARMFUL",
-        "COSTLIER": "LIKELY COSTLIER",
-        "CHEAPER": "LIKELY CHEAPER",
-        "NO_DIFFERENCE": "NO OBVIOUS DIFFERENCE",
-        "INCONCLUSIVE": "INCONCLUSIVE",
-    },
-}
+def pass_at(trials: Sequence[TrialResult], arm: str, k: int) -> dict:
+    """pass@1 and pass@k for one arm, averaged over tasks (each task weighs the same).
+
+    Per task with n scored runs and c passes: pass@1 = c/n, and pass@k is the unbiased estimate
+    1 - C(n-c, k)/C(n, k), the chance that at least one of k runs passes. A task with fewer than k
+    scored runs (excluded trials) uses k = n, i.e. "passed at least once".
+    """
+    per = pass_k(trials, arm)
+    if not per:
+        return {"k": k, "tasks": 0, "runs": 0, "passes": 0, "pass@1": None, "pass@k": None}
+    rates = list(_task_pass_rates(trials, arm, k).values())
+    return {
+        "k": k, "tasks": len(per), "runs": sum(d["runs"] for d in per.values()),
+        "passes": sum(d["passes"] for d in per.values()),
+        "pass@1": sum(r[0] for r in rates) / len(rates), "pass@k": sum(r[1] for r in rates) / len(rates),
+    }
 
 
-def _success_rate(trials: Sequence[TrialResult], arm: str) -> float:
-    s = [t for t in trials if t.scored and t.arm == arm]
-    return sum(1 for t in s if t.success) / len(s) if s else 0.0
+def pass_at_relative(
+    trials: Sequence[TrialResult], k: int, *, ref: str = "A", cand: str = "B",
+    n_boot: int = 5000, seed: int = 0, alpha: float = 0.05,
+) -> dict[str, dict] | None:
+    """B vs A on pass@1 and pass@k over the tasks both arms ran.
 
-
-def _task_disagreements(ref_pk: dict, cand_pk: dict) -> tuple[list[str], list[str]]:
-    worse, better = [], []
-    for task in sorted(set(ref_pk) & set(cand_pk)):
-        r, c = ref_pk[task]["all_pass"], cand_pk[task]["all_pass"]
-        if r and not c:
-            worse.append(task)
-        elif c and not r:
-            better.append(task)
-    return worse, better
-
-
-def _task_ratios(trials: Sequence[TrialResult], metric: str) -> list[float]:
-    per = paired_log_ratios(trials, metric)
-    return [sum(v) / len(v) for v in per.values() if v]
-
-
-def verdict(
-    trials: Sequence[TrialResult], *, shape: str, reps: int, margin: float = 0.15,
-    n_boot: int = 5000, seed: int = 0,
-) -> Verdict | None:
-    if shape == "single":
+    diff is B - A (fraction; ×100 for percentage points) with a 95% bootstrap CI that resamples
+    tasks, keeping each task's A and B values together. ratio is B ÷ A of the task means (None when
+    A is 0).
+    """
+    ra, rb = _task_pass_rates(trials, ref, k), _task_pass_rates(trials, cand, k)
+    tasks = sorted(set(ra) & set(rb))
+    if not tasks:
         return None
-    lightning = reps < 2
-    labels = _LABELS["lightning" if lightning else ("ab" if shape == "ab" else "comparative")]
-
-    def mk(code: str, reasons: list[str]) -> Verdict:
-        return Verdict(code, labels[code], lightning, reasons)
-
-    ref_pk, cand_pk = pass_k(trials, "A"), pass_k(trials, "B")
-    worse, better = _task_disagreements(ref_pk, cand_pk)
-
-    if lightning:
-        if worse:
-            return mk("HARMFUL", [f"A passes and B fails on: {', '.join(worse)}"])
-        reasons: list[str] = []
-        stats_by_metric = {}
-        for metric in ("cost_usd", "wall_s"):
-            logs = _task_ratios(trials, metric)
-            n = len(logs)
-            if n == 0:
-                continue
-            gm = math.exp(sum(logs) / n)
-            up = sum(1 for r in logs if r > 0)
-            down = sum(1 for r in logs if r < 0)
-            stats_by_metric[metric] = (n, gm, up, down)
-            reasons.append(f"{metric}: gm ratio {gm:.2f}, {up}/{n} tasks higher, {down}/{n} lower")
-        for metric, (n, gm, up, _down) in stats_by_metric.items():
-            if up >= (5 * n + 5) // 6 and gm > 1.5:
-                return mk("COSTLIER", reasons)
-        for metric, (n, gm, _up, down) in stats_by_metric.items():
-            if down >= (5 * n + 5) // 6 and gm < 1 / 1.5:
-                return mk("CHEAPER", reasons)
-        return mk("NO_DIFFERENCE", reasons)
-
-    ref_rate, cand_rate = _success_rate(trials, "A"), _success_rate(trials, "B")
-    if worse:
-        return mk("HARMFUL", [f"A passes all runs but B does not on: {', '.join(worse)}"])
-    if cand_rate <= ref_rate - 0.10 + 1e-9:
-        return mk("HARMFUL", [f"B success rate {cand_rate:.0%} vs A {ref_rate:.0%}"])
-
-    cost = ratio_ci(trials, "cost_usd", n_boot=n_boot, seed=seed)
-    wall = ratio_ci(trials, "wall_s", n_boot=n_boot, seed=seed)
-    reasons = []
-    for name, ci in (("cost", cost), ("wall", wall)):
-        if ci is not None:
-            reasons.append(
-                f"{name} ratio {ci.gm_ratio:.2f} (95% CI {ci.ci_low:.2f}-{ci.ci_high:.2f}, "
-                f"{ci.n_tasks} tasks, {ci.n_pairs} pairs)"
-            )
-    lo_m, hi_m = 1 - margin, 1 + margin
-    if cost is None or wall is None:
-        return mk("INCONCLUSIVE", reasons + ["no paired scored trials for cost or wall"])
-    if cost.ci_low > hi_m or wall.ci_low > hi_m:
-        return mk("COSTLIER", reasons)
-    if (cost.ci_high < lo_m and wall.ci_high < lo_m) or better:
-        if better:
-            reasons.append(f"B strictly better success on: {', '.join(better)}")
-        return mk("CHEAPER", reasons)
-    if all(ci.ci_low >= lo_m and ci.ci_high <= hi_m for ci in (cost, wall)):
-        return mk("NO_DIFFERENCE", reasons)
-    return mk("INCONCLUSIVE", reasons)
+    rng = random.Random(seed)
+    n = len(tasks)
+    out: dict[str, dict] = {}
+    for idx, name in ((0, "pass@1"), (1, "pass@k")):
+        a = [ra[t][idx] for t in tasks]
+        b = [rb[t][idx] for t in tasks]
+        d = [y - x for x, y in zip(a, b)]
+        boots = sorted(sum(d[rng.randrange(n)] for _ in range(n)) / n for _ in range(n_boot))
+        lo_i = max(0, min(n_boot - 1, int(math.floor(alpha / 2 * n_boot))))
+        hi_i = max(0, min(n_boot - 1, int(math.ceil((1 - alpha / 2) * n_boot)) - 1))
+        ma, mb = sum(a) / n, sum(b) / n
+        out[name] = {
+            "a": ma, "b": mb, "diff": mb - ma, "ci_low": boots[lo_i], "ci_high": boots[hi_i],
+            "ratio": mb / ma if ma > 0 else None, "n_tasks": n,
+            "tasks_b_higher": sum(1 for x in d if x > 0), "tasks_b_lower": sum(1 for x in d if x < 0),
+        }
+    return out

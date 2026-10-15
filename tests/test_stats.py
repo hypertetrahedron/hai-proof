@@ -6,9 +6,10 @@ from hai_proof.models import AgentMetrics, TrialResult
 from hai_proof.stats import (
     cluster_bootstrap,
     paired_log_ratios,
+    pass_at,
+    pass_at_relative,
     pass_k,
     ratio_ci,
-    verdict,
     wilcoxon_signed_rank,
 )
 
@@ -160,115 +161,40 @@ def test_pass_k():
     assert "t9" not in a
 
 
-# ------------------------------------------------------------------ verdicts
-
-def test_verdict_single_is_none():
-    assert verdict(table(3, 3), shape="single", reps=3) is None
-
-
-def test_stat_harmful_task_regression():
-    rows = []
-    for ti in range(4):
-        for r in range(3):
-            rows.append((f"t{ti}", r, 1, 1, 1, 1, True, not (ti == 0 and r == 2)))
-    v = verdict(build(rows), shape="comparative", reps=3, n_boot=200)
-    assert v.code == "HARMFUL" and v.label == "HARMFUL" and not v.indicative
-    assert "t0" in v.reasons[0]
-
-
-def test_stat_harmful_success_rate_drop():
-    rows = []
-    for ti in range(5):
-        for r in range(4):
-            pr = ti % 2 == 0 or r < 3  # ref fails on some cells
-            rows.append((f"t{ti}", r, 1, 1, 1, 1, pr, pr and not (ti == 1 and r == 0) and not (ti == 3 and r == 1)))
+def test_pass_at():
+    # t1: 3/3, t2: 1/3, t3: 0/3
+    rows = [(t, r, 1, 1, 1, 1, ok, ok) for t, oks in (("t1", [1, 1, 1]), ("t2", [1, 0, 0]), ("t3", [0, 0, 0]))
+            for r, ok in enumerate(map(bool, oks))]
     trials = build(rows)
-    v = verdict(trials, shape="ab", reps=4, n_boot=200)
-    # no task where ref all_pass & cand not? ti=0,2,4 ref all pass and cand too; ti=1,3 ref fails a run
-    assert v.code == "HARMFUL" and v.label == "B HARMFUL VS A"
-    assert "success rate" in v.reasons[0]
+    r = pass_at(trials, "A", 3)
+    assert (r["k"], r["tasks"], r["runs"], r["passes"]) == (3, 3, 9, 4)
+    assert r["pass@1"] == pytest.approx((1 + 1 / 3 + 0) / 3)
+    assert r["pass@k"] == pytest.approx(2 / 3)
+    # k=2 on t2: 1 - C(2,2)/C(3,2) = 2/3
+    assert pass_at(trials, "A", 2)["pass@k"] == pytest.approx((1 + 2 / 3 + 0) / 3)
+    # k=1 equals pass@1
+    r1 = pass_at(trials, "A", 1)
+    assert r1["pass@k"] == pytest.approx(r1["pass@1"])
+    # fewer runs than k (an excluded trial) falls back to "passed at least once"
+    short = [t for t in trials if not (t.task_id == "t2" and t.rep == 0)]
+    assert pass_at(short, "A", 3)["pass@k"] == pytest.approx(1 / 3)
+    assert pass_at([], "A", 3)["pass@1"] is None
 
 
-def test_stat_costlier():
-    v = verdict(table(6, 3, cost_f=1.6, wall_f=1.0, jitter=0.05), shape="comparative", reps=3, n_boot=500)
-    assert v.code == "COSTLIER" and v.label == "COSTS MORE THAN IT'S WORTH"
-    v = verdict(table(6, 3, cost_f=1.0, wall_f=1.6, jitter=0.05), shape="ab", reps=3, n_boot=500)
-    assert v.code == "COSTLIER" and v.label == "B COSTS MORE THAN A"
-    assert any("cost ratio" in r for r in v.reasons)
-
-
-def test_stat_cheaper_on_costs():
-    v = verdict(table(6, 3, cost_f=0.5, wall_f=0.5, jitter=0.05), shape="comparative", reps=3, n_boot=500)
-    assert v.code == "CHEAPER" and v.label == "PAYS FOR ITSELF"
-    v = verdict(table(6, 3, cost_f=0.5, wall_f=0.5, jitter=0.05), shape="ab", reps=3, n_boot=500)
-    assert v.label == "B CHEAPER THAN A"
-
-
-def test_stat_cheaper_when_only_cost_cheaper_is_not_enough():
-    v = verdict(table(6, 3, cost_f=0.5, wall_f=1.0, jitter=0.05), shape="comparative", reps=3, n_boot=500)
-    assert v.code == "INCONCLUSIVE"
-
-
-def test_stat_cheaper_via_strictly_better_success():
-    rows = []
-    for ti in range(4):
-        for r in range(3):
-            rows.append((f"t{ti}", r, 1, 1.0, 1, 1.0, not (ti == 0), True))
-    v = verdict(build(rows), shape="comparative", reps=3, n_boot=200)
-    assert v.code == "CHEAPER"
-    assert any("strictly better" in r for r in v.reasons)
-
-
-def test_stat_no_difference():
-    v = verdict(table(6, 3, jitter=0.1), shape="comparative", reps=3, n_boot=500)
-    assert v.code == "NO_DIFFERENCE" and v.label == "NO MEANINGFUL DIFFERENCE" and not v.indicative
-
-
-def test_stat_inconclusive_wide_ci():
-    rows = []
-    factors = [0.4, 2.5, 0.5, 2.0, 1.0, 1.1]
-    for ti, f in enumerate(factors):
-        for r in range(2):
-            rows.append((f"t{ti}", r, 1, f, 1, f, True, True))
-    v = verdict(build(rows), shape="comparative", reps=2, n_boot=500)
-    assert v.code == "INCONCLUSIVE" and v.label == "INCONCLUSIVE"
-
-
-def test_stat_no_pairs_inconclusive():
-    trials = [mk("A", "t1", 0, 1, 1, True), mk("B", "t1", 0, 1, 1, True, pair="other")]
-    assert verdict(trials, shape="comparative", reps=3, n_boot=50).code == "INCONCLUSIVE"
-
-
-def test_stat_deterministic():
-    t = table(5, 3, cost_f=1.1, jitter=0.2)
-    a = verdict(t, shape="comparative", reps=3, n_boot=300, seed=7)
-    b = verdict(t, shape="comparative", reps=3, n_boot=300, seed=7)
-    assert a == b
-
-
-def test_lightning_branches():
-    v = verdict(table(6, 1, cost_f=2.0, wall_f=1.0), shape="comparative", reps=1)
-    assert v.code == "COSTLIER" and v.label == "LIKELY COSTLIER" and v.indicative
-    v = verdict(table(6, 1, cost_f=0.5, wall_f=0.5), shape="ab", reps=1)
-    assert v.code == "CHEAPER" and v.label == "LIKELY CHEAPER"
-    v = verdict(table(6, 1, cost_f=1.2, wall_f=0.9), shape="comparative", reps=1)
-    assert v.code == "NO_DIFFERENCE" and v.label == "NO OBVIOUS DIFFERENCE"
-    # harmful: ref passes, cand fails
-    rows = [(f"t{i}", 0, 1, 1, 1, 1, True, i != 2) for i in range(6)]
-    v = verdict(build(rows), shape="comparative", reps=1)
-    assert v.code == "HARMFUL" and v.label == "LIKELY HARMFUL" and "t2" in v.reasons[0]
-
-
-def test_lightning_needs_five_of_six_and_gm():
-    def rows_with(factors):
-        return build([(f"t{i}", 0, 1.0, f, 1.0, 1.0, True, True) for i, f in enumerate(factors)])
-
-    # 5 of 6 higher, gm = (1.6**5 * 0.9)**(1/6) > 1.5? 1.6^5=10.49*0.9=9.44 -> ^(1/6)=1.45 -> no
-    assert verdict(rows_with([1.6] * 5 + [0.9]), shape="comparative", reps=1).code == "NO_DIFFERENCE"
-    assert verdict(rows_with([2.0] * 5 + [0.9]), shape="comparative", reps=1).code == "COSTLIER"
-    # only 4 of 6 higher even with big gm
-    assert verdict(rows_with([4.0] * 4 + [0.9, 0.9]), shape="comparative", reps=1).code == "NO_DIFFERENCE"
-    assert verdict(rows_with([0.4] * 5 + [1.1]), shape="comparative", reps=1).code == "CHEAPER"
-    # smaller suites: ceil(5/6*4) = 4
-    assert verdict(rows_with([2.0] * 4), shape="comparative", reps=1).code == "COSTLIER"
-    assert verdict(rows_with([2.0] * 3 + [0.9]), shape="comparative", reps=1).code == "NO_DIFFERENCE"
+def test_pass_at_relative():
+    # A: t1 3/3, t2 3/3, t3 0/3; B: t1 3/3, t2 1/3, t3 3/3
+    oks = {"t1": ([1, 1, 1], [1, 1, 1]), "t2": ([1, 1, 1], [1, 0, 0]), "t3": ([0, 0, 0], [1, 1, 1])}
+    rows = [(t, r, 1, 1, 1, 1, bool(a[r]), bool(b[r])) for t, (a, b) in oks.items() for r in range(3)]
+    rel = pass_at_relative(build(rows), 3, n_boot=500)
+    p1 = rel["pass@1"]
+    assert p1["a"] == pytest.approx(2 / 3) and p1["b"] == pytest.approx(7 / 9)
+    assert p1["diff"] == pytest.approx(1 / 9) and p1["ratio"] == pytest.approx(7 / 6)
+    assert p1["ci_low"] <= p1["diff"] <= p1["ci_high"]
+    assert (p1["tasks_b_higher"], p1["tasks_b_lower"], p1["n_tasks"]) == (1, 1, 3)
+    pk = rel["pass@k"]
+    assert pk["a"] == pytest.approx(2 / 3) and pk["b"] == pytest.approx(1.0)
+    assert (pk["tasks_b_higher"], pk["tasks_b_lower"]) == (1, 0)
+    # A never passes: no ratio
+    zero = build([("t1", 0, 1, 1, 1, 1, False, True)])
+    assert pass_at_relative(zero, 1, n_boot=50)["pass@1"]["ratio"] is None
+    assert pass_at_relative([], 3) is None

@@ -25,7 +25,8 @@ class Transcript:
 
 def parse_transcript(text: str) -> Transcript:
     events: list[dict] = []
-    for line in (text or "").splitlines():
+    # split("\n"), not splitlines(): Claude Code leaves U+2028/U+2029 unescaped inside JSON strings.
+    for line in (text or "").split("\n"):
         line = line.strip()
         if not line or not line.startswith("{"):
             continue
@@ -126,7 +127,9 @@ def metrics_from_transcript(
     else:
         m.cost_usd = float(_num(r, "total_cost_usd", "cost_usd"))
         m.api_s = float(_num(r, "duration_api_ms")) / 1000.0
-        m.turns = int(_num(r, "num_turns"))
+        # A session that waits on background work emits one result per wake-up. Cost, usage and
+        # duration_api_ms are session totals, but num_turns counts only that result's own turns.
+        m.turns = sum(int(_num(e, "num_turns")) for e in t.events if e.get("type") == "result")
         m.terminal_reason = r.get("terminal_reason")
         m.subtype = r.get("subtype")
         # A session that never reached the model can still report subtype "success"; the
@@ -274,7 +277,16 @@ def leakage_flags(t: Transcript, needles: Iterable[str]) -> list[str]:
 
 _NET_TOOLS = {"WebFetch", "WebSearch"}
 _NET_CMD = re.compile(r"\b(curl|wget|git\s+(clone|fetch|pull|ls-remote)|pip\s+download|uv\s+pip\s+download|"
-                      r"python3?\s+-m\s+pip\s+download)\b|https?://", re.I)
+                      r"python3?\s+-m\s+pip\s+download)\b", re.I)
+# A URL alone is not a request (a changelog line or docstring the agent writes can link the upstream
+# issue): it counts only alongside an HTTP client called from code.
+_NET_URL = re.compile(r"https?://", re.I)
+_NET_CLIENT = re.compile(r"\b(urlopen|urllib|requests\.(get|post|head|request|Session)|httpx|aiohttp|"
+                         r"http\.client|Invoke-WebRequest|Invoke-RestMethod|socket\.create_connection)\b", re.I)
+
+
+def _bash_requests_network(command: str) -> bool:
+    return bool(_NET_CMD.search(command) or (_NET_URL.search(command) and _NET_CLIENT.search(command)))
 
 
 def network_leakage_flags(t: Transcript, url_needles: Iterable[str]) -> list[str]:
@@ -291,7 +303,7 @@ def network_leakage_flags(t: Transcript, url_needles: Iterable[str]) -> list[str
         inp = b.get("input") or {}
         if name in _NET_TOOLS:
             blob = json.dumps(inp, default=str, ensure_ascii=False).lower()
-        elif name == "Bash" and _NET_CMD.search(str(inp.get("command", ""))):
+        elif name == "Bash" and _bash_requests_network(str(inp.get("command", ""))):
             blob = str(inp.get("command", "")).lower()
         else:
             continue
@@ -328,6 +340,28 @@ def is_auth_failure(t: Transcript) -> bool:
                and "authentication" in str(e.get("error", "")).lower() for e in t.events)
 
 
+def usage_limit(t: Transcript) -> dict | None:
+    """The account's usage limit (e.g. the 5-hour subscription window) stopped the session.
+
+    Claude Code answers locally with a synthetic message and a result carrying
+    `api_error: "usage_limit_reached"` (HTTP 429) and `api_error_params.rate_limit_info.resetsAt`.
+    Unlike a transient 429 this lasts until the window resets, so retrying straight away is pointless.
+    Returns {"resets_at": epoch seconds or None, "type": rateLimitType or None}.
+    """
+    r = t.result
+    if not r:
+        return None
+    info = ((r.get("api_error_params") or {}).get("rate_limit_info") or {}) if isinstance(
+        r.get("api_error_params"), dict) else {}
+    if "usage_limit" not in str(r.get("api_error") or "").lower() and info.get("status") != "rejected":
+        return None
+    try:
+        resets = float(info["resetsAt"]) if info.get("resetsAt") is not None else None
+    except (TypeError, ValueError):
+        resets = None
+    return {"resets_at": resets, "type": info.get("rateLimitType")}
+
+
 def is_rate_limited(t: Transcript, stderr: str = "") -> bool:
     texts: list[str] = []
     r = t.result
@@ -336,6 +370,8 @@ def is_rate_limited(t: Transcript, stderr: str = "") -> bool:
             v = r.get(k)
             if v:
                 texts.append(v if isinstance(v, str) else json.dumps(v, default=str))
+        if r.get("api_error_status") in (429, 529, "429", "529") or usage_limit(t):
+            return True
         for e in t.events:
             if e.get("type") == "system" and "error" in str(e.get("subtype", "")).lower():
                 texts.append(json.dumps(e, default=str))

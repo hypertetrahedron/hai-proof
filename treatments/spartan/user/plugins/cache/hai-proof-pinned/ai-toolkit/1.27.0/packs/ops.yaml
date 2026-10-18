@@ -1,0 +1,20 @@
+name: ops
+description: "Deploy & infrastructure"
+category: Ship
+priority: 50
+hidden: false
+
+commands:
+  - deploy
+  - env-setup
+  - ops-investigate-alert
+  - ops-oncall-log
+
+rules: []
+skills:
+  - ops-investigate-alert
+  - ops-oncall-log
+agents: []
+
+claude-sections:
+  - 50-ops.md

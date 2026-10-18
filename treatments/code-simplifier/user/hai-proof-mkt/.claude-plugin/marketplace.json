@@ -1,0 +1,2 @@
+{"name": "hai-proof-pinned", "owner": {"name": "hai-proof"},
+ "plugins": [{"name": "code-simplifier", "source": "./code-simplifier"}]}

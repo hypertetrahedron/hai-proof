@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "plugins": {
+    "code-simplifier@hai-proof-pinned": [
+      {
+        "scope": "user",
+        "installPath": "/home/agent/.claude/plugins/cache/hai-proof-pinned/code-simplifier/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-10-11T02:06:17.062Z",
+        "lastUpdated": "2026-10-11T02:06:17.062Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "name": "@c0x12c/ai-toolkit",
+  "version": "1.27.0",
+  "description": "Engineering discipline layer for AI coding agents — commands, rules, skills, agents, and packs for Claude Code",
+  "type": "module",
+  "bin": {
+    "ai-toolkit": "./bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "commands/",
+    "codex/",
+    "skills/",
+    "rules/",
+    "agents/",
+    "claude-md/",
+    "frameworks/",
+    "templates/",
+    "scripts/design/",
+    "packs/",
+    "VERSION",
+    ".claude-plugin/"
+  ],
+  "keywords": [
+    "claude-code",
+    "ai-toolkit",
+    "cursor",
+    "windsurf",
+    "codex",
+    "copilot",
+    "engineering",
+    "agent-skills"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/c0x12c/ai-toolkit"
+  },
+  "scripts": {
+    "test": "node --test lib/resolver.test.js lib/assembler.test.js lib/detector.test.js",
+    "gen:codex": "node scripts/gen-codex-skills.js",
+    "check:codex": "node scripts/check-codex-skills.js",
+    "prepublishOnly": "node scripts/compile-packs.js && node scripts/gen-codex-skills.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.1"
+  }
+}

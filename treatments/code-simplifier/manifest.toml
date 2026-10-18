@@ -1,0 +1,29 @@
+# anthropics/claude-plugins-official plugins/code-simplifier, version 1.0.0, repo commit
+# 87bc24ab561c4876dff68bfaec4881dbc83f8250 (main, 2026-10-15; plugin dir last changed in
+# aecd4c852f10b466245f18383fa6aad8c0b10d57). License: Apache-2.0 (plugin LICENSE vendored).
+# Contents: one subagent (agents/code-simplifier.md, model: opus) and no hooks, skills, commands, MCP or
+# scripts. It never runs unless the main agent delegates to it (Task tool, subagent_type code-simplifier).
+# user/ is a CLAUDE_CONFIG_DIR laid out like the other plugin treatments: local directory marketplace at
+# user/hai-proof-mkt (the plugin runs from there) and the pinned cache copy. The JSON state files were
+# derived from the ponytail install, not produced by a fresh `claude plugin install`; re-verify with the init
+# snapshot (`init_snapshot.plugins`) on the first real run.
+#
+# Workflow (DESIGN §3.8): in smoke run 20261016-105344-b363 the main agent never delegated to it on its own, so a
+# second scripted turn asks for it the way a user would after a change. Works in conventional mode (the plain arm
+# stays one turn, like the A/A baseline).
+name = "code-simplifier"
+prompt_prefix = ""
+
+[workflow]
+turns = ["{task_prompt}",
+         "Use the code-simplifier agent to simplify the code you just changed."]
+
+[env]
+
+[network]
+allow = []
+
+[expect]
+plugins = ["code-simplifier"]
+mcp_servers = []
+skills = []

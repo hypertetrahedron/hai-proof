@@ -101,14 +101,32 @@ def test_context_chart_has_labeled_y_axis():
 
     assert [_nice_step(v) for v in (40_128, 1_000, 230_000, 5_253_612)] == [10_000, 200, 50_000, 2_000_000]
 
-    def r(ts, ctx):
-        return {"ts": ts, "usage": {"context": ctx}}
+    def r(rid, ts, read, inp, write):
+        return {"id": rid, "ts": ts, "usage": {"cache_read": read, "input": inp, "cache_write": write,
+                                               "output": 10, "context": read + inp + write}}
 
-    svg = _context_svg({"requests": [r(0, 12_000), r(60, 31_000), r(120, 40_128)], "subagents": [],
-                        "compactions": []})
+    s = {"requests": [r("a", 0, 0, 2_000, 10_000), r("b", 60, 12_000, 1_000, 18_000), r("c", 120, 1_000, 128, 39_000)],
+         "tool_calls": [{"request": "a", "is_error": False}, {"request": "b", "is_error": True}],
+         "prompts": [{"ts": 0, "kind": "human"}, {"ts": 90, "kind": "human"}], "compactions": [{"ts": 100}],
+         "subagents": [{"agent_id": "x1", "first_ts": 30, "last_ts": 80, "subagent_type": "Explore",
+                        "description": "find the parser"}]}
+    svg = _context_svg(s)
     assert "Context per request (tokens)" in svg and "Elapsed time (minutes)" in svg
     for tick in (">0<", ">10.0k<", ">20.0k<", ">30.0k<", ">40.0k<", ">50.0k<"):
         assert tick in svg
+    # claude-lens lanes: three stacked context layers, turn ruler, tool lane with an error, a subagent bar
+    assert all(f'class="tl-l{i}"' in svg for i in (1, 2, 3)) and 'class="tl-ctx"' in svg
+    assert "Turn 1 · +0.0m" in svg and "Turn 2 · +1.5m" in svg
+    assert "1 tool call(s), 1 error(s)" in svg and 'class="tl-err"' in svg
+    assert "find the parser · Explore" in svg and "compaction" in svg
+    assert svg.count('class="tl-miss"') == 1  # request c reads back 1k of a 30k prefix
+    assert "context 40,128 = cache read 1,000 + uncached 128 + cache write 39,000" in svg
+
+
+def test_pack_rows_separates_overlapping_spans():
+    from hai_proof.claudedata import _pack_rows
+
+    assert _pack_rows([(0, 10), (5, 15), (11, 20), (16, 30)]) == [0, 1, 0, 1]
 
 
 def test_cost_state_fills_metrics_without_result(tmp_path):

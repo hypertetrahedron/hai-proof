@@ -424,7 +424,7 @@ The run also records the CLI version, image digest, model ID, start time and tre
 
 ## 6. Analysis and results
 
-The report has no verdict. It gives a **Results** section and leaves the judgement to the reader; an earlier rule-based verdict (HARMFUL / COSTS MORE / PAYS FOR ITSELF …) was removed on 2026-10-11 because its success rule silently ignored every task the control did not pass on all runs.
+The report opens with a **Results** section and leaves the judgement to the reader.
 
 - **Pass rates, per arm.** Over the tasks of the run, each task weighted equally:
   - **pass@1**: the share of a task's runs that pass, averaged over tasks.

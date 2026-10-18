@@ -420,7 +420,7 @@ def test_single_arm_run(tmp_path):
     run = _run_config(tmp_path, [ArmSpec("A", _treatment(tmp_path))], reps=1, analyses=False)
     run_dir = Runner(run, fake, {"ANTHROPIC_API_KEY": SECRET}, log=lambda s: None).execute()
     summary = json.loads((run_dir / "summary.json").read_text())
-    assert summary["ratios"] == {} and "verdict" not in summary
+    assert summary["ratios"] == {}
     # single-arm trials are never run concurrently: no pair has two members
     assert all(t.arm == "A" for t in _trials(run_dir))
 

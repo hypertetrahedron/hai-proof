@@ -1,0 +1,22 @@
+name: product
+description: "Product thinking before building"
+category: Planning
+priority: 40
+hidden: false
+
+commands:
+  - think
+  - validate
+  - teardown
+  - interview
+  - lean-canvas
+  - brainstorm
+  - web-to-prd
+
+rules: []
+skills:
+  - web-to-prd
+agents: []
+
+claude-sections:
+  - 40-product.md

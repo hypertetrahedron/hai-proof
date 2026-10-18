@@ -1,0 +1,26 @@
+name: frontend-react
+description: "React + Next.js frontend"
+category: Frontend
+priority: 20
+hidden: false
+
+commands:
+  - next-app
+  - next-feature
+  - fe-review
+  - figma-to-code
+  - e2e
+  - qa
+  - js-security
+
+rules:
+  - frontend-react/FRONTEND.md
+
+skills:
+  - browser-qa
+  - js-security-audit
+
+agents: []
+
+claude-sections:
+  - 20-frontend-react.md

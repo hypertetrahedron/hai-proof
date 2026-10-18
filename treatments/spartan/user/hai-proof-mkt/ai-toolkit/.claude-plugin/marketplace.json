@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "spartan-marketplace",
+  "description": "Spartan AI Toolkit — engineering discipline layer for Claude Code",
+  "owner": {
+    "name": "Spartan Stratos"
+  },
+  "plugins": [
+    {
+      "name": "ai-toolkit",
+      "description": "5 workflows, 69 commands, 21 rules, 29 skills, 9 agents — organized in 12 packs with dependencies",
+      "source": "./toolkit",
+      "version": "1.27.0"
+    }
+  ]
+}

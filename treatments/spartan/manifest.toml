@@ -1,0 +1,39 @@
+# c0x12c/ai-toolkit ("Spartan AI Toolkit") v1.27.0, commit 96b2c9d099f8507a95b9e43916f144594720a3c9 (tag v1.27.0).
+# Plugin ai-toolkit 1.27.0 from the repo's toolkit/ directory (marketplace spartan-marketplace, source ./toolkit);
+# only toolkit/ is vendored, not the repo's other directories. MIT declared by upstream; see NOTICE (the LICENSE
+# file is absent at this commit). Contents: 69 /spartan:* commands, 29 skills, 9 agents; no hooks.json, no .mcp.json,
+# no plugin scripts run on their own (toolkit/{bin,lib,scripts,hooks} are installer files the plugin never loads).
+# Reviewed 2026-10-15: nothing runs at load; network use (WebSearch, gemini, npx, gh, playwright) is confined to
+# optional commands/skills the workflow below does not call. user/ is a CLAUDE_CONFIG_DIR laid out like the other
+# plugin treatments (derived from the code-simplifier layout, not from a fresh `claude plugin install`). Plugin
+# commands are namespaced by the plugin: /ai-toolkit:spartan:debug (verified in the init event, claude 2.1.301).
+# CRLF line endings in 15 ui-ux-pro-max data/script files were normalised to LF (upstream blobs are CRLF there).
+#
+# Workflow (DESIGN §3.8): plain prompts never invoke commands, so two scripted turns are sent in every user mode.
+# The first calls /ai-toolkit:spartan, the toolkit's router, with "auto on" (its own switch, commands/spartan.md
+# "Auto Mode", that makes its commands skip confirmation gates) ahead of the task. The router may send bugs to
+# /spartan:debug and features to /spartan:build, or do a small change directly (it did on all three L1 smoke
+# tasks). Caveats: debug ends with "create PR" (no git remote or network in the trial) and still stops to
+# ask when it cannot reproduce; build forces three questions "even in auto mode" and works in a git worktree
+# under .worktrees/, not the main checkout, so use --user uninformative/informative. The trial diff is taken from
+# the main checkout (/work, `git add -A` against the baseline ref), so the second turn asks, as a user would, for the
+# work to be brought back there; on a bug fix done in place it is a no-op.
+name = "spartan"
+prompt_prefix = ""
+
+[workflow]
+# "auto on" rides in the router call: as a turn of its own (smoke run 20261016-105928-9213) the agent had no
+# task, asked for one, the stand-in told it to use its judgement, and it went looking and fixed B1's bug from
+# the failing tests before the task arrived.
+turns = ["/ai-toolkit:spartan auto on. {task_prompt}",
+         "If any of that work is on another branch or in a worktree, merge it into the main checkout I'm in now, so the finished change is in this working tree."]
+
+[env]
+
+[network]
+allow = []
+
+[expect]
+plugins = ["ai-toolkit"]
+mcp_servers = []
+skills = ["ai-toolkit:spartan", "ai-toolkit:spartan:debug", "ai-toolkit:spartan:build"]

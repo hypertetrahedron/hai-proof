@@ -157,14 +157,25 @@ def pass_k(trials: Sequence[TrialResult], arm: str) -> dict[str, dict]:
     return out
 
 
+def _rates(n: int, c: int, k: int) -> tuple[float, float]:
+    """(pass@1, pass@k) from n runs with c passes. pass@k is the unbiased 1 - C(n-c, k)/C(n, k); k = n when n < k."""
+    kk = min(k, n)
+    return c / n, 1.0 - math.comb(n - c, kk) / math.comb(n, kk)
+
+
 def _task_pass_rates(trials: Sequence[TrialResult], arm: str, k: int) -> dict[str, tuple[float, float]]:
-    """Per task: (pass@1, pass@k). pass@k is the unbiased 1 - C(n-c, k)/C(n, k); k = n when n < k."""
-    out = {}
-    for task, d in pass_k(trials, arm).items():
-        n, c = d["runs"], d["passes"]
-        kk = min(k, n)
-        out[task] = (c / n, 1.0 - math.comb(n - c, kk) / math.comb(n, kk))
-    return out
+    """Per task: (pass@1, pass@k)."""
+    return {task: _rates(d["runs"], d["passes"], k) for task, d in pass_k(trials, arm).items()}
+
+
+def sign_test_p(higher: int, lower: int) -> float | None:
+    """Exact two-sided sign test: chance of a split at least this uneven if each task is equally likely
+    to go either way (ties dropped). None when no task differs."""
+    n = higher + lower
+    if n == 0:
+        return None
+    tail = sum(math.comb(n, i) for i in range(min(higher, lower) + 1)) / 2 ** n
+    return min(1.0, 2 * tail)
 
 
 def pass_at(trials: Sequence[TrialResult], arm: str, k: int) -> dict:
@@ -191,28 +202,49 @@ def pass_at_relative(
 ) -> dict[str, dict] | None:
     """B vs A on pass@1 and pass@k over the tasks both arms ran.
 
-    diff is B - A (fraction; ×100 for percentage points) with a 95% bootstrap CI that resamples
-    tasks, keeping each task's A and B values together. ratio is B ÷ A of the task means (None when
-    A is 0).
+    diff is B - A (fraction; ×100 for percentage points) with a 95% two-level bootstrap CI: resample
+    tasks, then each chosen task's runs within each arm, so the run-to-run noise of a task's pass rate
+    is in the interval. Resampling tasks alone treats each task's few runs as exact and is far too narrow:
+    an A/A run (20261015-193640-eb38) where B passed one more run of 5 on four tasks and none fewer got
+    a CI of [+1.5, +12.3] points. sign_p is an exact sign test over the tasks that differ. ratio is
+    B ÷ A of the task means (None when A is 0).
     """
-    ra, rb = _task_pass_rates(trials, ref, k), _task_pass_rates(trials, cand, k)
-    tasks = sorted(set(ra) & set(rb))
+    pa, pb = pass_k(trials, ref), pass_k(trials, cand)
+    tasks = sorted(set(pa) & set(pb))
     if not tasks:
         return None
+    ra, rb = _task_pass_rates(trials, ref, k), _task_pass_rates(trials, cand, k)
     rng = random.Random(seed)
     n = len(tasks)
+
+    def resampled(d: dict) -> tuple[float, float]:
+        runs = d["runs"]
+        p = d["passes"] / runs
+        return _rates(runs, sum(rng.random() < p for _ in range(runs)), k)
+
+    boots: tuple[list[float], list[float]] = ([], [])
+    for _ in range(n_boot):
+        s1 = sk = 0.0
+        for _ in range(n):
+            t = tasks[rng.randrange(n)]
+            a, b = resampled(pa[t]), resampled(pb[t])
+            s1 += b[0] - a[0]
+            sk += b[1] - a[1]
+        boots[0].append(s1 / n)
+        boots[1].append(sk / n)
+    lo_i = max(0, min(n_boot - 1, int(math.floor(alpha / 2 * n_boot))))
+    hi_i = max(0, min(n_boot - 1, int(math.ceil((1 - alpha / 2) * n_boot)) - 1))
     out: dict[str, dict] = {}
     for idx, name in ((0, "pass@1"), (1, "pass@k")):
         a = [ra[t][idx] for t in tasks]
         b = [rb[t][idx] for t in tasks]
         d = [y - x for x, y in zip(a, b)]
-        boots = sorted(sum(d[rng.randrange(n)] for _ in range(n)) / n for _ in range(n_boot))
-        lo_i = max(0, min(n_boot - 1, int(math.floor(alpha / 2 * n_boot))))
-        hi_i = max(0, min(n_boot - 1, int(math.ceil((1 - alpha / 2) * n_boot)) - 1))
+        bs = sorted(boots[idx])
         ma, mb = sum(a) / n, sum(b) / n
+        higher, lower = sum(1 for x in d if x > 0), sum(1 for x in d if x < 0)
         out[name] = {
-            "a": ma, "b": mb, "diff": mb - ma, "ci_low": boots[lo_i], "ci_high": boots[hi_i],
+            "a": ma, "b": mb, "diff": mb - ma, "ci_low": bs[lo_i], "ci_high": bs[hi_i],
             "ratio": mb / ma if ma > 0 else None, "n_tasks": n,
-            "tasks_b_higher": sum(1 for x in d if x > 0), "tasks_b_lower": sum(1 for x in d if x < 0),
+            "tasks_b_higher": higher, "tasks_b_lower": lower, "sign_p": sign_test_p(higher, lower),
         }
     return out

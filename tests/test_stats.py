@@ -10,6 +10,7 @@ from hai_proof.stats import (
     pass_at_relative,
     pass_k,
     ratio_ci,
+    sign_test_p,
     wilcoxon_signed_rank,
 )
 
@@ -194,6 +195,19 @@ def test_pass_at_relative():
     pk = rel["pass@k"]
     assert pk["a"] == pytest.approx(2 / 3) and pk["b"] == pytest.approx(1.0)
     assert (pk["tasks_b_higher"], pk["tasks_b_lower"]) == (1, 0)
+    assert p1["sign_p"] == pytest.approx(1.0) and pk["sign_p"] == pytest.approx(1.0)
+    # A/A run eb38 shape: B one pass higher (of 5) on 4 of 13 tasks, lower on none. Run-to-run noise must
+    # keep zero inside the CI (a tasks-only bootstrap gave [+1.5, +12.3] points).
+    rows = []
+    a_pass = {"t1": 3, "t2": 1, "t3": 0, "t4": 3, "t5": 5, "t6": 4, "t7": 0, "t8": 5, "t9": 5, "t10": 5,
+              "t11": 5, "t12": 3, "t13": 4}
+    for i, (t, c) in enumerate(a_pass.items()):
+        cb = c + 1 if i < 4 else c
+        rows += [(t, rep, 1, 1, 1, 1, rep < c, rep < cb) for rep in range(5)]
+    aa = pass_at_relative(build(rows), 5, n_boot=2000)["pass@1"]
+    assert aa["ci_low"] < 0 < aa["ci_high"] and (aa["tasks_b_higher"], aa["tasks_b_lower"]) == (4, 0)
+    assert aa["sign_p"] == pytest.approx(0.125)
+    assert sign_test_p(0, 0) is None and sign_test_p(5, 0) == pytest.approx(0.0625)
     # A never passes: no ratio
     zero = build([("t1", 0, 1, 1, 1, 1, False, True)])
     assert pass_at_relative(zero, 1, n_boot=50)["pass@1"]["ratio"] is None

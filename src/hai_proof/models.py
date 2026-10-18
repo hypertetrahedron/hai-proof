@@ -250,6 +250,12 @@ class RunConfig:
     resume: bool = False  # continue the run in results_dir/run_id: skip finished pairs (runner.Runner._resume)
     stand_in_model: str = "claude-sonnet-5-5"  # the user stand-in's model (DESIGN §3.8), same for both arms
     max_user_replies: int = 5  # stand-in replies per trial; after that the script moves on or the trial ends
+    limit_scale: float = 1.0  # multiplies every task's time limit, turn limit and budget, for both arms
+
+    def task_limits(self, task: TaskSpec) -> tuple[int, int, float]:
+        """(timeout_s, max_turns, budget_usd) for a task's trials, after --limit-scale."""
+        s = self.limit_scale
+        return round(task.timeout_s * s), max(1, round(task.max_turns * s)), round(task.budget_usd * s, 2)
 
     @property
     def user_loop(self) -> dict[str, Any] | None:

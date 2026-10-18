@@ -9,6 +9,7 @@
    "samples": [
     {
      "run_id": "20261011-214137-ed20",
+     "arm": "A",
      "rep": 0,
      "date": "2026-10-12",
      "harness": "3526e26646aa",
@@ -33,6 +34,7 @@
     },
     {
      "run_id": "20261011-214137-ed20",
+     "arm": "A",
      "rep": 1,
      "date": "2026-10-12",
      "harness": "3526e26646aa",
@@ -57,6 +59,7 @@
     },
     {
      "run_id": "20261011-214137-ed20",
+     "arm": "A",
      "rep": 2,
      "date": "2026-10-12",
      "harness": "3526e26646aa",
@@ -81,6 +84,7 @@
     },
     {
      "run_id": "20261011-215424-13ae",
+     "arm": "A",
      "rep": 0,
      "date": "2026-10-12",
      "harness": "3526e26646aa",
@@ -105,6 +109,7 @@
     },
     {
      "run_id": "20261011-215424-13ae",
+     "arm": "A",
      "rep": 1,
      "date": "2026-10-12",
      "harness": "3526e26646aa",
@@ -129,6 +134,7 @@
     },
     {
      "run_id": "20261011-215424-13ae",
+     "arm": "A",
      "rep": 2,
      "date": "2026-10-12",
      "harness": "3526e26646aa",
@@ -956,6 +962,209 @@
       "min": 58.0,
       "median": 73.0,
       "max": 88.0
+     }
+    }
+   }
+  },
+  {
+   "model": "claude-sonnet-5-5",
+   "cli_version": "2.1.301",
+   "effort": "default",
+   "task_hash": "0da953d794f3",
+   "samples": [
+    {
+     "run_id": "20261016-105344-b363",
+     "arm": "A",
+     "rep": 0,
+     "date": "2026-10-16",
+     "harness": "e4db146a2e8f",
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "cost_usd": 0.081811,
+     "tokens_total": 120115,
+     "tokens_output": 2690,
+     "wall_s": 50.0430662073195,
+     "turns": 6,
+     "tool_calls": 5,
+     "first_request_input_tokens": 15183,
+     "cache_read_share": 0.8854014902385214,
+     "cache_misses": 0,
+     "first_edit_s": 22.6,
+     "test_runs": 2,
+     "code_runs": 0,
+     "diff_files": 3,
+     "diff_lines": 73
+    }
+   ],
+   "summary": {
+    "trials": 1,
+    "passes": 1,
+    "pass_rate": 1.0,
+    "pass_rate_wilson95": [
+     0.2065493117918027,
+     1.0
+    ],
+    "timeouts": 0,
+    "end_reasons": {
+     "completed": 1
+    },
+    "harness_versions": [
+     "e4db146a2e8f"
+    ],
+    "excluded": 0,
+    "first_date": "2026-10-16",
+    "last_date": "2026-10-16",
+    "runs": [
+     {
+      "run_id": "20261016-105344-b363",
+      "date": "2026-10-16",
+      "trials": 1,
+      "passes": 1,
+      "excluded": 0
+     }
+    ],
+    "metrics": {
+     "cost_usd": {
+      "n": 1,
+      "mean": 0.081811,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 0.081811,
+      "median": 0.081811,
+      "max": 0.081811
+     },
+     "tokens_total": {
+      "n": 1,
+      "mean": 120115.0,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 120115.0,
+      "median": 120115.0,
+      "max": 120115.0
+     },
+     "tokens_output": {
+      "n": 1,
+      "mean": 2690.0,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 2690.0,
+      "median": 2690.0,
+      "max": 2690.0
+     },
+     "wall_s": {
+      "n": 1,
+      "mean": 50.0430662073195,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 50.0430662073195,
+      "median": 50.0430662073195,
+      "max": 50.0430662073195
+     },
+     "turns": {
+      "n": 1,
+      "mean": 6.0,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 6.0,
+      "median": 6.0,
+      "max": 6.0
+     },
+     "tool_calls": {
+      "n": 1,
+      "mean": 5.0,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 5.0,
+      "median": 5.0,
+      "max": 5.0
+     },
+     "first_request_input_tokens": {
+      "n": 1,
+      "mean": 15183.0,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 15183.0,
+      "median": 15183.0,
+      "max": 15183.0
+     },
+     "cache_read_share": {
+      "n": 1,
+      "mean": 0.8854014902385214,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 0.8854014902385214,
+      "median": 0.8854014902385214,
+      "max": 0.8854014902385214
+     },
+     "cache_misses": {
+      "n": 1,
+      "mean": 0.0,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+     },
+     "first_edit_s": {
+      "n": 1,
+      "mean": 22.6,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 22.6,
+      "median": 22.6,
+      "max": 22.6
+     },
+     "test_runs": {
+      "n": 1,
+      "mean": 2.0,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 2.0,
+      "median": 2.0,
+      "max": 2.0
+     },
+     "code_runs": {
+      "n": 1,
+      "mean": 0.0,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+     },
+     "diff_files": {
+      "n": 1,
+      "mean": 3.0,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 3.0,
+      "median": 3.0,
+      "max": 3.0
+     },
+     "diff_lines": {
+      "n": 1,
+      "mean": 73.0,
+      "var": null,
+      "sd": null,
+      "cv": null,
+      "min": 73.0,
+      "median": 73.0,
+      "max": 73.0
      }
     }
    }

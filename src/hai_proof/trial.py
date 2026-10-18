@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ WRAP = "/usr/local/bin/hai_proof_wrap.py"
 GRADE = "/usr/local/bin/hai_proof_grade.py"
 PROBE_PROMPT = "Reply with the single word OK."
 POLL_S = 5.0
+OVERRUN_GRACE_S = 180  # past its time limit the wrapper must have stopped claude; else the controller does
 ASK_POLL_S = 2.0  # the agent is blocked while a question waits, so look for questions more often
 ASK_ANSWER_TIMEOUT_S = 600  # the wrapper denies a question nobody answered in this time
 AUTH_FAILED = "authentication failed"
@@ -92,6 +94,11 @@ def run_trial(ctx: TrialContext, arm: ArmSpec, task: TaskSpec, rep: int, pair_id
         started_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
     rep_name = {-1: "warmup", -2: f"probe-{pair_id.rsplit('-', 1)[-1]}"}.get(rep, f"rep{rep}")
+    # A rerun pair (pair id "<task>-r<rep>-retry1", "-ulwait1", ...) gets its own directory, so the discarded
+    # attempt's files stay for inspection instead of being overwritten.
+    base_id = f"{task.id}-r{rep}"
+    if rep >= 0 and pair_id.startswith(base_id + "-"):
+        rep_name += pair_id[len(base_id):]
     rel_dir = Path("trials") / arm.label / task.id / rep_name
     trial_dir = ctx.run_dir / rel_dir
     trial_dir.mkdir(parents=True, exist_ok=True)
@@ -113,16 +120,15 @@ def run_trial(ctx: TrialContext, arm: ArmSpec, task: TaskSpec, rep: int, pair_id
         last_call_has_result = True
         if probe or not arm.multi_turn:
             prompt = PROBE_PROMPT if probe else t.turns(task_prompt)[0]
-            timeout_s = 300 if probe else task.timeout_s
-            argv = claude_argv(run, max_turns=5 if probe else task.max_turns,
-                               budget_usd=1.0 if probe else task.budget_usd)
+            timeout_s, max_turns, budget_usd = (300, 5, 1.0) if probe else run.task_limits(task)
+            argv = claude_argv(run, max_turns=max_turns, budget_usd=budget_usd)
             spec = {"argv": argv, "prompt_arg_index": 2, "prompt_file": "/tp/prompt.md", "cwd": "/work",
                     "env": env, "timeout_s": timeout_s, "out_dir": "/out/agent"}
             ex.put_tar(container, "/tp", tar_files({"prompt.md": prompt, "agent.json": json.dumps(spec),
                                                     "agent_shell_env.sh": AGENT_SHELL_ENV_SCRIPT}))
 
             ex.exec(container, [PYTHON, WRAP, "/tp/agent.json"], detach=True)
-            _wait_for(ctx, container, "/out/agent/done", deadline_s=timeout_s + 180)
+            _wait_for(ctx, container, "/out/agent", deadline_s=timeout_s + OVERRUN_GRACE_S)
             extract_tar(ex.get_tar(container, "/out/agent"), trial_dir)
         else:
             loop = _run_turns(ctx, container, arm, task, task_prompt, env, trial_dir, f"{name}-user")
@@ -254,9 +260,9 @@ def _run_turns(ctx: TrialContext, container: str, arm: ArmSpec, task: TaskSpec, 
         ex.exec(container, ["chown", "-R", "agent:agent", "/tp", "/out"], user="root")
         ex.exec(container, [PYTHON, WRAP, f"/tp/turn{tag}.json"], detach=True)
         if arm.sdk_input:
-            _serve_questions(ctx, container, out_dir, answerer, deadline_s=lim.timeout_s + 180)
+            _serve_questions(ctx, container, out_dir, answerer, deadline_s=lim.timeout_s + OVERRUN_GRACE_S)
         else:
-            _wait_for(ctx, container, f"{out_dir}/done", deadline_s=lim.timeout_s + 180)
+            _wait_for(ctx, container, out_dir, deadline_s=lim.timeout_s + OVERRUN_GRACE_S)
         extract_tar(ex.get_tar(container, out_dir), turns_dir)
         timing = json.loads(_read(turns_dir / tag / "timing.json") or "{}")
         tr = streamjson.parse_transcript(_read(turns_dir / tag / "transcript.jsonl"))
@@ -275,9 +281,10 @@ def _run_turns(ctx: TrialContext, container: str, arm: ArmSpec, task: TaskSpec, 
             task_prompt=task_prompt, brief=task.user_brief)
     answerer = userloop.ToolAnswerer(arm.user, stand_in, run.max_user_replies) if arm.sdk_input else None
     log = userloop.LoopLog(mode=arm.user)
+    timeout_s, max_turns, budget_usd = run.task_limits(task)
     try:
         userloop.run_loop(mode=arm.user, turns=arm.treatment.turns(task_prompt), agent=agent, stand_in=stand_in,
-                          timeout_s=task.timeout_s, max_turns=task.max_turns, budget_usd=task.budget_usd,
+                          timeout_s=timeout_s, max_turns=max_turns, budget_usd=budget_usd,
                           max_replies=run.max_user_replies, log=log, answerer=answerer)
     finally:
         if stand_in:
@@ -319,7 +326,7 @@ def _serve_questions(ctx: TrialContext, container: str, out_dir: str, answerer: 
             ex.put_tar(container, f"{out_dir}/ask", tar_files({name: json.dumps({"answers": answers})}))
             answered.add(q)
         time.sleep(ASK_POLL_S)
-    raise TrialFailure(f"trial did not finish within {deadline_s:.0f}s")
+    _stop_overrun(ctx, container, out_dir, deadline_s)
 
 
 def _merge_turns(turns_dir: Path, agent_dir: Path) -> None:
@@ -409,13 +416,13 @@ def _collect_claude_data(ctx: TrialContext, container: str, trial_dir: Path, tit
         result.session = {"error": f"{type(e).__name__}: {e}"[:500]}
 
 
-def _wait_for(ctx: TrialContext, container: str, path: str, *, deadline_s: float) -> None:
-    """Poll for a file. Survives transient SSH failures; the trial keeps running on the host."""
+def _wait_for(ctx: TrialContext, container: str, out_dir: str, *, deadline_s: float) -> None:
+    """Poll for out_dir/done. Survives transient SSH failures; the trial keeps running on the host."""
     end = time.monotonic() + deadline_s
     misses = 0
     while time.monotonic() < end:
         try:
-            r = ctx.ex.exec(container, ["test", "-f", path], check=False, timeout=60)
+            r = ctx.ex.exec(container, ["test", "-f", f"{out_dir}/done"], check=False, timeout=60)
             misses = 0
             if r.returncode == 0:
                 return
@@ -424,7 +431,23 @@ def _wait_for(ctx: TrialContext, container: str, path: str, *, deadline_s: float
             if misses >= 12:
                 raise TrialFailure(f"lost contact with execution host while waiting: {e}") from e
         time.sleep(POLL_S)
-    raise TrialFailure(f"trial did not finish within {deadline_s:.0f}s")
+    _stop_overrun(ctx, container, out_dir, deadline_s)
+
+
+def _stop_overrun(ctx: TrialContext, container: str, out_dir: str, deadline_s: float) -> None:
+    """The wrapper missed its own time limit by OVERRUN_GRACE_S: kill it and claude, and leave what it wrote
+    plus a timing.json saying the call timed out, so the trial is graded as a timed-out failure and its
+    cost read from Claude Code's records. Retrying it instead would give a slow failure a second chance.
+    """
+    ctx.log(f"  ! no result {deadline_s:.0f}s after the call started: stopping it, graded as timed out")
+    timing = json.dumps({"wall_s": float(deadline_s), "exit_code": None, "timed_out": True,
+                         "controller_stopped": True, "ended_at": datetime.now(timezone.utc).isoformat()})
+    script = ("pkill -KILL -f '[h]ai_proof_wrap' ; "
+              f"pkill -KILL -u agent -f claude ; mkdir -p {out_dir} && "
+              f"touch {out_dir}/transcript.jsonl {out_dir}/stderr.log && "
+              f"{{ test -s {out_dir}/timing.json || printf '%s' {shlex.quote(timing)} > {out_dir}/timing.json; }} && "
+              f"touch {out_dir}/done && chown -R agent:agent {out_dir}")
+    ctx.ex.exec(container, ["sh", "-c", script], user="root", timeout=60)
 
 
 def _grade(ctx: TrialContext, container: str, arm: ArmSpec, task: TaskSpec) -> dict:

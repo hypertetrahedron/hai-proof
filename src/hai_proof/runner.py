@@ -42,8 +42,8 @@ def make_plan(run: RunConfig) -> Plan:
     trial_an = [a for a in run.analyses if a.scope == "trial"]
     arm_an = [a for a in run.analyses if a.scope == "arm"]
     sessions = agent_runs * len(trial_an) + arms * len(arm_an)
-    ceiling = sum(t.budget_usd for t in run.tasks) * run.reps * arms
-    ceiling += probe_runs * 1.0 + (min(run.tasks, key=lambda t: t.level).budget_usd * arms if warmup else 0)
+    ceiling = sum(run.task_limits(t)[2] for t in run.tasks) * run.reps * arms
+    ceiling += probe_runs * 1.0 + (run.task_limits(min(run.tasks, key=lambda t: t.level))[2] * arms if warmup else 0)
     ceiling += agent_runs * sum(a.budget_usd for a in trial_an) + arms * sum(a.budget_usd for a in arm_an)
     lines = [
         f"run {run.run_id}  shape={run.shape}  mode={run.mode}  reps={run.reps}  host={run.host}",
@@ -53,6 +53,8 @@ def make_plan(run: RunConfig) -> Plan:
         f"analysis sessions: {sessions}",
         f"spend ceiling (sum of --max-budget-usd caps): ${ceiling:,.2f}",
     ]
+    if run.limit_scale != 1.0:
+        lines.append(f"limits: every task's time limit, turn limit and budget x{run.limit_scale:g} (both arms)")
     loop_arms = [a for a in run.arms if a.multi_turn]
     if loop_arms:
         lines.append(
@@ -189,7 +191,7 @@ class Runner:
                        "cost_tier": t.cost_tier, "report_order": t.report_order, "brief_hash": t.brief_hash()}
                       for t in r.tasks],
             "analyses": [a.name for a in r.analyses], "arm_analyses": {}, "harness": r.harness,
-            "user_loop": r.user_loop,
+            "user_loop": r.user_loop, "limit_scale": r.limit_scale,
         }
 
     def _resume(self) -> None:
@@ -205,6 +207,8 @@ class Runner:
         old, trials = load_run(self.run_dir)
         new = self.meta
         diffs = [f"{k}: {old.get(k)!r} -> {new.get(k)!r}" for k in RESUME_KEYS if old.get(k) != new.get(k)]
+        if old.get("limit_scale", 1.0) != new.get("limit_scale", 1.0):  # runs before --limit-scale ran at 1
+            diffs.append(f"limit_scale: {old.get('limit_scale', 1.0)!r} -> {new.get('limit_scale', 1.0)!r}")
         arms = lambda m: [(a["label"], a["treatment"], a.get("treatment_hash"), a.get("user", "conventional"),  # noqa: E731
                            ask_tool_mode(a.get("ask_tool"))) for a in m.get("arms", [])]
         tasks = lambda m: sorted((t["id"], t.get("hash"), t.get("brief_hash")) for t in m.get("tasks", []))  # noqa: E731

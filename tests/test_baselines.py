@@ -60,6 +60,33 @@ def test_update_plain_only_dedup_and_stats(tmp_path):
     assert len(baselines.current_entries(t)) == 2
 
 
+def test_aa_run_keeps_both_plain_arms(tmp_path):
+    t = task(tmp_path)
+    h = t.content_hash()
+    r = run(hashes={"t1": h})
+    r["arms"][1]["treatment"] = "plain"
+    # a sample written before arms were recorded is refreshed by the first arm, not duplicated
+    baselines.update([t], [(r, [trial("A", "t1", 0)])])
+    doc = baselines.load(t.path)
+    doc["entries"][0]["samples"][0].pop("arm")
+    (t.path / "baseline.json").write_text(json.dumps(doc))
+    added, _ = baselines.update([t], [(r, [trial("A", "t1", 0), trial("B", "t1", 0, ok=False), trial("B", "t1", 1)])])
+    assert added == {"t1": 2}
+    e = baselines.load(t.path)["entries"][0]
+    assert [(s["arm"], s["rep"]) for s in e["samples"]] == [("A", 0), ("B", 0), ("B", 1)]
+    assert (e["summary"]["trials"], e["summary"]["passes"]) == (3, 2)
+
+
+def test_limit_scale_gets_its_own_entry(tmp_path):
+    t = task(tmp_path)
+    h = t.content_hash()
+    scaled = run("r2", hashes={"t1": h})
+    scaled["limit_scale"] = 3.0
+    baselines.update([t], [(run(hashes={"t1": h}), [trial("A", "t1", 0)]), (scaled, [trial("A", "t1", 0)])])
+    entries = baselines.load(t.path)["entries"]
+    assert [(e.get("limit_scale"), e["summary"]["trials"]) for e in entries] == [(None, 1), (3.0, 1)]
+
+
 def test_hashless_runs_need_legacy_and_skip(tmp_path):
     t = task(tmp_path)
     r = run()  # no task hashes recorded

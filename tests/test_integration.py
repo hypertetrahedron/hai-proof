@@ -107,8 +107,10 @@ class FakeDocker:
     """Just enough Docker semantics for the orchestration layer."""
 
     def __init__(self, *, rate_limit_once: str | None = None, image_has_tools: str = "", auth_code: str = "200",
-                 usage_limit_once: str | None = None, usage_limit_result: dict | None = None):
+                 usage_limit_once: str | None = None, usage_limit_result: dict | None = None,
+                 hang_once: str | None = None):
         self.auth_code = auth_code
+        self.hang_once = hang_once  # container-name fragment whose wrapper never finishes, once
         self.usage_limit_once = usage_limit_once  # container-name fragment to hit the usage limit once
         self.usage_limit_result = usage_limit_result
         self.name = "fake"
@@ -161,6 +163,13 @@ class FakeDocker:
         self.calls.append(("exec", container, list(cmd), user))
         c = self.containers[container]
         if cmd[:2] == ["/usr/local/bin/python3", WRAP] and cmd[2] == "/tp/agent.json":
+            if self.hang_once and self.hang_once in c["name"]:
+                self.hang_once, c["hung"] = None, True
+            else:
+                c["done"] = True
+            return _cp()
+        if cmd[:2] == ["sh", "-c"] and "[h]ai_proof_wrap" in cmd[2]:  # the controller stopping an overrun
+            assert user == "root" and "/out/agent/done" in cmd[2]
             c["done"] = True
             return _cp()
         if cmd[:2] == ["/usr/local/bin/python3", WRAP]:
@@ -185,6 +194,11 @@ class FakeDocker:
             rl = bool(self.rate_limit_once and self.rate_limit_once in name)
             if rl:
                 self.rate_limit_once = None
+            if c.get("hung"):  # killed before its result event; timing.json is the controller's
+                timing = {"wall_s": 0.0, "exit_code": None, "timed_out": True, "controller_stopped": True}
+                text = "".join(_transcript(plugins=[], cost=0.2).splitlines(keepends=True)[:2])
+                return _tar({"agent/transcript.jsonl": text, "agent/timing.json": json.dumps(timing),
+                             "agent/stderr.log": "", "agent/done": ""})
             ul = None
             if self.usage_limit_once and self.usage_limit_once in name:
                 self.usage_limit_once = None
@@ -288,7 +302,9 @@ def test_comparative_run_end_to_end(tmp_path):
     from hai_proof.sessions_compare import compare, render_html
 
     rows = compare([run_dir])
-    assert len(rows) == len(final_ok)  # a discarded pair is rerun into the same rep directory
+    assert len(rows) == len(final_ok)  # the discarded attempt keeps its own directory but is left out
+    dirs = {t.artifacts_dir for t in scored}
+    assert any(d.endswith("-retry1") for d in dirs) and len(dirs) == len(scored)
     row = next(r for r in rows if r["success"])
     assert row["session"]["first_edit_s"] == 65.0  # the Edit call at 10:01:05 after the 10:00:00 prompt
     assert row["session"]["test_runs"] == 1 and row["session"]["edit_calls"] == 1
@@ -315,6 +331,32 @@ def test_comparative_run_end_to_end(tmp_path):
     assert meta["cli_version"] == "2.1.289" and meta["finished_at"]
     assert set(meta["arm_analyses"]) == {"A", "B"}
     assert (run_dir / "arms" / "B" / "analysis-non-code-changes-arm.md").read_text().startswith("# Report")
+
+
+def test_overrun_is_graded_as_timed_out_not_retried(tmp_path, monkeypatch):
+    from hai_proof import trial
+
+    monkeypatch.setattr(trial, "OVERRUN_GRACE_S", 0)
+    fake = FakeDocker(hang_once="-a-ex1-rep0")
+    run = _run_config(tmp_path, [ArmSpec("A", PLAIN), ArmSpec("B", _treatment(tmp_path))], reps=1, analyses=False)
+    run.limit_scale = 1e-4  # time limit rounds to 0 s, so the controller deadline passes at once
+    assert run.task_limits(run.tasks[0])[0] == 0 and run.task_limits(run.tasks[0])[1] == 1
+    logs = []
+    run_dir = Runner(run, fake, {"ANTHROPIC_API_KEY": SECRET}, log=logs.append).execute()
+    scored = [t for t in _trials(run_dir) if t.rep >= 0]
+    assert [(t.arm, t.status) for t in sorted(scored, key=lambda t: t.arm)] == [("A", "ok"), ("B", "ok")]
+    a = next(t for t in scored if t.arm == "A")
+    assert a.metrics.timed_out and a.acceptance_pass is not None  # graded, not discarded and rerun
+    assert any("graded as timed out" in line for line in logs)
+    assert json.loads((run_dir / "run.json").read_text())["limit_scale"] == 1e-4
+
+
+def test_limit_scale_scales_every_cap(tmp_path):
+    run = _run_config(tmp_path, [ArmSpec("A", PLAIN)], analyses=False)
+    t = run.tasks[0]
+    run.limit_scale = 3
+    assert run.task_limits(t) == (t.timeout_s * 3, t.max_turns * 3, round(t.budget_usd * 3, 2))
+    assert any("x3" in line for line in make_plan(run).lines)
 
 
 def test_spend_cap_stops_cleanly(tmp_path):

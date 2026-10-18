@@ -23,8 +23,19 @@ PHASE_COLORS = {"explore": "var(--explore)", "edit": "var(--edit)", "test": "var
 def find_trials(results_dirs: Iterable[Path], task: str | None = None) -> list[Path]:
     out = []
     for rd in results_dirs:
+        # A rerun pair has its own directory; the attempt it replaced is marked discarded in trials.jsonl
+        # (its trial.json was written before the discard), so it is left out by its last record.
+        last: dict[str, str] = {}
+        tl = Path(rd) / "trials.jsonl"
+        if tl.is_file():
+            for line in tl.read_text(encoding="utf-8").splitlines():
+                rec = json.loads(line) if line.strip() else {}
+                if rec.get("artifacts_dir"):
+                    last[rec["artifacts_dir"]] = rec.get("status", "")
         for tj in sorted(Path(rd).glob("trials/*/*/rep*/trial.json")):
             tdir = tj.parent
+            if last.get(tdir.relative_to(rd).as_posix()) == "discarded":
+                continue
             if (tdir / "claude_home").is_dir() and (task is None or tdir.parent.name == task):
                 out.append(tdir)
     return out

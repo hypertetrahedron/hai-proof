@@ -292,6 +292,10 @@ def _fx(v: float | None, nd: int = 2) -> str:
     return "—" if v is None else f"×{v:.{nd}f}"
 
 
+def _fp(v: float | None) -> str:
+    return "—" if v is None else f"{v:.3f}"
+
+
 def _num(v: float | None, nd: int = 2) -> str:
     return "—" if v is None else f"{v:,.{nd}f}"
 
@@ -406,17 +410,19 @@ def _results_html(summary: dict) -> str:
         r = rel.get(name)
         shown = name if name == "pass@1" else f"pass@{k}"
         if not r:
-            prows += f'<tr><td class="l">{shown}</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>'
+            prows += f'<tr><td class="l">{shown}</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>'
             continue
         cls = "good" if r["ci_low"] > 0 else ("bad" if r["ci_high"] < 0 else "")
         prows += (f'<tr><td class="l">{shown}</td><td class="{cls}">{r["diff"] * 100:+.0f} pts</td>'
                   f'<td>[{r["ci_low"] * 100:+.0f}, {r["ci_high"] * 100:+.0f}]</td><td>{_fx(r["ratio"])}</td>'
-                  f'<td>{r["tasks_b_higher"]} / {r["tasks_b_lower"]} of {r["n_tasks"]}</td></tr>')
+                  f'<td>{r["tasks_b_higher"]} / {r["tasks_b_lower"]} of {r["n_tasks"]}</td>'
+                  f'<td>{_fp(r.get("sign_p"))}</td></tr>')
     out += ('<div class="tablewrap"><table><tr><th class="l">Pass rate '
             f'({e(b)} vs {e(a)})</th><th>Difference ({e(b)} − {e(a)})</th><th>95% CI</th><th>Ratio ({e(b)} ÷ {e(a)})</th>'
-            f'<th>Tasks {e(b)} higher / lower</th></tr>{prows}</table></div>'
-            '<p class="note">Over the tasks both arms ran. Difference in percentage points; CI from a bootstrap '
-            "that resamples tasks, keeping each task's two arms together.</p>")
+            f'<th>Tasks {e(b)} higher / lower</th><th>Sign test p</th></tr>{prows}</table></div>'
+            '<p class="note">Over the tasks both arms ran. Difference in percentage points; CI from a two-level '
+            "bootstrap that resamples tasks and then each task's runs within each arm. Sign test: exact, over "
+            'the tasks where the arms differ.</p>')
     rrows = ""
     for m in stats.METRICS:
         r = summary["ratios"].get(m)
@@ -718,8 +724,10 @@ def _header(summary: dict) -> str:
     if isinstance(mem, (int, float)):
         host += (f" — {hi.get('ncpu', '?')} CPU, {mem / 2**30:.0f} GiB, {hi.get('arch', '?')}, "
                  f"engine {hi.get('engine_version', '?')}")
+    scale = run.get("limit_scale", 1.0)
+    scale = f", task time/turn/budget limits ×{e(str(scale))} for both arms" if scale != 1.0 else ""
     return (f'<h1>hai-proof report — {e(str(run.get("run_id", "")))}</h1><p>{_stamp(run)}</p>'
-            f'<p class="meta">Mode {e(str(run.get("mode")))}, {e(str(run.get("reps")))} rep(s). '
+            f'<p class="meta">Mode {e(str(run.get("mode")))}, {e(str(run.get("reps")))} rep(s){scale}. '
             f'Started {e(str(run.get("started_at", "")))}, finished {e(str(run.get("finished_at", "")))}.</p>'
             f'<p class="meta">Host: {e(host)}</p>'
             f'<p class="meta">Model: {e(str(run.get("model")))} (effort {e(str(run.get("effort")))}), '

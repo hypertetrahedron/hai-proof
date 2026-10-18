@@ -131,6 +131,9 @@ def _run_args(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("--max-spend", type=float, metavar="USD",
                     help="stop cleanly before any pair that could take the run's agent cost past USD "
                          "(reserve = most expensive pair so far)")
+    sp.add_argument("--limit-scale", type=float, default=1.0, metavar="N",
+                    help="multiply every task's time limit, turn limit and budget by N for both arms "
+                         "(e.g. 3 for treatments slower than plain; the limits then only stop runaways)")
     sp.add_argument("--resume", type=Path, metavar="RESULTS_DIR",
                     help="continue an interrupted run in RESULTS_DIR: pass the same arguments as the original run; "
                          "finished pairs are kept, the rest run (--max-spend counts the whole run)")
@@ -386,6 +389,8 @@ def _build_run_config(args: argparse.Namespace, cfg, root: Path):
     arms = [ArmSpec(a.label, a.treatment, users[a.label], asks[a.label]) for a in arms]
     if args.max_user_replies < 0:
         raise ConfigError("--max-user-replies must be >= 0")
+    if args.limit_scale <= 0:
+        raise ConfigError("--limit-scale must be > 0")
 
     model = args.model or cfg.model
     if not model:
@@ -437,6 +442,7 @@ def _build_run_config(args: argparse.Namespace, cfg, root: Path):
         results_dir=results_dir, harness=harness_info(root), max_spend_usd=args.max_spend,
         resume=bool(getattr(args, "resume", None)),
         stand_in_model=args.stand_in_model or cfg.stand_in_model, max_user_replies=args.max_user_replies,
+        limit_scale=args.limit_scale,
     )
 
 

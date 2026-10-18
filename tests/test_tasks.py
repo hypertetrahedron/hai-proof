@@ -110,6 +110,11 @@ def test_is_test_path():
         assert is_test_path(p), p
     for p in ("src/a.py", "README.md", "testing.py", "src/tests.py"):
         assert not is_test_path(p), p
+    for p in ("pkg/x_test.go", "src/a.test.ts", "web/b.spec.js", "ui/__tests__/c.tsx",
+              "core/src/test/java/d/E.java", "app/FooTest.kt", "lib/f_spec.rb"):
+        assert is_test_path(p), p
+    for p in ("tornado/test/util.py", "pkg/x.go", "src/main/java/d/E.java", "src/testing.ts"):
+        assert not is_test_path(p), p
 
 
 # ---------------------------------------------------------------- build_task
@@ -328,3 +333,25 @@ def test_load_suite_ids_ignores_other_broken_tasks(tmp_path):
     assert [t.id for t in load_suite(good.parent, ["G1"])] == ["G1"]
     with pytest.raises(ConfigError, match="prompt.md"):
         load_suite(good.parent)
+
+
+def test_load_suite_across_dirs(tmp_path):
+    pub, priv = tmp_path / "pub", tmp_path / "priv"
+    pub.mkdir(), priv.mkdir()
+    _task(pub, 'id="B1"\nkind="bug"\nlevel=1\n', name="b1")
+    _task(priv, 'id="ACME-1"\nkind="bug"\nlevel=1\n', name="acme-1")
+    assert [t.id for t in load_suite([pub, priv, tmp_path / "missing"])] == ["ACME-1", "B1"]
+    _task(priv, 'id="B1"\nkind="bug"\nlevel=1\n', name="b1")
+    with pytest.raises(ConfigError, match="duplicate task id 'B1'"):
+        load_suite([pub, priv])
+
+
+def test_task_dockerfile(tmp_path):
+    d = _task(tmp_path, 'id="G1"\nkind="bug"\nlevel=1\n')
+    plain_hash = load_task(d).content_hash()
+    (d / "task.Dockerfile").write_text("RUN apt-get update && apt-get install -y golang-go\n")
+    t = load_task(d)
+    assert t.dockerfile.startswith("RUN apt-get") and t.content_hash() != plain_hash
+    (d / "task.Dockerfile").write_text("FROM golang:1.22\n")
+    with pytest.raises(ConfigError, match="FROM or USER"):
+        load_task(d)

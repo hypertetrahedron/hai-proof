@@ -1,10 +1,11 @@
 # Roadmap
 
 Status legend: Not Started · In Progress · Complete · Deferred
-Last updated: 2026-10-17
+Last updated: 2026-10-18
 
 | Feature | Status | Notes |
 |---|---|---|
+| Claude Code tooling for users' own tasks and treatments | In Progress | Requested 2026-10-18. Done: project skills `.claude/skills/hai-proof-task` (task from any clonable repo, private ones into gitignored `private/tasks`), `hai-proof-treatment` (package the user's CLAUDE.md, skills, agents, commands, hooks, vendored plugins, MCP, CLI tools; secrets and history excluded) and `hai-proof-evaluate` (plan, dry-run, run, read against the A/A floor). Harness: `extra_tasks_dirs`/`extra_treatments_dirs` (default `private/...`, searched when present), optional root `task.Dockerfile`, test-file detection for Go/JS/TS/JVM/Ruby/C#. README and task-authoring updated. Verified 2026-10-18: unit tests (310 pass) and a throwaway Go task from a local-path repo (task.Dockerfile Go toolchain, `go test` acceptance_cmd) built and passed `validate-task` [ok] on developmenthost1. Not yet exercised: the treatment and evaluate skills driven from a fresh clone, and MCP via `project/.mcp.json` + `enableAllProjectMcpServers` (no treatment has used MCP). |
 | Pass-rate CI: two-level bootstrap + sign test | Complete | 2026-10-16, unit tests pass (303); A/A report eb38 regenerated. `pass_at_relative` resampled tasks only, treating each task's 5 runs as exact, so an A/A run got a CI excluding 0. It now resamples tasks and then each task's runs per arm; summary adds `sign_p` (exact sign test over differing tasks) and report.html shows it. DESIGN §6 updated. |
 | Rerun pairs keep their own trial directory | Complete | 2026-10-16, unit + integration tests pass (303). A discarded pair's rerun (`-retry1`, `-ulwait1`) wrote into the same `repN` dir, so the failed attempt's files were lost (eb38 A/F5/rep3, root cause of its overrun unknowable). Reruns now use `repN-retry1` etc.; `sessions` skips attempts trials.jsonl marks discarded. |
 | Baseline samples per arm (A/A runs) | Complete | 2026-10-16, unit test + real refresh. Samples were keyed (run, rep), so an A/A run's arm B overwrote arm A (eb38 added 65 of 130). Samples now record `arm` and are keyed (run, arm, rep); legacy samples adopt the arm of the first refresh. `baseline update` added eb38's other 65. |

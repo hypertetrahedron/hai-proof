@@ -65,7 +65,8 @@ def treatment_tag(base: str, t: TreatmentSpec) -> str:
 
 
 def trial_tag(arm_image: str, task: TaskSpec) -> str:
-    return f"hai-proof-trial-{slug(task.id)}:{_h(arm_image, _hash_dir(task.repo_dir), task.install)[:12]}"
+    return (f"hai-proof-trial-{slug(task.id)}:"
+            f"{_h(arm_image, _hash_dir(task.repo_dir), task.install, task.dockerfile)[:12]}")
 
 
 # --------------------------------------------------------------------------- Dockerfiles
@@ -90,9 +91,12 @@ def treatment_dockerfile(base: str, t: TreatmentSpec) -> str:
 
 
 def trial_dockerfile(arm_image: str, task: TaskSpec) -> str:
-    # Hidden tests are NEVER copied into the image.
+    # Hidden tests are NEVER copied into the image. task.Dockerfile (root steps such as a Go or JDK
+    # toolchain) is the same for both arms, so it belongs to the task, not the treatment.
+    root = ["USER root", task.dockerfile, "USER agent"] if task.dockerfile else []
     return "\n".join([
         f"FROM {arm_image}",
+        *root,
         "COPY --chown=agent:agent repo/ /work/",
         "WORKDIR /work",
         f"RUN {task.install}",

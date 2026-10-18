@@ -158,6 +158,7 @@ class TaskSpec:
     diff_categories: dict[str, tuple[str, ...]] = field(default_factory=dict)  # overrides
     prompt_variants: dict[str, str] = field(default_factory=dict)  # prompts/<name>.md, e.g. "degraded"
     user_brief: str = ""  # user.md: what the user wants and knows, for the informative stand-in (DESIGN §3.8)
+    dockerfile: str = ""  # task.Dockerfile: root build steps (toolchains, apt packages) before repo/ and install
     suites: tuple[str, ...] = ()  # named task sets this task belongs to, e.g. "standard", "smoke"
     cost_tier: str = ""  # "low" | "medium" | "high": fixed report grouping (docs/task-catalog.md)
     report_order: int | None = None  # fixed position in reports, by plain-arm output tokens

@@ -128,3 +128,19 @@ def test_suites():
     assert len(select_tasks_for_suite([_s("x"), _s("y")], None)) == 2  # untagged library: everything
     with pytest.raises(ConfigError, match="smoke"):
         select_tasks_for_suite(tasks, "nope")
+
+
+def test_extra_dirs(tmp_path):
+    cfg = load_project_config(tmp_path)
+    assert cfg.task_dirs() == [tmp_path / "tasks"]  # private/tasks is searched only once it exists
+    (tmp_path / "private" / "tasks").mkdir(parents=True)
+    (tmp_path / "private" / "treatments").mkdir()
+    assert load_project_config(tmp_path).task_dirs() == [tmp_path / "tasks", tmp_path / "private" / "tasks"]
+    assert load_project_config(tmp_path).treatment_dirs()[-1] == tmp_path / "private" / "treatments"
+    (tmp_path / "hai-proof.toml").write_text('extra_tasks_dirs = ["../acme-tasks"]\nextra_treatments_dirs = []\n')
+    (tmp_path.parent / "acme-tasks").mkdir(exist_ok=True)
+    cfg = load_project_config(tmp_path)
+    assert cfg.task_dirs()[-1] == tmp_path / "../acme-tasks" and cfg.treatment_dirs() == [tmp_path / "treatments"]
+    (tmp_path / "hai-proof.toml").write_text('extra_tasks_dirs = "private/tasks"\n')
+    with pytest.raises(ConfigError, match="extra_tasks_dirs"):
+        load_project_config(tmp_path)

@@ -24,6 +24,7 @@ MODES: dict[str, dict[str, int]] = {
 _TOP_KEYS = {
     "default_host", "model", "effort", "cli_version", "tasks_dir", "treatments_dir",
     "analyses_dir", "results_dir", "ssh_binary", "analyses", "limits", "probe", "egress", "stand_in_model",
+    "extra_tasks_dirs", "extra_treatments_dirs",
 }
 
 
@@ -44,10 +45,23 @@ class ProjectConfig:
     probe_runs: int = 5
     egress: str = "proxy"
     stand_in_model: str = "claude-sonnet-5-5"  # user stand-in for user-in-the-loop runs (DESIGN §3.8)
+    # Searched after tasks_dir / treatments_dir when they exist: a user's own tasks and treatments, kept out
+    # of this repo (private/ is gitignored, and may be its own private git repo).
+    extra_tasks_dirs: list[str] = field(default_factory=lambda: ["private/tasks"])
+    extra_treatments_dirs: list[str] = field(default_factory=lambda: ["private/treatments"])
 
     def path(self, attr: str) -> Path:
         """Resolve one of the *_dir settings against the project root."""
         return self.root / getattr(self, attr)
+
+    def task_dirs(self) -> list[Path]:
+        """tasks_dir, then each extra_tasks_dirs entry that exists."""
+        return [self.root / self.tasks_dir] + [p for p in (self.root / d for d in self.extra_tasks_dirs) if p.is_dir()]
+
+    def treatment_dirs(self) -> list[Path]:
+        """treatments_dir, then each extra_treatments_dirs entry that exists."""
+        return [self.root / self.treatments_dir] + [p for p in (self.root / d for d in self.extra_treatments_dirs)
+                                                    if p.is_dir()]
 
 
 def load_project_config(root: Path) -> ProjectConfig:
@@ -70,6 +84,12 @@ def load_project_config(root: Path) -> ProjectConfig:
             if not isinstance(d[key], str) or not d[key]:
                 raise ConfigError(f"{f}: '{key}' must be a non-empty string")
             setattr(cfg, key, d[key])
+    for key in ("extra_tasks_dirs", "extra_treatments_dirs"):
+        if key in d:
+            v = d[key]
+            if not isinstance(v, list) or not all(isinstance(x, str) and x for x in v):
+                raise ConfigError(f"{f}: '{key}' must be a list of directory paths")
+            setattr(cfg, key, list(v))
     if "analyses" in d:
         a = d["analyses"]
         if not isinstance(a, list) or not all(isinstance(x, str) for x in a):

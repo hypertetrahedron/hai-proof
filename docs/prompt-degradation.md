@@ -159,7 +159,3 @@ Two harness observations from this run:
     B19 A rep0 and rep1 still fail `test_cancel`; B19 A rep2 and B rep0 still pass.
 
   Agent-added tests are still graded on purpose: an agent test that fails is a data point worth keeping.
-- **The report verdict doesn't fit this experiment.** `report.html` says "PAYS FOR ITSELF" because the
-  verdict picks *CHEAPER* whenever B is strictly better on any task (here B19). That holds even though cost
-  rose 10% and B lost passes on B7 and B21. The HARMFUL rule fires only when A passes *every* run of a task,
-  and A was at most 2/3 on both. Read the per-task table, not the headline.

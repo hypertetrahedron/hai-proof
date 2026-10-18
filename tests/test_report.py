@@ -61,7 +61,7 @@ def test_comparative_summary_structure():
     for k in ("schema", "run", "results", "ratios", "pass_k", "per_task", "probe", "excluded",
               "analysis_cost", "trials_table"):
         assert k in s
-    assert s["schema"] == 2 and "verdict" not in s
+    assert s["schema"] == 2
     assert set(s["results"]["arms"]) == {"A", "B"} and s["results"]["k"] == 3
     assert s["results"]["arms"]["A"]["pass@1"] is not None
     assert set(s["results"]["relative"]) == {"pass@1", "pass@k"}

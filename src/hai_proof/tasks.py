@@ -14,7 +14,7 @@ import sys
 import tempfile
 import tomllib
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Sequence
 
 from .config import ConfigError
 from .models import GitSource, TaskSpec
@@ -169,6 +169,13 @@ def _parse(path: Path, *, check_dirs: bool) -> TaskSpec:
         if re.search(r"hidden[ _-]?tests?", brief, re.I):
             raise ConfigError(f"{uf}: the user brief must not mention the hidden tests")
 
+    dockerfile = ""
+    dfile = path / "task.Dockerfile"
+    if dfile.is_file():
+        dockerfile = dfile.read_text(encoding="utf-8").strip()
+        if re.search(r"(?im)^\s*(FROM|USER)\b", dockerfile):
+            raise ConfigError(f"{dfile}: must not contain FROM or USER (it runs as root inside the trial image build)")
+
     if check_dirs and source is None:
         if not (path / "repo").is_dir():
             raise ConfigError(f"{path}: repo/ directory is required for tasks without [source]")
@@ -197,6 +204,7 @@ def _parse(path: Path, *, check_dirs: bool) -> TaskSpec:
         suites=tuple(suites),
         cost_tier=cost_tier,
         report_order=report_order,
+        dockerfile=dockerfile,
     )
 
 
@@ -209,11 +217,12 @@ def load_task(path: Path) -> TaskSpec:
     return _parse(Path(path), check_dirs=True)
 
 
-def load_suite(tasks_dir: Path, ids: list[str] | None = None) -> list[TaskSpec]:
-    tasks_dir = Path(tasks_dir)
-    if not tasks_dir.is_dir():
-        raise ConfigError(f"tasks directory not found: {tasks_dir}")
-    tomls = sorted(tasks_dir.glob("*/task.toml"))
+def load_suite(tasks_dir: Path | Sequence[Path], ids: list[str] | None = None) -> list[TaskSpec]:
+    """Tasks under one directory or several (ids must be unique across them)."""
+    dirs = [Path(tasks_dir)] if isinstance(tasks_dir, (str, Path)) else [Path(d) for d in tasks_dir]
+    if not dirs or not dirs[0].is_dir():
+        raise ConfigError(f"tasks directory not found: {dirs[0] if dirs else '(none)'}")
+    tomls = [p for d in dirs if d.is_dir() for p in sorted(d.glob("*/task.toml"))]
     if ids is not None:
         # Fully load only the requested tasks, so one half-written task can't block the others.
         wanted = set(ids)
@@ -247,15 +256,24 @@ def _peek_id(task_toml: Path) -> str:
 
 
 def is_test_path(p: str) -> bool:
-    """tests/**, test_*.py, *_test.py, conftest.py (posix repo-relative path)."""
+    """Test files by common conventions (posix repo-relative path).
+
+    Python: tests/**, test_*.py, *_test.py, conftest.py. Other languages, for tasks from users' own repos:
+    *_test.go, *.test.* / *.spec.* (JS/TS), __tests__/**, src/test/** and *Test.java / *Test.kt (JVM),
+    *_spec.rb, *Tests.cs. A bare test/ directory is not a test path (tornado keeps product code under it).
+    """
     pp = PurePosixPath(p)
-    name = pp.name
+    name, dirs = pp.name, pp.parts[:-1]
     return (
-        "tests" in pp.parts[:-1]
-        or fnmatch.fnmatch(name, "test_*.py")
-        or fnmatch.fnmatch(name, "*_test.py")
-        or name == "conftest.py"
+        "tests" in dirs
+        or "__tests__" in dirs
+        or any(a == "src" and b == "test" for a, b in zip(dirs, dirs[1:]))
+        or any(fnmatch.fnmatch(name, pat) for pat in _TEST_NAMES)
     )
+
+
+_TEST_NAMES = ("test_*.py", "*_test.py", "conftest.py", "*_test.go", "*.test.*", "*.spec.*", "*Test.java",
+               "*Test.kt", "*_spec.rb", "*Tests.cs")
 
 
 def _rm_readonly(func, path, _exc):  # git object files are read-only on Windows

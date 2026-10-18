@@ -174,3 +174,14 @@ def test_resolve_cli_version():
     ex2 = FakeEx()
     assert images.resolve_cli_version(ex2, "1.0.5") == "1.0.5"
     assert ex2.docker_calls == []
+
+
+def test_trial_dockerfile_root_steps(tmp_path):
+    import dataclasses
+
+    task = make_task(tmp_path)
+    go = dataclasses.replace(task, dockerfile="RUN apt-get install -y golang-go")
+    df = images.trial_dockerfile("img:1", go)
+    assert df.index("USER root") < df.index("RUN apt-get") < df.index("USER agent") < df.index("COPY")
+    assert images.trial_tag("img:1", go) != images.trial_tag("img:1", task)
+    assert "USER root" not in images.trial_dockerfile("img:1", task)

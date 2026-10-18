@@ -21,3 +21,6 @@ hai-proof.toml
 # Claude Code worktrees and Git Bash crash dumps
 .claude/worktrees/
 *.stackdump
+
+# Users' own tasks and treatments (from private repos); may be its own private git repo
+private/

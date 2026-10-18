@@ -6,6 +6,10 @@ cli_version = "latest"            # resolved to a concrete version at run start 
 
 tasks_dir = "tasks"
 treatments_dir = "treatments"
+# Your own tasks and treatments (e.g. built from private repos), searched after the published ones when the
+# directory exists. private/ is gitignored here; it can be a separate private git repo. Task ids must be unique.
+# extra_tasks_dirs = ["private/tasks"]
+# extra_treatments_dirs = ["private/treatments"]
 analyses_dir = "analyses"
 results_dir = "results"
 ssh_binary = "ssh"

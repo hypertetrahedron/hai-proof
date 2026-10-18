@@ -179,7 +179,7 @@ def _dispatch(args: argparse.Namespace) -> int:
         from .validate import format_validation, validate_task
 
         ids = [s.strip() for s in args.tasks.split(",")] if args.tasks else None
-        tasks = load_suite(root / cfg.tasks_dir, ids)
+        tasks = load_suite(cfg.task_dirs(), ids)
         ex = make_executor(resolve_host(args.host, cfg), ssh_binary=cfg.ssh_binary)
         base = images.build_base(ex, images.resolve_cli_version(ex, args.cli_version or cfg.cli_version))
         results = []
@@ -211,7 +211,7 @@ def _dispatch(args: argparse.Namespace) -> int:
                 if len(parts) != 3 or not parts[2].isdigit():
                     raise ConfigError(f"--trials wants ARM/TASK/REP, got {item!r}")
                 only.add((parts[0], parts[1], int(parts[2])))
-        tasks = {t.id: t for t in load_suite(root / cfg.tasks_dir)}
+        tasks = {t.id: t for t in load_suite(cfg.task_dirs())}
         ex = make_executor(resolve_host(args.host or meta.get("host"), cfg), ssh_binary=cfg.ssh_binary)
         base = images.build_base(ex, str(meta.get("cli_version")))
         lim = meta.get("limits") or {}
@@ -232,7 +232,7 @@ def _dispatch(args: argparse.Namespace) -> int:
 
         meta, trials = load_run(args.results_dir)
         try:
-            apply_task_order(meta, load_suite(root / cfg.tasks_dir, [t["id"] for t in meta.get("tasks", [])]))
+            apply_task_order(meta, load_suite(cfg.task_dirs(), [t["id"] for t in meta.get("tasks", [])]))
         except ConfigError:
             pass  # a task since removed or renamed: keep the run's own order data
         s, h = write_report(args.results_dir, meta, trials)
@@ -246,7 +246,7 @@ def _dispatch(args: argparse.Namespace) -> int:
         from .tasks import load_suite
 
         if args.baseline_cmd == "update":
-            tasks = load_suite(root / cfg.tasks_dir)
+            tasks = load_suite(cfg.task_dirs())
             dirs = args.results_dirs or sorted(p.parent for p in (root / cfg.results_dir).glob("*/run.json"))
             skip = []
             for item in args.skip:
@@ -263,7 +263,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             print(f"{sum(added.values())} samples added from {len(dirs)} run(s)")
             return 0
         ids = [x.strip() for x in args.tasks.split(",")] if args.tasks else None
-        tasks = sorted(load_suite(root / cfg.tasks_dir, ids),
+        tasks = sorted(load_suite(cfg.task_dirs(), ids),
                        key=lambda t: task_sort_key({"id": t.id, "cost_tier": t.cost_tier, "report_order": t.report_order}))
         cols = [("cost_usd", "cost $", 2), ("tokens_output", "out tokens", 0), ("tokens_total", "tokens", 0),
                 ("wall_s", "wall s", 0)]
@@ -363,7 +363,7 @@ def _build_run_config(args: argparse.Namespace, cfg, root: Path):
     from .tasks import load_suite
     from .treatments import resolve_treatment
 
-    tdirs = [root / cfg.treatments_dir]
+    tdirs = cfg.treatment_dirs()
     if args.arm_a or args.arm_b:
         if args.treatment:
             raise ConfigError("use either --treatment or --arm-a/--arm-b, not both")
@@ -397,7 +397,7 @@ def _build_run_config(args: argparse.Namespace, cfg, root: Path):
         raise ConfigError("no model configured: pass --model <full model id> or set model in hai-proof.toml")
 
     ids = [s.strip() for s in args.tasks.split(",")] if args.tasks else None
-    tasks = load_suite(root / cfg.tasks_dir, ids)
+    tasks = load_suite(cfg.task_dirs(), ids)
     if ids and args.suite:
         raise ConfigError("use either --tasks or --suite, not both")
     if not ids:

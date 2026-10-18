@@ -35,6 +35,9 @@ DEFAULT_PATTERNS: dict[str, tuple[str, ...]] = {
     "tests": (
         "tests/**", "test/**", "**/tests/**", "**/test/**", "**/test_*.py", "**/*_test.py",
         "**/conftest.py",
+        # other languages' conventions, for tasks from users' own repos
+        "**/*_test.go", "**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/src/test/**", "**/*Test.java",
+        "**/*Test.kt", "**/*_spec.rb", "spec/**", "**/*Tests.cs",
     ),
     "planning": ("ROADMAP.md", "**/ROADMAP.md", "TODO*", "PLAN*.md", "openspec/**", ".beads/**"),
     "docs": ("*.md", "*.rst", "docs/**", "**/docs/**", "*.txt", "LICENSE*"),

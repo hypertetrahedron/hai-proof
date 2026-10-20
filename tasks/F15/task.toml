@@ -1,0 +1,31 @@
+id = "F15"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Decision-dense change with a user in the loop (docs/task-catalog.md, eleventh search H3). Upstream:
+# pallets/werkzeug issue #3242 "`int` and `float` converter issues" and PR #3243 (squash-merged 2026-08-19 as
+# 53633fe, after the model cutoff). The prompt says the number converters have unintended behaviours the
+# maintainer wants fixed conservatively and leaves which ones to the conversation; user.md holds the decisions
+# (ASCII digits only, the sign not counted by fixed_digits, overflow rejected but underflow allowed, `.4`/`4.`
+# still rejected, to_url validates and never emits inf/nan/scientific notation, str() formatting).
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest pytest-timeout ephemeral-port-reserve watchdog cryptography"
+# Hidden tests/test_routing.py is the fix's version with two hand edits (re-apply after `build-task --force`):
+#  1. test_converter's failing-match branch called `bound_map.match()` without the path, so every "must not
+#     match" row passed vacuously (it matched "/" and raised NotFound); it now calls `bound_map.match(path)`.
+#  2. The float "overflow" row used "1" * 400, which has no decimal point and never matched the regex anyway;
+#     an "overflow with fraction" row ("1" * 400 + ".0") now tests the overflow rule.
+acceptance = ["tests/test_routing.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests/test_routing.py tests/test_urls.py tests/test_wrappers.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/pallets/werkzeug.git"
+# parent of the squash-merge commit
+base = "ef518e429b67a91a307de37a1845c93110180371"
+# PR #3243
+fix  = "53633feffb843932cd7b9f77eb6e42dbc6cb1a58"
+exclude = ["CHANGES.rst"]

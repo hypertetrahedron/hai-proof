@@ -1,0 +1,26 @@
+id = "F14"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, eleventh search H2). Upstream:
+# ReactiveX/RxPY PR #711, opened 2024 as `combine_throttle`, renamed and given its final completion semantics
+# in a 2026-10-16 follow-up and squash-merged that day as 92b8293 (after the model cutoff). The prompt
+# describes the basic operator (latest pending value from each source, one tuple per round); user.md holds the
+# second-order design: completion rules, an empty source, zero sources, futures, None values, the three entry
+# points. The 2024 draft (pre-cutoff) had different completion behaviour, so recalling it does not help.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest pytest-asyncio"
+acceptance = ["tests/test_observable/test_ziplatest.py", "tests/test_observable/test_combination_fluent.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests/test_observable tests/test_core tests/test_subject"
+
+[source]
+kind = "git"
+url  = "https://github.com/ReactiveX/RxPY.git"
+# parent of the squash-merge commit
+base = "b5dc66cfd701f0b1cd9fc13cca52cd991fae7735"
+# PR #711 "feat(operators): add zip_latest"
+fix  = "92b8293cfee1d70268ceeef9cfc2b28fcd7c0152"
+exclude = ["docs/operators.rst"]

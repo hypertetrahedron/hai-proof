@@ -1,0 +1,33 @@
+id = "F13"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, eleventh search H1). Upstream:
+# tox-dev/platformdirs PR #585 "add place_*_file methods that create parents as 0700" (squash-merged
+# 2026-09-26 as dfaeabf, after the model cutoff). The prompt asks for a way to get a file path in a user
+# directory with its parents created, and leaves the design to a conversation; user.md holds it, including the
+# second-order points (0o700 on every directory created, existing ones untouched, independent of ensure_exists,
+# rejected names create nothing, unknown home raises without creating). The method names mirror Rust's `xdg`
+# crate, so the naming may be guessable; the rest is not.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+# The checkout has no .git (build-task strips it), so hatch-vcs needs a pretend version (base is
+# 4.11.15-9-g46843f1).
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=4.11.16.dev9 uv pip install --python /opt/venv/bin/python -e . pytest pytest-mock appdirs==1.4.4"
+# Hand edit to the fix's tests/test_api.py (re-apply after `build-task --force`):
+# test_place_file_rejects_name_without_a_file pinned the exact message "name must point to a file, got ''";
+# it now requires only a ValueError whose message shows the name. In pilot 20261019-211548-cc5a all three
+# informative-arm failures were this wording alone ("must name a file"), which tests guessing, not design.
+acceptance = ["tests/test_api.py", "tests/test_unix.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests"
+
+[source]
+kind = "git"
+url  = "https://github.com/tox-dev/platformdirs.git"
+# parent of the squash-merge commit
+base = "46843f1a57258c7e287e7d9ff7eea1022f079a5a"
+# PR #585
+fix  = "dfaeabf9219f7f1c4c701c63f674f2c7b2c6c243"
+exclude = ["docs/changelog/585.feature.rst", "docs/howto.rst"]

@@ -1,0 +1,3 @@
+Our changelog is wrapped by towncrier with `wrap = true`, which always wraps at 79 columns. Our project's line length is 120, so the generated NEWS file looks cramped next to everything else, and the long issue links make the 79-column version worse.
+
+I'd like the wrap width to be configurable in towncrier's settings. How it should be configured, and what happens with unusual values, is up to you, but I have opinions, so check with me on the design before you commit to it. Existing configurations must keep producing exactly the same output, and please add tests and update the configuration docs.

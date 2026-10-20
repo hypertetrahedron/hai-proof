@@ -305,6 +305,7 @@ turns = ["/opsx:propose {task_prompt}", "/opsx:apply"]
 | `conventional` (default) | nobody answers; each scripted turn is sent when the agent stops |
 | `uninformative` | a stand-in decides whether the agent is waiting and, if so, always replies "I don't have anything to add. Use your best judgement and continue." |
 | `informative` | the same decision, but the stand-in replies from the task's user brief (`tasks/<ID>/user.md`) |
+| `reticent` | the same brief, but the stand-in answers only what the agent asks or states: it corrects choices a plan makes explicitly and never volunteers brief points the agent did not raise |
 
 A comparison changes one variable: either the treatment with the mode fixed, or the mode with the treatment fixed (`--arm-a X --arm-b X --user-a uninformative --user-b informative`). A treatment's claim that interacting with the user improves outcomes is the interaction effect in the 2×2 of {plain, treatment} × {uninformative, informative}. A plain conventional arm whose prompt includes the brief (a `prompt_variant`) is the upper bound where nothing is left to ask.
 
@@ -322,6 +323,8 @@ The stand-in never moves the workflow forward: it doesn't name skills or phases,
 - answers only from the brief, and says "make a reasonable assumption" when the brief doesn't cover a question;
 - approves or corrects plans only against the user's intent, never the code's correctness;
 - starts with the option label when offered options.
+
+**The reticent stand-in** (added 2026-10-20) uses the same brief with different rules. When shown a plan, the informative responder corrects it against the whole brief, so an agent that writes any proposal hears every point the brief covers (pilot run 20261019-211548-cc5a, F13: the reply to a proposal that left out the log directory and several error cases listed all of them). That leaves no room for a better interviewer. The reticent responder looks only at what the agent's message asks or states: it answers a specific question about that point alone, approves or corrects choices a plan states explicitly, never raises anything the plan leaves out, and answers an open question ("which edge cases matter?") fully on its topic. Tool answers follow the same rule. It stands for a user whose requirements are tacit until asked, which is the case an interviewing treatment claims to help.
 
 An unparseable decision counts as DONE, and a failed reply becomes "I don't have a preference…". Both are counted as stand-in errors.
 

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .models import ASK_TOOL_MODES, USER_MODES
+from .models import ASK_TOOL_MODES, BRIEF_MODES, USER_MODES
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -104,7 +104,8 @@ def _run_args(sp: argparse.ArgumentParser) -> None:
     ul.add_argument("--user", choices=USER_MODES, default="conventional",
                     help="who answers the agent between turns, both arms: conventional = nobody (one session, the "
                          "classic test); uninformative = a stand-in that always says 'use your best judgement'; "
-                         "informative = a stand-in that answers from each task's user.md")
+                         "informative = a stand-in that answers from each task's user.md; reticent = the same brief, but "
+                         "it only answers what the agent asks and never volunteers unasked points")
     ul.add_argument("--user-a", choices=USER_MODES, help="override --user for arm A")
     ul.add_argument("--user-b", choices=USER_MODES, help="override --user for arm B")
     ul.add_argument("--ask-tool", choices=ASK_TOOL_MODES, default="off",
@@ -414,10 +415,11 @@ def _build_run_config(args: argparse.Namespace, cfg, root: Path):
         if missing:
             raise ConfigError(f"arm {arm.label} ({arm.treatment.name}) uses prompt variant '{v}', "
                               f"which these tasks lack (prompts/{v}.md): {', '.join(missing)}")
-    if any(a.user == "informative" for a in arms):
+    if any(a.user in BRIEF_MODES for a in arms):
         missing = [t.id for t in tasks if not t.user_brief]
         if missing:
-            raise ConfigError("the informative stand-in answers from each task's user.md, which these tasks lack: "
+            raise ConfigError("the informative and reticent stand-ins answer from each task's user.md, "
+                              "which these tasks lack: "
                               + ", ".join(missing))
     reps = args.reps if args.reps else MODES[args.mode]["reps"]
     mode = "custom" if args.reps else args.mode

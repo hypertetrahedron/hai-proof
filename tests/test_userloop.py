@@ -12,7 +12,8 @@ from hai_proof.config import ConfigError
 from hai_proof.models import PLAIN, ArmSpec, TreatmentSpec
 from hai_proof.tasks import load_task
 from hai_proof.treatments import load_treatment
-from hai_proof.userloop import (NO_INFO_REPLY, UNINFORMATIVE_REPLY, AgentTurn, StandInCall, ToolAnswerer,
+from hai_proof.userloop import (CLASSIFIER_SYSTEM, NO_INFO_REPLY, RESPONDER_SYSTEM, RETICENT_RESPONDER_SYSTEM,
+                                UNINFORMATIVE_REPLY, AgentTurn, ContainerStandIn, StandInCall, ToolAnswerer,
                                 classifier_prompt, parse_decision, parse_tool_answers, responder_prompt, run_loop,
                                 tool_responder_prompt)
 
@@ -262,6 +263,32 @@ def test_answerer_modes_and_cap():
         a = ToolAnswerer(mode, FakeStandIn(), max_answers=5)
         assert a({"questions": QS}) == {q["question"]: UNINFORMATIVE_REPLY for q in QS}
         assert a.records[0]["source"] == "fixed" and a.records[0]["stand_in"] is None
+    # reticent answers from the brief like informative
+    si = FakeStandIn()
+    assert ToolAnswerer("reticent", si, max_answers=5)({"questions": QS}) == {"Which store?": "B", "Which flags?": "x, y"}
+    assert len(si.replied) == 1
+
+
+class _RecordingStandIn(ContainerStandIn):
+    def _call(self, kind, system, prompt):
+        self.calls.append((kind, system, prompt))
+        return StandInCall(kind=kind, output="ok")
+
+
+def test_reticent_stand_in_uses_its_own_prompts():
+    kw = dict(image="i", model="m", run_id="r", name="n", auth_env={}, network=None, proxy=None,
+              task_prompt="fix it", brief="Wants B.")
+    for reticent, system, fmt in ((False, RESPONDER_SYSTEM, "as fully as you would"),
+                                  (True, RETICENT_RESPONDER_SYSTEM, "say nothing about other points")):
+        si = _RecordingStandIn(None, reticent=reticent, **kw)
+        si.calls = []
+        si.reply([("user", "fix it"), ("agent", "A or B?")], "A or B?")
+        si.answer_tool([("user", "fix it")], QS)
+        si.classify("fix it", "A or B?")
+        (k1, s1, _), (k2, s2, p2), (k3, s3, _) = si.calls
+        assert s1 == s2 == system and fmt in p2 and "Wants B." in p2
+        assert s3 == CLASSIFIER_SYSTEM  # the WAITING / DONE decision is the same in every mode
+    assert "Do not bring up" in RETICENT_RESPONDER_SYSTEM and "Do not bring up" not in RESPONDER_SYSTEM
 
 
 def test_run_loop_records_tool_questions_per_call():

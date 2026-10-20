@@ -513,6 +513,32 @@ Rejected for this purpose: dateparser #1443 (about 100 edge-case strings no inte
 Near-misses: werkzeug #3288 (not fully read), pytest #15153, cattrs #788, syrupy #1222, filelock #803.
 
 
+### Twelfth search: more decision-dense features (2026-10-20)
+
+After the overnight runs, only F13–F15 separated an interviewing treatment from plain, so the effect rests on three
+tasks. Same criteria as the eleventh search, plus: no decisions that hinge on message wording, no private-internal
+tests, no protocol plumbing (F18's lesson). About 200 repos swept by merge date. Merge dates and first-parent base
+SHAs verified with `gh`; for several PRs `baseRefOid` is not the first parent, so use these. Nothing cloned or run.
+
+| # | Upstream, base | Merged | Size | Decisions | Notes |
+|---|---|---|---|---|---|
+| D1 | icalendar #1852 `vRecur.count`, `8e80304` | 2026-09-30 | +69 src | 12 / 7 | 0 is valid and stored; bool `TypeError`; negative raises `InvalidCalendar`, not plain `ValueError`; first of several values; empty list reads `None`; `del` when unset is a no-op, setting `None` deletes; unreadable stored values raise on read. The PR body says "ValueError if <1" but the code allows 0: brief follows the code. One message-pinned test to drop. Sibling #1861 `wkst` (`d68d728`): use one |
+| D2 | packaging #1377 `Requirement.__replace__`, `7464e38` | 2026-10-20 | +54 src | 10 / 7 | No-op replace returns an equal, distinct instance; validated by re-parsing (`InvalidRequirement`); specifier deep-copied; marker extras normalised; subclasses preserved; unknown keyword `TypeError`. `copy.replace` tests need Python 3.13 (skip on 3.12). Don't pair with D7 |
+| D3 | tldextract #374 `TLDEXTRACT_PUBLIC_SUFFIX_LIST_URLS`, `9f86422` | 2026-09-29 | +40 src | 9 / 6 | Newline-delimited, blanks skipped; empty string means no fetch; local file paths become `file://`; explicit argument wins, `()`/`None` still disables; read at construction, not import. Check the suite runs offline |
+| D4 | attrs #1592 generator `on_setattr` hooks, `d3a98cf` | 2026-08-01 | ~70 src | 9 / 6 | Yielded value is what gets set; not run in `__init__`; exception before yield keeps the old value, after yield keeps the new one; second yield `RuntimeError` with the generator closed; not allowed in `setters.pipe`. Exclude the private `test_compat` additions; one message pin |
+| D5 | bidict #393 mutation during `OrderedBidict` iteration, `77ade42` | 2026-08-23 | +61/-17 src | 8 / 6 | Every mutation kind raises in both directions; mutation through `.inverse` counts; mutating on the last item raises (unlike `OrderedDict`); value-only update allowed; an unadvanced iterator also raises. Framed as a fix, but tests are behavioural |
+| D6 | packaging #1313 `SpecifierSet.is_subset/is_superset/is_disjoint`, `189a76d` | 2026-07-21 | +64 src | 8 / 5 | Unsatisfiable set is a subset of and disjoint from everything; `""` is not a subset of `>=3.12`; differing `prereleases` (unset vs `False`) `ValueError`; `===` `ValueError`; wrong type `TypeError`. Messages matched: disclose or relax |
+| D7 | packaging #1457 `Specifier/SpecifierSet.__replace__`, `fc61337` | 2026-10-20 | +75 src | 9 / 6 | Unchanged replace returns `self` (the opposite of D2); `prereleases=None` restores auto-detection; validated; subclasses preserved. Python 3.13 for `copy.replace` |
+| D8 | pluggy #732 hookspec argument defaults, `6e836fd` | 2026-09-22 | ~18 src | 8 / 5 | Spec default fills an omitted argument, also for historic replay and `call_extra`; falsy defaults honoured; missing arg without default `PluginValidationError`; spec added after registration still works. Follow-up #738 (`f51e3a7`) flips the precedence: a precedence task on its own |
+| D9 | click #3677 `style()` colour validation, `8dd4d60` | 2026-07-08 | +27 src | 10 / 5 | `ValueError` not `TypeError`; `fg=0` honoured; bool rejected; 0..255; names case-sensitive; RGB exactly three ints, list accepted. Message "Unknown color" matched |
+| D10 | jsonpath-ng #289 RFC 9535 slices and `[*]`, `ccb9533` | 2026-10-16 | +22/-43 src | 10 / 5 | `[*]` on objects yields values, on scalars nothing; slices on non-arrays yield nothing; no phantom copies under `..`. An agent that knows RFC 9535 needs little interviewing |
+
+Picks to build next: D1, D2, D4, D5, D8 (D3 if its suite is offline). Near-misses: packaging #1376, dj-database-url
+#288. Rejected: private-internal tests (pydantic-settings #952, responses #809, itemloaders #120, click #3681),
+plumbing (toolz #634, jsonpath-ng #292, icalendar #1672), fixes not features (json-patch, bidict #392/#401/#403,
+tomlkit #567, cattrs #765/#778, more-itertools #1248/#1253/#1260), too few decisions (more-itertools #1116,
+wcwidth #250, packaging #1334/#1346, cssselect #178, fsspec #2272).
+
 ## Rejected
 
 | Idea | Why |

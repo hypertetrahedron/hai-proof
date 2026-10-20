@@ -1,0 +1,30 @@
+id = "F20"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, twelfth search D2). Upstream:
+# pypa/packaging PR #1377, "feat(requirements): add Requirement.__replace__" (squash-merged 2026-10-19/20, after
+# the model cutoff). The prompt asks for a way to make a modified copy of a Requirement; user.md holds the
+# design: the dunder name and keyword-only fields, a no-op replace giving an equal but distinct instance,
+# url=None clearing the url, validation by re-parsing with InvalidRequirement (including values that would
+# smuggle in extra syntax), marker extras normalised, specifier deep-copied with its prereleases override kept,
+# subclasses preserved (subclass __init__ state kept), unknown keyword TypeError. Version.__replace__ already
+# exists in the repo as a model.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest hypothesis pretend tomli_w"
+# Hidden tests/test_requirements.py is the fix's version, unedited. test_copy_replace skips on the container's
+# Python 3.12 (copy.replace needs 3.13); user.md still asks for it to work on 3.13+. Because the grader appends
+# --ignore for the acceptance file, the regression command names neighbouring test files instead.
+acceptance = ["tests/test_requirements.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests/test_markers.py tests/test_specifiers.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/pypa/packaging.git"
+# parent of the squash-merge commit
+base = "7464e38990e0e140206051d8ebadd1c2f83239e6"
+# PR #1377
+fix  = "4b243af94ff6885c89b8acd7a22fc5714b18cb96"

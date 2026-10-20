@@ -1,0 +1,31 @@
+id = "F22"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, twelfth search D6). Upstream:
+# pypa/packaging PR #1313 "add accepted-version relation helpers", squash-merged 2026-07-21 as ba0188d (after
+# the model cutoff). The prompt names the three methods and the basic meaning; user.md holds the second-order
+# design: an unsatisfiable set, the empty set, mismatched `prereleases` settings, `===` specifiers, wrong
+# argument types. Issue #947 (2025) proposed other names, so recalling it does not settle the behaviour.
+# Hidden tests/test_specifiers.py is the fix's version with one hand edit (re-apply after
+# `build-task --force`):
+#  1. The three `match=` strings in the new tests are dropped (`match="pre-release"`, `match="SpecifierSet"`,
+#     `match="==="`); the exception types stay, so any message passes.
+# The hidden file replaces the existing tests/test_specifiers.py, so the regression command names the other
+# test files rather than the acceptance file.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest hypothesis pretend tomli_w"
+acceptance = ["tests/test_specifiers.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests/test_ranges.py tests/test_requirements.py tests/test_markers.py tests/test_utils.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/pypa/packaging.git"
+# parent of the squash-merge commit
+base = "189a76d54d64899adbca907c2a3efa5b6befdb28"
+# PR #1313
+fix  = "ba0188d4f1e3a376f37b6264d9aa8ce378f42dd5"
+exclude = ["docs/specifiers.rst"]

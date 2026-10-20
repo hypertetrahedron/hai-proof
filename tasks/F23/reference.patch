@@ -1,0 +1,201 @@
+diff --git a/src/attr/_compat.py b/src/attr/_compat.py
+index 37e7148..52a3f24 100644
+--- a/src/attr/_compat.py
++++ b/src/attr/_compat.py
+@@ -4,7 +4,7 @@ import sys
+ import threading
+ 
+ from collections.abc import Mapping, Sequence  # noqa: F401
+-from typing import _GenericAlias
++from typing import Callable, _GenericAlias
+ 
+ 
+ PYPY = sys.implementation.name == "pypy"
+@@ -101,3 +101,28 @@ def get_generic_base(cl):
+     if cl.__class__ is _GenericAlias:
+         return cl.__origin__
+     return None
++
++
++_IS_GENERATOR_RESULTS = {}
++
++
++def _lazy_is_generator(f: Callable) -> Callable[[], bool]:
++    """
++    Return a caching closure over callable f that returns whether f is a
++    generator function.
++
++    Not thread-safe but doesn't matter.
++    """
++
++    def is_gen() -> bool:
++        import inspect
++
++        try:
++            if f not in _IS_GENERATOR_RESULTS:
++                _IS_GENERATOR_RESULTS[f] = inspect.isgeneratorfunction(f)
++        except TypeError:  # f is not hashable
++            return inspect.isgeneratorfunction(f)
++
++        return _IS_GENERATOR_RESULTS[f]
++
++    return is_gen
+diff --git a/src/attr/_make.py b/src/attr/_make.py
+index 9580834..300a99c 100644
+--- a/src/attr/_make.py
++++ b/src/attr/_make.py
+@@ -25,6 +25,7 @@ from ._compat import (
+     PY_3_13_PLUS,
+     _AnnotationExtractor,
+     _get_annotations,
++    _lazy_is_generator,
+     get_generic_base,
+ )
+ from .exceptions import (
+@@ -158,6 +159,9 @@ def attrib(
+     .. versionchanged:: 25.4.0
+        *kw_only* can now be None, and its default is also changed from False to
+        None.
++    .. versionchanged:: 26.2.0
++       *on_setattr* hooks can now be generator functions to run code before and
++       after an attribute is set.
+     """
+     eq, eq_key, order, order_key = _determine_attrib_eq_order(
+         cmp, eq, order, True
+@@ -1171,7 +1175,11 @@ class _ClassBuilder:
+         for a in self._attrs:
+             on_setattr = a.on_setattr or self._on_setattr
+             if on_setattr and on_setattr is not setters.NO_OP:
+-                sa_attrs[a.name] = a, on_setattr
++                sa_attrs[a.name] = (
++                    a,
++                    on_setattr,
++                    _lazy_is_generator(on_setattr),
++                )
+ 
+         if not sa_attrs:
+             return self
+@@ -1184,14 +1192,30 @@ class _ClassBuilder:
+         # docstring comes from _add_method_dunders
+         def __setattr__(self, name, val):
+             try:
+-                a, hook = sa_attrs[name]
++                a, hook, is_gen = sa_attrs[name]
+             except KeyError:
+-                nval = val
+-            else:
+-                nval = hook(self, a, val)
++                _OBJ_SETATTR(self, name, val)
+ 
++                return
++
++            if is_gen():
++                gen = hook(self, a, val)
++                nval = next(gen)
++                _OBJ_SETATTR(self, name, nval)
++                try:
++                    next(gen)
++                except StopIteration:
++                    return
++
++                gen.close()
++                msg = "Generator on_setattr hook yielded more than once."
++                raise RuntimeError(msg)
++
++            nval = hook(self, a, val)
+             _OBJ_SETATTR(self, name, nval)
+ 
++            return
++
+         self._cls_dict["__attrs_own_setattr__"] = True
+         self._cls_dict["__setattr__"] = self._add_method_dunders(__setattr__)
+         self._wrote_own_setattr = True
+diff --git a/src/attr/_next_gen.py b/src/attr/_next_gen.py
+index db386ac..a3a8438 100644
+--- a/src/attr/_next_gen.py
++++ b/src/attr/_next_gen.py
+@@ -108,6 +108,10 @@ def define(
+             If no exception is raised, the attribute is set to the return value
+             of the callable.
+ 
++            If the callable is a generator, it may yield exactly once and runs
++            before and after the assignment and its yield value is used as the
++            new value.
++
+             If a list of callables is passed, they're automatically wrapped in
+             an `attrs.setters.pipe`.
+ 
+@@ -329,6 +333,9 @@ def define(
+        and respects attribute-level ``kw_only=False`` settings.
+     .. versionadded:: 25.4.0
+        Added *force_kw_only* to go back to the previous *kw_only* behavior.
++    .. versionchanged:: 26.2.0
++       *on_setattr* hooks can now be generator functions that yield exactly
++       once.
+ 
+     .. note::
+ 
+@@ -569,10 +576,14 @@ def field(
+ 
+         on_setattr (~typing.Callable | list[~typing.Callable] | None | ~typing.Literal[attrs.setters.NO_OP]):
+             Allows to overwrite the *on_setattr* setting from `attr.s`. If left
+-            None, the *on_setattr* value from `attr.s` is used. Set to
++            None, the *on_setattr* value from `attrs.define` is used. Set to
+             `attrs.setters.NO_OP` to run **no** `setattr` hooks for this
+             attribute -- regardless of the setting in `define()`.
+ 
++            May be a generator function that yields exactly once and runs
++            before and after the assignment and its yield value is used as the
++            new value.
++
+         alias (str | None):
+             Override this attribute's parameter name in the generated
+             ``__init__`` method. If left None, default to ``name`` stripped
+@@ -588,6 +599,9 @@ def field(
+     .. versionchanged:: 25.4.0
+        *kw_only* can now be None, and its default is also changed from False to
+        None.
++    .. versionchanged:: 26.2.0
++       *on_setattr* hooks can now be generator functions that yield exactly
++       once.
+ 
+     .. seealso::
+ 
+diff --git a/src/attr/setters.py b/src/attr/setters.py
+index 78b0839..cff8432 100644
+--- a/src/attr/setters.py
++++ b/src/attr/setters.py
+@@ -12,6 +12,9 @@ def pipe(*setters):
+     """
+     Run all *setters* and return the return value of the last one.
+ 
++    .. warning::
++       Generator functions are not allowed in ``pipe()``.
++
+     .. versionadded:: 20.1.0
+     """
+ 
+diff --git a/src/attrs/__init__.pyi b/src/attrs/__init__.pyi
+index 6364bac..0c694ee 100644
+--- a/src/attrs/__init__.pyi
++++ b/src/attrs/__init__.pyi
+@@ -7,6 +7,7 @@ from typing import (
+     Sequence,
+     overload,
+     TypeVar,
++    Generator,
+ )
+ 
+ # Because we need to type our own stuff, we have to make everything from
+@@ -56,7 +57,10 @@ _CallableConverterType = Callable[[Any], Any]
+ _ConverterType = _CallableConverterType | Converter[Any, Any]
+ _ReprType = Callable[[Any], str]
+ _ReprArgType = bool | _ReprType
+-_OnSetAttrType = Callable[[Any, "Attribute[Any]", Any], Any]
++_OnSetAttrType = (
++    Callable[[Any, "Attribute[Any]", Any], Any]
++    | Callable[[Any, "Attribute[Any]", Any], Generator[Any]]
++)
+ _OnSetAttrArgType = _OnSetAttrType | list[_OnSetAttrType] | setters._NoOpType
+ _FieldTransformer = Callable[
+     [type, list["Attribute[Any]"]], list["Attribute[Any]"]

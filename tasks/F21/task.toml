@@ -1,0 +1,27 @@
+id = "F21"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Decision-dense change with a user in the loop (docs/task-catalog.md, twelfth search D10). Upstream:
+# h2non/jsonpath-ng PR #289 "Stop coercing non-arrays into arrays when slicing/wildcarding", merged
+# 2026-10-16 (after the model cutoff). The prompt says the user wants RFC 9535-like behaviour for slices and
+# `[*]` on values that are not arrays; user.md holds each case: scalars, None, objects, slices on objects, the
+# paths reported for object members, `..[*]` without phantom nodes, update and filter. The base docstring
+# defends the old coercion, so the agent must be told to break it; RFC 9535 makes the direction guessable, so
+# an agent that knows the RFC needs little interviewing.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest hypothesis pytest-codspeed"
+acceptance = ["tests/jsonpath/descendants/test_wildcard_and_slice.py", "tests/jsonpath/test_slice.py", "tests/test_jsonpath.py"]
+regression = "python -m pytest -q -p no:cacheprovider -p no:randomly tests"
+
+[source]
+kind = "git"
+url  = "https://github.com/h2non/jsonpath-ng.git"
+# first parent of the merge commit
+base = "ccb9533995a616ec8b6780e58785b119cede468c"
+# PR #289
+fix  = "934807191af8de7b8561077fa7ad19a8007ade38"
+exclude = ["changelog.d/20261016_120000_kurtmckee_descendant_wildcards_and_slices.rst", "pyproject.toml"]

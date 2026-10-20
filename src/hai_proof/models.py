@@ -13,8 +13,10 @@ Mode = Literal["lightning", "quick", "full", "custom"]
 TrialStatus = Literal["ok", "error", "discarded", "excluded"]
 # Who answers the agent between turns (DESIGN §3.8): nobody (the classic single session), a stand-in that
 # always says "use your best judgement", or a stand-in that answers from the task's user brief.
-UserMode = Literal["conventional", "uninformative", "informative"]
-USER_MODES: tuple[str, ...] = ("conventional", "uninformative", "informative")
+UserMode = Literal["conventional", "uninformative", "informative", "reticent"]
+USER_MODES: tuple[str, ...] = ("conventional", "uninformative", "informative", "reticent")
+# Modes whose stand-in answers from the task's user brief.
+BRIEF_MODES: tuple[str, ...] = ("informative", "reticent")
 TASK_PROMPT_SLOT = "{task_prompt}"
 # --ask-tool (DESIGN §3.8): off = plain `claude -p`; on = stream-json input with stdio permission prompts, which
 # offers AskUserQuestion; hidden = the same input mode with AskUserQuestion disallowed (the control for "on").

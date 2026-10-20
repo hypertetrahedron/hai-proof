@@ -1,0 +1,103 @@
+diff --git a/src/jsonpath_ng/jsonpath.py b/src/jsonpath_ng/jsonpath.py
+index 6d6064b..0353721 100644
+--- a/src/jsonpath_ng/jsonpath.py
++++ b/src/jsonpath_ng/jsonpath.py
+@@ -483,9 +483,7 @@ class Descendants(JSONPath):
+     def find(self, datum):
+         # <left> .. <right> ==> <left> . (<right> | *..<right> | [*]..<right>)
+         #
+-        # With with a wonky caveat that since Slice() has funky coercions
+-        # we cannot just delegate to that equivalence or we'll hit an
+-        # infinite loop. So right here we implement the coercion-free version.
++        # This walks the data directly instead of delegating to that equivalence.
+ 
+         # Get all left matches into a list
+         left_matches = self.left.find(datum)
+@@ -543,8 +541,7 @@ class Descendants(JSONPath):
+ 
+             self.right.update(node, val)
+ 
+-            # Manually do the * or [*] to avoid coercion
+-            # and recurse just the right-hand pattern.
++            # Manually visit every child and recurse just the right-hand pattern.
+             # The children are read after the update, which may have changed them.
+             stack.extend(reversed(node if isinstance(node, list) else node.values()))
+ 
+@@ -871,25 +868,10 @@ class Slice(JSONPath):
+     """
+     JSONPath matching a slice of an array.
+ 
+-    Because of a mismatch between JSON and XML when schema-unaware,
+-    this always returns an iterable; if the incoming data
+-    was not a list, then it returns a one element list _containing_ that
+-    data.
+-
+-    Consider these two docs, and their schema-unaware translation to JSON:
+-
+-    <a><b>hello</b></a> ==> {"a": {"b": "hello"}}
+-    <a><b>hello</b><b>goodbye</b></a> ==> {"a": {"b": ["hello", "goodbye"]}}
+-
+-    If there were a schema, it would be known that "b" should always be an
+-    array (unless the schema were wonky, but that is too much to fix here)
+-    so when querying with JSON if the one writing the JSON knows that it
+-    should be an array, they can write a slice operator and it will coerce
+-    a non-array value to an array.
+-
+-    This may be a bit unfortunate because it would be nice to always have
+-    an iterator, but dictionaries and other objects may also be iterable,
+-    so this is the compromise.
++    The wildcard ``[*]`` (a slice with no parameters) matches all the elements
++    of an array and all the member values of an object.
++    Slices match nothing when applied to a value that is not an array,
++    and the wildcard matches nothing when applied to a scalar value.
+     """
+ 
+     def __init__(self, start=None, end=None, step=None) -> None:
+@@ -900,31 +882,28 @@ class Slice(JSONPath):
+     def find(self, datum):
+         datum = DatumInContext.wrap(datum)
+ 
+-        # Used for catching null value instead of empty list in path
+-        if datum.value is None:
+-            return []
+-        # Here's the hack. If it is a dictionary or some kind of constant,
+-        # put it in a single-element list
+-        if isinstance(datum.value, dict) or isinstance(
+-            datum.value, (int, float, str, bool)
+-        ):
+-            return self.find(
+-                DatumInContext([datum.value], path=datum.path, context=datum.context)
+-            )
++        is_wildcard = self.start is None and self.end is None and self.step is None
+ 
+-        # Some iterators do not support slicing but we can still
+-        # at least work for '*'
+-        if self.start is None and self.end is None and self.step is None:
++        if is_wildcard and isinstance(datum.value, dict):
+             return [
+-                DatumInContext(datum.value[i], path=Index(i), context=datum)
+-                for i in range(0, len(datum.value))
++                DatumInContext(value, path=Fields(field), context=datum)
++                for field, value in datum.value.items()
+             ]
+-        else:
++
++        if not isinstance(datum.value, (list, tuple)):
++            return []
++
++        if is_wildcard:
+             return [
+-                DatumInContext(datum.value[i], path=Index(i), context=datum)
+-                for i in range(0, len(datum.value))[self.start : self.end : self.step]
++                DatumInContext(child, path=Index(i), context=datum)
++                for i, child in enumerate(datum.value)
+             ]
+ 
++        return [
++            DatumInContext(datum.value[i], path=Index(i), context=datum)
++            for i in range(0, len(datum.value))[self.start : self.end : self.step]
++        ]
++
+     def update(self, data, val):
+         for datum in self.find(data):
+             datum.path.update(data, val)

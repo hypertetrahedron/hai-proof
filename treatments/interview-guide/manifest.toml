@@ -1,0 +1,16 @@
+# A user-level CLAUDE.md with generic guidance to interview the user before building an underspecified
+# feature. Written 2026-10-20 as a cheap comparison for superpowers' brainstorming skill on the `userloop`
+# suite: does a few lines of instruction capture the gain from one-question-at-a-time interviewing? The text
+# is task-agnostic (no task's design points appear in it). No plugins, skills, hooks or MCP.
+name = "interview-guide"
+prompt_prefix = ""
+
+[env]
+
+[network]
+allow = []
+
+[expect]
+plugins = []
+mcp_servers = []
+skills = []

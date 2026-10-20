@@ -1581,9 +1581,238 @@
      }
     }
    }
+  },
+  {
+   "model": "claude-sonnet-5-5",
+   "cli_version": "2.1.304",
+   "effort": "default",
+   "task_hash": "551a6fbd667d",
+   "limit_scale": 3.0,
+   "samples": [
+    {
+     "run_id": "20261020-014017-34e9",
+     "arm": "A",
+     "rep": 0,
+     "date": "2026-10-20",
+     "harness": "d82d16e3adf9",
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "cost_usd": 0.5349673,
+     "tokens_total": 1078469,
+     "tokens_output": 17538,
+     "wall_s": 392.77181025221944,
+     "turns": 24,
+     "tool_calls": 23,
+     "first_request_input_tokens": 15993,
+     "cache_read_share": 0.9234507436004188,
+     "cache_misses": 0,
+     "first_edit_s": 149.4,
+     "test_runs": 3,
+     "code_runs": 1,
+     "diff_files": 6,
+     "diff_lines": 319
+    },
+    {
+     "run_id": "20261020-014017-34e9",
+     "arm": "A",
+     "rep": 1,
+     "date": "2026-10-20",
+     "harness": "d82d16e3adf9",
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "cost_usd": 0.6936608999999998,
+     "tokens_total": 2277446,
+     "tokens_output": 20870,
+     "wall_s": 1936.0325080100447,
+     "turns": 45,
+     "tool_calls": 44,
+     "first_request_input_tokens": 15994,
+     "cache_read_share": 0.9616249957188886,
+     "cache_misses": 0,
+     "first_edit_s": 57.3,
+     "test_runs": 14,
+     "code_runs": 3,
+     "diff_files": 8,
+     "diff_lines": 343
+    }
+   ],
+   "summary": {
+    "trials": 2,
+    "passes": 2,
+    "pass_rate": 1.0,
+    "pass_rate_wilson95": [
+     0.3423802239546494,
+     1.0
+    ],
+    "timeouts": 0,
+    "end_reasons": {
+     "completed": 2
+    },
+    "harness_versions": [
+     "d82d16e3adf9"
+    ],
+    "excluded": 0,
+    "first_date": "2026-10-20",
+    "last_date": "2026-10-20",
+    "runs": [
+     {
+      "run_id": "20261020-014017-34e9",
+      "date": "2026-10-20",
+      "trials": 2,
+      "passes": 2,
+      "excluded": 0
+     }
+    ],
+    "metrics": {
+     "cost_usd": {
+      "n": 2,
+      "mean": 0.6143140999999999,
+      "var": 0.012591829340479962,
+      "sd": 0.11221332069090532,
+      "cv": 0.18266440684155769,
+      "min": 0.5349673,
+      "median": 0.6143140999999999,
+      "max": 0.6936608999999998
+     },
+     "tokens_total": {
+      "n": 2,
+      "mean": 1677957.5,
+      "var": 718772923264.5,
+      "sd": 847804.7671867032,
+      "cv": 0.5052599766005416,
+      "min": 1078469.0,
+      "median": 1677957.5,
+      "max": 2277446.0
+     },
+     "tokens_output": {
+      "n": 2,
+      "mean": 19204.0,
+      "var": 5551112.0,
+      "sd": 2356.0797949135763,
+      "cv": 0.12268692954142764,
+      "min": 17538.0,
+      "median": 19204.0,
+      "max": 20870.0
+     },
+     "wall_s": {
+      "n": 2,
+      "mean": 1164.402159131132,
+      "var": 1190826.7906219848,
+      "sd": 1091.2501045232411,
+      "cv": 0.937176297695569,
+      "min": 392.77181025221944,
+      "median": 1164.402159131132,
+      "max": 1936.0325080100447
+     },
+     "turns": {
+      "n": 2,
+      "mean": 34.5,
+      "var": 220.5,
+      "sd": 14.849242404917497,
+      "cv": 0.43041282333094194,
+      "min": 24.0,
+      "median": 34.5,
+      "max": 45.0
+     },
+     "tool_calls": {
+      "n": 2,
+      "mean": 33.5,
+      "var": 220.5,
+      "sd": 14.849242404917497,
+      "cv": 0.4432609673109701,
+      "min": 23.0,
+      "median": 33.5,
+      "max": 44.0
+     },
+     "first_request_input_tokens": {
+      "n": 2,
+      "mean": 15993.5,
+      "var": 0.5,
+      "sd": 0.7071067811865476,
+      "cv": 4.42121350040046e-05,
+      "min": 15993.0,
+      "median": 15993.5,
+      "max": 15994.0
+     },
+     "cache_read_share": {
+      "n": 2,
+      "mean": 0.9425378696596537,
+      "var": 0.0007286367624022484,
+      "sd": 0.02699327253969493,
+      "cv": 0.02863892625284338,
+      "min": 0.9234507436004188,
+      "median": 0.9425378696596537,
+      "max": 0.9616249957188886
+     },
+     "cache_misses": {
+      "n": 2,
+      "mean": 0.0,
+      "var": 0.0,
+      "sd": 0.0,
+      "cv": null,
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+     },
+     "first_edit_s": {
+      "n": 2,
+      "mean": 103.35,
+      "var": 4241.205000000001,
+      "sd": 65.12453454728103,
+      "cv": 0.6301357962968653,
+      "min": 57.3,
+      "median": 103.35,
+      "max": 149.4
+     },
+     "test_runs": {
+      "n": 2,
+      "mean": 8.5,
+      "var": 60.5,
+      "sd": 7.7781745930520225,
+      "cv": 0.9150793638884732,
+      "min": 3.0,
+      "median": 8.5,
+      "max": 14.0
+     },
+     "code_runs": {
+      "n": 2,
+      "mean": 2.0,
+      "var": 2.0,
+      "sd": 1.4142135623730951,
+      "cv": 0.7071067811865476,
+      "min": 1.0,
+      "median": 2.0,
+      "max": 3.0
+     },
+     "diff_files": {
+      "n": 2,
+      "mean": 7.0,
+      "var": 2.0,
+      "sd": 1.4142135623730951,
+      "cv": 0.20203050891044216,
+      "min": 6.0,
+      "median": 7.0,
+      "max": 8.0
+     },
+     "diff_lines": {
+      "n": 2,
+      "mean": 331.0,
+      "var": 288.0,
+      "sd": 16.97056274847714,
+      "cv": 0.0512705823216832,
+      "min": 319.0,
+      "median": 331.0,
+      "max": 343.0
+     }
+    }
+   }
   }
  ],
  "task": "B5",
  "about": "Generated by `hai-proof baseline update`: plain-arm (unmodified Claude Code) trials only, one entry per model / CLI version / effort / task hash (and --limit-scale when not 1). Do not edit by hand.",
- "current_task_hash": "28588dc1b74a"
+ "current_task_hash": "551a6fbd667d"
 }

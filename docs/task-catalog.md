@@ -56,6 +56,14 @@ wall-clock per agent run. The run ID is the `results/<run>` directory, which is 
 | F8 | feature · L3 | tornado @ 9598807 (upstream PR #3762) | Opt-in `cross_origin_protection` via `Sec-Fetch-Site`/`Origin`, `trusted_origins`, `check_origin` moved to `RequestHandler` | Active (pilot 2026-10-10) | 3/3 | 130 s (105–149) | 0.32M | $0.17–0.22 | 20261010-194554-c904 |
 | F9 | feature · L2 | python-tabulate @ 83fd4fb (upstream PR #221, issue #59) | User-in-the-loop, deliberately ambiguous: header alignment independent of column alignment, a global column alignment, over-long lists, a warning for a bare string (the prompt asks for each behaviour since 2026-10-14; before that it asked only for headers and the hidden tests checked more, 0/6 in run 20261014-215059-aef8). `user.md` holds the API (`headersglobalalign`, `headersalign`, `colglobalalign`, "same"/"global"), over-long lists ignored, the "As a string" `UserWarning` and the signature order | Piloting (2026-10-14): the agent never asks | 0/14 informative | 31–66 s | — | $0.10–0.22 | 20261014-215059-aef8, 20261014-224001-e71f |
 | F10 | feature · L2 | tomlkit @ 5f0e954 (upstream PR #296, issue #288) | User-in-the-loop, deliberately ambiguous: a way to serialize unsupported types (Decimal). `user.md` fixes the design: global `register_encoder`/`unregister_encoder`, encoders decline with `TypeError`, `item()` raises an error that is both `TypeError` and `ValueError`. The prompt invites design questions | Piloting (2026-10-14); contaminated (2026-10-15): the agent knows the upstream design and says so in 4/10 trials | 14/14 informative; 4/5 informative, 4/5 uninformative (ask tool on) | 56–95 s | — | $0.13–0.21 | 20261014-215059-aef8, 20261014-224001-e71f, 20261015-074833-5aee |
+| F11 | feature · L2 | copier @ 38f9bb0 (upstream PR #2849, issue #2763; both after the model cutoff) | User-in-the-loop, deliberately ambiguous: advanced questions hidden by default. `user.md` fixes the design: a templatable `ask` key separate from `when`; `ask: false` records the `--data`/previous/default value without prompting, even without `--defaults`, and keeps the previous answer on update; `--ask` globs override it; `when: false` wins and discards. Hidden tests: the upstream 30-row pexpect truth table plus hand-written API tests | Validated 2026-10-19 (`[ok]`, grading 57 s with 4 xdist workers). Pilot 8fcc (plain, ask tool on, x3): uninformative 0/3, informative 3/3, 4 questions per trial; uninformative runs chose an `advanced` key (8/36 acceptance tests fail) | ~10 min, ~$0.30
+| F12 | feature · L1 | towncrier @ b3a363e (upstream PR #740, merged 2026-08-15) | User-in-the-loop, deliberately ambiguous: configurable changelog wrap width. `user.md` fixes the design: `wrap` itself takes an integer (no second key), `true` stays 79, an integer <= 0 falls back to 79 rather than disabling. Hidden tests: upstream `render_fragments` cases plus hand-written `towncrier build --draft` tests. A 2024 issue comment suggested "accept an integer", so that half may be recalled | Validated 2026-10-19 (`[ok]`, grading 4 s). Pilot 8fcc (plain, ask tool on, x3): uninformative 0/3, informative 3/3, 2-3 questions per trial; uninformative runs added a separate `wrap_width` key, so the 2024 suggestion was not recalled | ~1 min, ~$0.13
+| F13 | feature · L2 | platformdirs @ 46843f1 (upstream PR #585, merged 2026-09-26) | User-in-the-loop, decision-dense: `place_*_file` methods. `user.md`: six methods; every directory created gets 0o700 level by level; existing ones untouched; independent of `ensure_exists`; bad names raise `ValueError` and create nothing; unknown home raises `RuntimeError`. Hidden tests are upstream's; the empty-name message is relaxed to "mentions the name" (hand edit) | Validated 2026-10-20. Pilot cc5a: uninformative 0/5 (no `place_*` names), informative 2/5 (all 3 failures were message wording, then relaxed). The escape message is still pinned (reuse of the existing check) |
+| F14 | feature · L2 | RxPY @ b5dc66c (upstream PR #711, final design 2026-10-16) | User-in-the-loop, decision-dense: `zip_latest`. `user.md`: three entry points; a pending value from a completed source forms one final tuple; complete as soon as no further tuple is possible; an empty source skips later subscriptions; zero sources raise `ValueError`; `None` is a value; futures accepted | Validated 2026-10-20. Pilot cc5a: uninformative 0/5, informative 5/5. Misses are real design points (subscription skipping, zero sources) |
+| F15 | feature · L2 | werkzeug @ ef518e4 (upstream PR #3243, issue #3242, merged 2026-08-19) | User-in-the-loop, decision-dense: tighten the `int`/`float` URL converters. `user.md`: ASCII digits only; sign not counted by `fixed_digits`; build validates; overflow rejected, underflow allowed; `str()` float formatting without exponents. Hidden test hand-fixed: upstream's failing-match rows called `match()` without the path (vacuous), plus an overflow row with a fraction | Validated 2026-10-20 |
+| F16 | feature · L2 | platformdirs @ ba1cc1e (upstream PR #586, merged 2026-09-26) | User-in-the-loop, decision-dense: a `find_<kind>_file(s)` pair. `user.md`: every kind with `iter_*_paths`; user directory first, then site; regular files only; de-duplicated; never creates directories even under `ensure_exists`, and leaves the instance flag alone; existing escape check | Validated 2026-10-20. Run 9189 (reticent, plain vs superpowers, x5): 5/5 both, so no headroom. F13's `place_*` code in this base already shows the copy-with-`ensure_exists`-off pattern |
+| F17 | feature · L2 | pdm @ 4abfe39 (upstream PR #3875, issue #3809, merged 2026-09-03) | User-in-the-loop, decision-dense: `exclude-newer-override`. `user.md`: table and CLI forms; `false` not `0` (the issue proposed 0); normalised names; CLI over pyproject per package; overrides alone force `--update-all`; uv `--exclude-newer-package`. Hand edits: message assertions relaxed; the uv argv test (internal state attribute) excluded | Validated 2026-10-20 (13 s grading). Run bfdc (reticent, x5): plain 2/5, superpowers 3/5; superpowers trials cost about 2x |
+| F18 | feature · L2 | pytest-rerunfailures @ 78561a5 (upstream PR #365, merged 2026-09-09) | User-in-the-loop, decision-dense: rerun conditions with error inspection (catalog H5). Pins `pytest>=9.1,<9.2`. Hand edits: the private-attribute test removed, a warning pattern's " as a callable" suffix dropped. The hidden tests are the project's own test file, so `regression` names it explicitly (the grader's `--ignore` otherwise left nothing to collect) and equals acceptance | Validated 2026-10-20 (16.5 s grading). Runs 1dca (interview-guide) and 91ef (superpowers), reticent x5: 0/5 every arm, because `test_condition_uses_one_decision_for_call_and_teardown_failures` fails for all 20 trials (the first attempt's teardown error stays reported, exit 1): a pytest report-protocol detail, not a design point. Without it: plain 3/5 and 3/5, guide 5/5, superpowers 5/5. 2026-10-20: that test removed from the hidden tests (note 3 in `task.toml`), revalidated [ok] (15.6 s); 1dca/91ef stay pilot data on the old hash |
 
 Notes:
 
@@ -249,7 +257,7 @@ generated per-task data (time, tokens, cost, transcripts) matters more than the 
 | `standard` (default) | B5, B6, B7, B9, B17, B19, B20, B21, F3, F4, F5, F6, F7 | One task per project. Mixed pass rates (B6, B7, B19, B21, F7) carry the success signal; steady multi-minute tasks (B5, B9, B17, F4, F5) carry the time/cost signal. Covers 2–27 min. | ~$12, ~1.9 h serial |
 | `smoke` | B1, B13, F1 | Always pass in under a minute; checks the harness works before a real run. | ~$0.20 |
 | `diagnosis` | B-DP-1, B-DP-2 | 0/3 for plain Claude Code; only informative for treatments aimed at diagnosis. Run alongside `standard`. | ~$1.30 |
-| `userloop` | F9, F10 | Feature requests with the decisive API detail moved from the prompt to `user.md`; meaningful only with `--user informative` (the prompt alone underdetermines the hidden tests). | not piloted |
+| `userloop` | F9–F18 | Feature requests with the decisive API detail moved from the prompt to `user.md`; meaningful only with `--user informative` (the prompt alone underdetermines the hidden tests). | F11/F12 piloted 2026-10-19 (run 8fcc): ~$0.45 per rep for both |
 
 ### Cost tiers and report order
 
@@ -453,6 +461,57 @@ Backups:
   Windows (werkzeug).
 - The trial-image hash no longer normalises CRLF, so a CRLF→LF rebuild gets a fresh image instead of a
   stale one.
+
+### Tenth search: ambiguous features merged after the model cutoff (2026-10-19)
+
+For the `userloop` suite, after F9 (agent never asks) and F10 (contaminated). Criteria: merged on or after
+2026-07-01, several plausible designs with the merged one non-default on at least two test-visible points,
+pure Python, 50–600 changed lines. Two searches, one from merged PRs and one from debated issues. Merge
+dates and base SHAs were checked with `gh`. Nothing has been cloned, built or run yet.
+
+| # | Upstream | Merged | Size | Decisions an agent would likely get wrong | Risks |
+|---|---|---|---|---|---|
+| U1 | **Built as F11.** copier #2849 (issue #2763), base `38f9bb0` | 2026-10-06 | +236/-13 | A separate templatable `ask` key, not `hide` and not `_ask` inside `when`; `when: false` beats `--ask` and discards the answer; an `ask: false` question keeps its previous answer on update, else records its default; `--ask` takes globs. 14-row truth table in the tests | Heavy install (jinja2, questionary, plumbum, pydantic) and needs `git`; the prompt tests use pexpect, so hidden tests should call `run_copy`/`run_update` |
+| U2 | mashumaro #339 (issue #176), base `71cd4d9` | 2026-09-17 | +235/-52 | Multiple aliases per field: the first is canonical for dump and schema; on load they are tried in order and the first key present wins; precedence field option > annotation > config, with no merging; the field name is tried after the aliases | Follow-up fixes landed upstream; codegen-heavy library; test dependencies (orjson, msgpack) |
+| U3 | **Built as F12.** towncrier #740, base `b3a363e` | 2026-08-15 | +77/-14 | `wrap` takes an int instead of gaining a second option (maintainer's request); `True` means 79; `wrap <= 0` falls back to 79, not "off"; `True` is not the int 1 | Small, so few decisions; tests run under `trial` |
+| U4 | pytest-rerunfailures #365 (issue #230) | 2026-09-09 | +547/-26 | `condition` callables take the exception; string conditions see it as `error`; every failed phase counts, each evaluated once; a condition that raises gives a warning, even under `filterwarnings=error` | Large; the xdist and subtests parts may need cutting |
+| U5 | stamina #160 (issue #151), base `22e52e0` | 2026-10-19 | +281/-6, mostly docs | `set_/get_process_details` setter pair, not an argument on `set_on_retry_hooks` (the maintainer's first idea); runs once per retry for every hook; `None` clears | The API names can only come from the brief |
+| U6 | pdm #3875 (issue #3809) | 2026-09-03 | ~172 | `exclude-newer-override`: `false` disables and `0` is rejected (the issue proposed 0); CLI `PKG=DATE` beats pyproject; names normalised | Heavy fixtures; famous repo |
+| U7 | dateparser #1443 (issues #701, #868), base `260fe0c` | 2026-10-02 | +513/-19 | `STRICT_DATE_ORDER` became an opt-in enum `none`/`year`/`all`, not a bool; raises without an explicit `DATE_ORDER`; a rejection returns `None` with no day/month swap | Near the size limit; large reject set |
+| U8 | starlette #3431 (issue #2155), base `c41236c` | 2026-08-08 | +619/-9 | Counts bytes received, with `Content-Length` used only to fail fast; nested routes can raise or lower the limit; multipart files count | Too large unless scoped down |
+
+Weaker: bump-my-version #430 (`--to`; no debate in the thread), towncrier #735 (`--sub-issue`; mostly a name),
+parsel #351 (decided in review, not debated), rerunfailures #336 (guessable), hatch #2306 (heavy, needs the
+internet). Near-misses include pydantic-settings #949, RxPY #711, multidict #1288, black #5433, tox #4020,
+whenever #403 (side branch), jsonpickle #609 and loguru #1413.
+
+Fallback, synthetic features if none of these work out. These are unverified sketches:
+- schedule: blackout windows, where a blocked run is deferred rather than skipped.
+- parse: `{name?}` optional fields that are absent from `.named` rather than `None`.
+- cachetools: `TTLCache.touch()` that returns `False` for a missing key and resets the expiry from now.
+
+### Eleventh search: decision-dense features (2026-10-19)
+
+Pilot 8fcc showed F11 and F12 have no headroom: plain Claude Code's own 2–4 questions covered every decisive
+point (informative 6/6). A task that can separate a better interviewer needs many test-visible decisions,
+several of them second-order. Second-order means edge cases, error types, precedence, interaction with existing
+options, or update/round-trip behaviour that an agent wouldn't think to ask about. Counts are decisions/second-order,
+read from the PR tests (not run). All were merged after 2026-07-01.
+
+| # | Upstream, base | Merged | Size | Decisions | Notes |
+|---|---|---|---|---|---|
+| H1 | **Built as F13.** platformdirs #585 `place_*_file`, `46843f1` | 2026-09-26 | +222/-5 | 11 / 8 | Each created directory gets 0o700 one level at a time; existing directories are untouched; applies with or without `ensure_exists`; rejected names create nothing; no-home `RuntimeError`; runtime-dir `PermissionError` propagates. Error messages are pinned by regex, so the brief must carry them. Fast, pure Python, Linux modes |
+| H2 | **Built as F14.** RxPY #711 `zip_latest`, `b5dc66c` | 2026-10-16 | ~110 src | 12 / 8 | Completion semantics: a pending value contributes one final tuple; completes as soon as no further tuple is possible; empty source stops later subscriptions; zero sources `ValueError`. Black-box TestScheduler tests |
+| H3 | **Built as F15.** werkzeug #3243 strict int/float converters, `ef518e4` | 2026-08-19 | +217/-95 | 10 / 8 | Non-ASCII digits rejected; validation on build too; `fixed_digits` ignores the sign; overflow to inf gives 404; no scientific notation on build. Framed as tightening, not a new feature |
+| H4 | **Built as F17.** pdm #3875 `exclude-newer-override`, `4abfe39` | 2026-09-03 | ~60 src | 12 / 9 | The issue's `0` became `false`; CLI beats pyproject per package; overrides alone force update-all; uv argv pinned. Tests set the internal `core.state.exclude_newer_overrides`; heavy fixtures; famous repo |
+| H5 | **Built as F18.** pytest-rerunfailures #365, `78561a5` | 2026-09-09 | ~150 src | 13 / 11 | Densest, but 40–60+ min of tangled rerun-protocol work, so failures may come from coding rather than missed questions. Drop the xdist and private-attribute tests |
+| H6 | **Built as F16.** platformdirs #586 `find_*_file(s)`, `ba1cc1e` | 2026-09-26 | +212 | 8 / 6 | Overlaps H1 on name validation; don't use both in one comparison |
+| H7 | pytest #14824 plugin import exit codes, `59e7f3a` | 2026-08-30 | +268/-33 | 10 / 8 | Unit tests import internals (`PluginImportFailure`); keep only the acceptance tests |
+
+Rejected for this purpose: dateparser #1443 (about 100 edge-case strings no interview can cover), starlette #3431
+(implementation traps and pinned constants), stamina #160 and mashumaro #339 (second-order points are guessable).
+Near-misses: werkzeug #3288 (not fully read), pytest #15153, cattrs #788, syrupy #1222, filelock #803.
+
 
 ## Rejected
 

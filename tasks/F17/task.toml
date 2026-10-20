@@ -1,0 +1,34 @@
+id = "F17"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, eleventh search H4). Upstream:
+# pdm-project/pdm issue #3809 and PR #3875 "exclude-newer-override" (merged 2026-09-03 as f1bb362, after the
+# model cutoff). The issue proposed `0` as the "no cutoff" value; the merged design uses `false` and rejects
+# 0. The prompt asks for per-package exceptions to `exclude-newer` and leaves the design to the conversation;
+# user.md holds it (table and CLI forms, false not 0, normalised names, CLI over pyproject per package, merging,
+# overrides alone force --update-all, invalid values are usage errors, uv gets --exclude-newer-package).
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+# pdm-backend reads the version from SCM; the checkout has no .git (build-task strips it).
+install = "PDM_BUILD_SCM_VERSION=2.29.1.dev2 uv pip install --python /opt/venv/bin/python -e '.[pytest]' pytest pytest-xdist pytest-rerunfailures pytest-httpserver pytest-httpx"
+# Hidden tests/cli/test_lock.py is the fix's version with one hand edit (re-apply after `build-task --force`):
+# the two invalid-value tests pinned exact messages ("Invalid `resolution.exclude-newer-override`
+# configuration", "Invalid exclude-newer override"); they now require a non-zero exit and "exclude-newer" in
+# stderr, so they test that 0, 1, True, a list or garbage are rejected, not the wording.
+# tests/resolver/test_uv_exclude_newer.py is excluded: it sets the internal state attribute
+# `core.state.exclude_newer_overrides` directly, a name an agent can't be expected to pick.
+acceptance = ["tests/cli/test_lock.py"]
+acceptance_args = ["-k", "exclude_newer", "-p", "no:rerunfailures"]
+regression = "python -m pytest -q -p no:cacheprovider -n 4 tests/cli/test_lock.py tests/models/test_candidates.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/pdm-project/pdm.git"
+# first parent of the merge commit
+base = "4abfe39f098f407bc7ffd112d403fd6caaac76a7"
+# merge of PR #3875
+fix  = "f1bb36246dbeb321e4a1b5a23aa46da080793d9a"
+exclude = ["docs/usage/lockfile.md", "news/3809.feature.md", "tests/resolver/test_uv_exclude_newer.py"]

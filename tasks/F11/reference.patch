@@ -1,0 +1,81 @@
+diff --git a/copier/_main.py b/copier/_main.py
+index 6684f6f..6c875b3 100644
+--- a/copier/_main.py
++++ b/copier/_main.py
+@@ -628,7 +628,11 @@ class Worker:
+                     question.validate_answer(answer)
+                 except Exception:  # noqa: BLE001
+                     del self.answers.last[var_name]
+-            # Skip a question when the skip condition is met.
++
++            ask = question.get_ask()
++
++            # if when is false, we should skip the question and discard
++            # whatever previous values we had.
+             if not question.get_when():
+                 # Omit its answer from the answers file.
+                 self.answers.hide(var_name)
+@@ -651,7 +655,14 @@ class Worker:
+                     question.validate_answer(answer)
+                     self.answers.user[var_name] = answer
+                     continue
+-                if self.skip_answered and var_name in self.answers.last:
++                if var_name in self.answers.last and (self.skip_answered or not ask):
++                    continue
++                if not ask:
++                    # if the question ask: False, and we don't have a previous answer,
++                    # we use the default value if it exists.
++                    answer = question.get_default()
++                    if answer is not MISSING:
++                        self.answers.user[var_name] = answer
+                     continue
+                 if self.defaults:
+                     answer = question.get_default()
+diff --git a/copier/_user_data.py b/copier/_user_data.py
+index 0702efa..623151a 100644
+--- a/copier/_user_data.py
++++ b/copier/_user_data.py
+@@ -196,10 +196,16 @@ class Question:
+             to the user otherwise.
+ 
+         when:
+-            Condition that, if `False`, skips the question. Can be templated.
+-            If it is a boolean, it is used directly. If it is a str, it is
+-            converted to boolean using a parser similar to YAML, but only for
+-            boolean values.
++            Condition that, if `False`, skips the question and discards previous
++            answers. Can be templated. If it is a boolean, it is used directly.
++            If it is a str, it is converted to boolean using a parser similar to
++            YAML, but only for boolean values.
++
++        ask:
++            Condition that, if `False`, would automatically skip the question
++            Can be templated. If it is a boolean, it is used directly. If it
++            is a str, it is converted to boolean using a parser similar to
++            YAML, but only for boolean values.
+     """
+ 
+     var_name: str
+@@ -218,6 +224,7 @@ class Question:
+     type: str = Field(default="", validate_default=True)
+     validator: str = ""
+     when: str | bool = True
++    ask: str | bool = True
+ 
+     @field_validator("var_name")
+     @classmethod
+@@ -467,9 +474,13 @@ class Question:
+             )
+ 
+     def get_when(self) -> bool:
+-        """Get skip condition for question."""
++        """Get when condition for question."""
+         return cast_to_bool(self.render_value(self.when))
+ 
++    def get_ask(self) -> bool:
++        """Get ask condition for question."""
++        return cast_to_bool(self.render_value(self.ask))
++
+     def render_value(
+         self, value: Any, extra_answers: AnyByStrDict | None = None
+     ) -> Any:

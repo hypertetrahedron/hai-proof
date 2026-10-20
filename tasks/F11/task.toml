@@ -1,0 +1,45 @@
+id = "F11"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Underspecified feature with a user in the loop (docs/task-catalog.md, tenth search U1). Upstream:
+# copier-org/copier issue #2763 "Questions that are hidden by default" (opened 2026-07-16) and PR #2849
+# (squash-merged 2026-10-06 as 6d985b8), both after the model cutoff. The issue thread debated a `hide` key,
+# an `_ask` variable inside `when` and a three-state `when` before settling on a separate `ask` key. The
+# prompt asks for advanced questions hidden by default without naming the key or its semantics; user.md
+# holds the decisive design. `--ask PATTERN` (fnmatch) already exists at base (PR #2705).
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+# The checkout has no .git (build-task strips it), so hatch-vcs needs a pretend version (base is
+# v9.18.2-17-g38f9bb0). Test dependencies are the dev group's test tools; tests shell out to `copier` and git.
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=9.18.3.dev17 uv pip install --python /opt/venv/bin/python -e . pytest==9.1.1 pytest-xdist==3.8.0 pytest-gitconfig==0.9.0 pexpect==4.9.0 coverage inline-snapshot==0.35.4"
+# test_prompt.py and test_complex_questions.py are the fix's versions: the 30-row when/ask/--ask truth table
+# for copy and update (pexpect, run through the CLI) and the retained-answer test. test_hai_proof_ask.py is
+# hand-written: the same rules through run_copy/run_update without a TTY (an unwanted prompt errors), plus a
+# templated `ask` and an `ask: false` question recording its default without --defaults. It is not part of the
+# fix, so re-copy it after `build-task --force`.
+acceptance = [
+  "tests/test_prompt.py::test_copy_with_ask_setting",
+  "tests/test_prompt.py::test_update_with_ask_setting",
+  "tests/test_complex_questions.py::test_keep_answer_for_unask_question",
+  "tests/test_hai_proof_ask.py",
+]
+# pyproject addopts pass `-n auto`, which starts one xdist worker per host core (32 on developmenthost1) inside a
+# 4-CPU container, and the pexpect tests then time out; pin 4 workers and give spawns 30 s.
+acceptance_args = ["-n", "4", "--spawn-timeout", "30"]
+# The full suite needs network (test_copy_repo clones GitHub) and pre-commit, and test_prompt.py alone takes
+# ~105 s, so regression is the questionnaire and answers-file modules plus the prompt tests about --ask and
+# --skip-answered. The grader appends --ignore for the acceptance files to the last command; explicit paths
+# are still collected.
+regression = "python -m pytest -q -p no:cacheprovider -n 4 tests/test_complex_questions.py tests/test_answersfile.py && python -m pytest -q -p no:cacheprovider -n 4 --spawn-timeout 30 tests/test_prompt.py -k 'ask or skip_answered'"
+
+[source]
+kind = "git"
+url  = "https://github.com/copier-org/copier.git"
+# parent of the squash-merge commit
+base = "38f9bb042f079009e5a52b5f7acf9dba17646690"
+# PR #2849 "feat: add `ask` question setting"
+fix  = "6d985b828f595939d0e0e331f71271c96f78eacb"
+exclude = ["docs/configuring.md", "docs/faq.md"]

@@ -1,0 +1,41 @@
+id = "F18"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, eleventh search H5). Upstream:
+# pytest-dev/pytest-rerunfailures issue #230 (2023) and PR #365 (merged 2026-09-09 as be14a6b, after the model
+# cutoff). The request (let `condition` see the exception) is old; the design decisions are the 2026 review's:
+# string conditions see it as `error` (not shadowable), any failed phase (setup/call/teardown, subtests) can
+# match, one decision per attempt, each failure evaluated once, a condition that raises gives a UserWarning and
+# no rerun (non-fatal even under -W error), zero-argument callables keep working. Large implementation (about
+# 150 lines in the rerun protocol); level 2 limits with --limit-scale 3 in treatment runs.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . 'pytest>=9.1,<9.2'"
+# Hidden tests/test_pytest_rerunfailures.py is the fix's version with two hand edits (re-apply after
+# `build-task --force`):
+#  1. test_condition_exception_state_is_released_after_attempt is removed: it asserts private attribute names
+#     (`_rerun_condition_excinfos`, `_rerun_condition_results`) an agent can't be expected to pick.
+#  2. test_callable_condition_error_prevents_rerun matched "*... condition as a callable*"; the " as a
+#     callable" suffix is dropped, so any warning reusing the existing "Error evaluating 'flaky' condition"
+#     text passes.
+#  3. test_condition_uses_one_decision_for_call_and_teardown_failures is removed (2026-10-20). It failed in all
+#     20 trials of runs 1dca and 91ef, every arm: agents re-ran the test but left the first attempt's teardown
+#     error reported (exit 1), a pytest report-protocol detail rather than a design point an interview would
+#     settle, so it decided every outcome. Those runs are graded on the earlier task hash (pilot data).
+# pytest-xdist is not installed, so the xdist test skips.
+acceptance = ["tests/test_pytest_rerunfailures.py"]
+# The suite is one file, which is also the acceptance file; name it explicitly so the grader's appended
+# --ignore for acceptance files does not leave nothing to collect.
+regression = "python -m pytest -q -p no:cacheprovider tests/test_pytest_rerunfailures.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/pytest-dev/pytest-rerunfailures.git"
+# first parent of the merge commit
+base = "78561a50e6b1afdca9c937d109750001599ff76d"
+# PR #365
+fix  = "be14a6bd94ec3da02a7ddfd20e5a7364188f587d"
+exclude = ["changes/230.feature.rst", "docs/mark.rst"]

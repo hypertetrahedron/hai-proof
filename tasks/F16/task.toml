@@ -1,0 +1,27 @@
+id = "F16"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, eleventh search H6). Upstream:
+# tox-dev/platformdirs PR #586 "find_*_file(s)" (squash-merged 2026-09-26 as f88693c, after the model
+# cutoff), the companion of F13's #585, which is already in this base. The prompt asks for a way to look up a
+# file across the user and site directories; user.md holds the design: a find_<kind>_file / find_<kind>_files
+# pair for every kind with iter_*_paths, user directory first, regular files only, results de-duplicated,
+# never creating directories even under ensure_exists (and leaving the instance's flag alone), and the
+# existing escape check on the name.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=4.11.16.dev11 uv pip install --python /opt/venv/bin/python -e . pytest pytest-mock appdirs==1.4.4"
+acceptance = ["tests/test_api.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests"
+
+[source]
+kind = "git"
+url  = "https://github.com/tox-dev/platformdirs.git"
+# parent of the squash-merge commit
+base = "ba1cc1e5d12bf3495b86bae5a9c7cfcb5f473b37"
+# PR #586
+fix  = "f88693c08b379989e4fb548b3a2c4ecc462dfbfa"
+exclude = ["docs/changelog/586.feature.rst", "docs/howto.rst"]

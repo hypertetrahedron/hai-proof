@@ -533,7 +533,25 @@ SHAs verified with `gh`; for several PRs `baseRefOid` is not the first parent, s
 | D9 | click #3677 `style()` colour validation, `8dd4d60` | 2026-07-08 | +27 src | 10 / 5 | `ValueError` not `TypeError`; `fg=0` honoured; bool rejected; 0..255; names case-sensitive; RGB exactly three ints, list accepted. Message "Unknown color" matched |
 | D10 | jsonpath-ng #289 RFC 9535 slices and `[*]`, `ccb9533` | 2026-10-16 | +22/-43 src | 10 / 5 | `[*]` on objects yields values, on scalars nothing; slices on non-arrays yield nothing; no phantom copies under `..`. An agent that knows RFC 9535 needs little interviewing |
 
-Picks to build next: D1, D2, D4, D5, D8 (D3 if its suite is offline). Near-misses: packaging #1376, dj-database-url
+**Vetting (2026-10-20).** Each candidate was cloned and its tests run locally (Windows, Python 3.12, HTTP proxy
+blocked; not yet in the Linux container). "Fails at base" = the fix's test files on the base checkout. No API spend.
+
+| # | Verdict | Fails at base | Grading | Decisions (2nd-order) | Edits needed / notes |
+|---|---|---|---|---|---|
+| D5 | build | 14 of 16 | ~5 s | 7 (7) | None (exclude CHANGELOG). No prior discussion; a size-change check misses `move_to_end`/`forceput`, a per-bidict counter misses `.inv` |
+| D2 | build | 6 (+1 skips on 3.12) | ~3 s | 13 (11) | None; brief says it must also serve `copy.replace` on 3.13. `Version.__replace__` at base hints the sentinel and `TypeError` |
+| D10 | build | 58 of 347 | ~1 s | 12 (9) | None (exclude changelog, pyproject). The base docstring defends coercion, so the user must decide to break it; RFC 9535 makes the direction guessable |
+| D6 | build with edits | 37 | ~3 s | 9 (6) | Drop three `match=` strings. `===` rejection and `TypeError` are the unguessable points; issue #947 (2025) had other names |
+| D4 | build with edits | 8 of 8 | <1 s | 8 (6) | Drop private `test_compat.py` tests; loosen the yield-twice message. Issue #1437 (2025) settles the headline design |
+| D9 | build with edits | 38 of 100 | <1 s | 8 (6) | Drop `match="Unknown color"`. Risk: the user can state the invalid-value rule in one line |
+| D1 | build with edits | 18 of 19 | <1 s | 14 (9) | Loosen "COUNT must be an int"; drop the old parser-text test; grade only the recur directory (full suite fails on Windows, unchecked on Linux). Issue #1851 (post-cutoff) spells out many decisions |
+| D7 | build with edits | 7 (2 skip on 3.12) | ~3 s | 9 (7) | Identity/aliasing assertions ("returns `self`") must be stated by the user; don't pair with D2 |
+| D8 | build with edits, low | 8 | <1 s | 8 (5) | Drop `test_does_not_override_hookimpl_default` (pins behaviour the PR calls provisional). Requested since 2018, so guessable. #738 is not a good standalone task |
+| D3 | build with edits, low | 5 of 10 | <1 s | 9 (8) | Contaminated: issue #233 (2024 maintainer comments) gives the name, format and empty-string rule |
+
+Build order: D5, D2, D10, D6, D4, then D9 and D1. Skip D7 (overlaps D2), D8 and D3.
+
+Near-misses: packaging #1376, dj-database-url
 #288. Rejected: private-internal tests (pydantic-settings #952, responses #809, itemloaders #120, click #3681),
 plumbing (toolz #634, jsonpath-ng #292, icalendar #1672), fixes not features (json-patch, bidict #392/#401/#403,
 tomlkit #567, cattrs #765/#778, more-itertools #1248/#1253/#1260), too few decisions (more-itertools #1116,

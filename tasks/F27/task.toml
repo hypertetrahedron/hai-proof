@@ -5,6 +5,8 @@ origin = "upstream-fix"
 suites = ["interview"]
 user = "reticent"
 ask_tool = "on"
+cost_tier = "low"
+report_order = 23
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, thirteenth search S2). Upstream:
 # BrianPugh/cyclopts PR #1004 (merged 2026-10-12 as 7063e4f, after the model cutoff). The prompt describes the
 # basic request (check a config null against the parameter's type); user.md holds the rules: which types

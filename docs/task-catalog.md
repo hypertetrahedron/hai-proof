@@ -273,7 +273,7 @@ generated per-task data (time, tokens, cost, transcripts) matters more than the 
 | `standard` (default) | B5, B6, B7, B9, B17, B19, B20, B21, F3, F4, F5, F6, F7 | One task per project. Mixed pass rates (B6, B7, B19, B21, F7) carry the success signal; steady multi-minute tasks (B5, B9, B17, F4, F5) carry the time/cost signal. Covers 2–27 min. | ~$12, ~1.9 h serial |
 | `smoke` | B1, B13, F1 | Always pass in under a minute; checks the harness works before a real run. | ~$0.20 |
 | `diagnosis` | B-DP-1, B-DP-2 | 0/3 for plain Claude Code; only informative for treatments aimed at diagnosis. Run alongside `standard`. | ~$1.30 |
-| `interview` | F13, F14, F15, F20, F26, F27, F29, F30, F31, F33 | User-in-the-loop feature requests whose decisive rules live in `user.md`; each task declares `user = "reticent"` and `ask_tool = "on"`; `run` refuses `--user conventional` for them and warns on other modes (the prompt alone underdetermines the hidden tests). Chosen 2026-10-21 from F9–F34: the tasks where plain Claude Code repeatedly missed rules an interview settles, one per project. Targeted, like `diagnosis`: only informative for treatments that change how the agent asks. Chosen after seeing pilot results, so effect sizes on these runs are inflated; a fresh confirmation run is pending | ~$0.25–0.35 per trial; ~$3 and ~30 min per arm per rep |
+| `interview` | F13, F14, F15, F20, F26, F27, F29, F30, F31, F33 | User-in-the-loop feature requests whose decisive rules live in `user.md`; each task declares `user = "reticent"` and `ask_tool = "on"`; `run` refuses `--user conventional` for them and warns on other modes (the prompt alone underdetermines the hidden tests). Chosen 2026-10-21 from F9–F34: the tasks where plain Claude Code repeatedly missed rules an interview settles, one per project. Targeted, like `diagnosis`: only informative for treatments that change how the agent asks. Chosen after seeing pilot results, so effect sizes on these runs are inflated; a fresh confirmation run is pending | ~$2.9 per arm per rep (plain, median sum); ~33 min serial |
 | `interview-smoke` | F12 | Always passes in about 50 s ($0.13) with a user answering (0/3 with nobody); checks the stand-in and ask-tool plumbing before an `interview` run: `--suite interview-smoke --user reticent --ask-tool on --mode lightning`. Kept out of `smoke`, which runs with nobody answering | ~$0.13 |
 
 ### Cost tiers and report order
@@ -302,6 +302,24 @@ decided the order; within a tier the order is not statistically stable.
 | 11 | B9 | high | 47.2k | $1.40 | 7/8 | |
 | 12 | F4 | high | 74.3k | $1.59 | 8/8 | |
 | 13 | F5 | high | 148.6k | $2.86 | 7/7 | always last |
+
+**`interview` suite** (decided 2026-10-21 from the plain arms of confirmation runs d6d8 and 027d: Sonnet 5.5, CLI
+2.1.306, reticent user, ask tool, `--limit-scale 3`; 10 trials per task). Every task is below the standard suite's
+low/medium border (F3, 18.9k), so all are `low`; positions continue after the standard suite. The median order and
+the mean bootstrap rank (2,000 resamples) agree; F14/F31 (2.5 vs 2.9) and F26/F13 (6.7 vs 7.2) are near-ties.
+
+| Order | Task | Tier | Median output tokens | Median cost | Median wall | Plain pass |
+|---|---|---|---|---|---|---|
+| 14 | F29 | low | 5.3k | $0.12 | 1.0 min | 1/10 |
+| 15 | F14 | low | 9.0k | $0.21 | 1.9 min | 0/10 |
+| 16 | F31 | low | 9.2k | $0.30 | 2.9 min | 4/10 |
+| 17 | F20 | low | 10.2k | $0.24 | 2.5 min | 0/10 |
+| 18 | F33 | low | 11.1k | $0.29 | 2.3 min | 3/10 |
+| 19 | F26 | low | 12.0k | $0.28 | 8.7 min | 1/10 |
+| 20 | F13 | low | 12.3k | $0.28 | 2.1 min | 9/10 |
+| 21 | F15 | low | 12.8k | $0.26 | 2.2 min | 4/10 |
+| 22 | F30 | low | 13.1k | $0.39 | 3.7 min | 4/10 |
+| 23 | F27 | low | 13.7k | $0.41 | 5.2 min | 0/10 |
 
 Tasks outside `standard` have no tier and are listed after the tiers, by id. Pass counts are from the
 `baseline.json` backfill (below), which leaves out these runs, each made before a later change to the task:

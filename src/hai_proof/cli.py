@@ -361,7 +361,7 @@ def _build_run_config(args: argparse.Namespace, cfg, root: Path):
     from .config import ConfigError, MODES, resolve_host, select_tasks_for_mode, select_tasks_for_suite
     from .models import PLAIN, ArmSpec, Limits, RunConfig
     from .runner import new_run_id
-    from .tasks import load_suite
+    from .tasks import check_user_setup, load_suite
     from .treatments import resolve_treatment
 
     tdirs = cfg.treatment_dirs()
@@ -421,6 +421,8 @@ def _build_run_config(args: argparse.Namespace, cfg, root: Path):
             raise ConfigError("the informative and reticent stand-ins answer from each task's user.md, "
                               "which these tasks lack: "
                               + ", ".join(missing))
+    for w in check_user_setup(tasks, arms):
+        print(f"warning: {w}", file=sys.stderr)
     reps = args.reps if args.reps else MODES[args.mode]["reps"]
     mode = "custom" if args.reps else args.mode
 

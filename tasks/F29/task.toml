@@ -3,6 +3,8 @@ kind = "feature"
 level = 2
 origin = "upstream-fix"
 suites = ["interview"]
+user = "reticent"
+ask_tool = "on"
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, thirteenth search S5). Upstream:
 # stefankoegl/python-json-pointer PR #84 "Add create parameter to set_pointer" (merged 2026-10-19 as 677fb60,
 # after the model cutoff; requested upstream in 2013 as #41 but never built). The prompt asks for an option to

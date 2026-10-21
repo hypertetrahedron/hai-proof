@@ -3,6 +3,8 @@ kind = "feature"
 level = 2
 origin = "upstream-fix"
 suites = ["interview"]
+user = "reticent"
+ask_tool = "on"
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, thirteenth search S1). Upstream:
 # pytest-dev/pytest PR #14751 (merged 2026-07-24 as 344c237, after the model cutoff). The prompt describes the
 # basic request (addini type= takes Python type expressions: plain types, unions, Literal of strings); user.md

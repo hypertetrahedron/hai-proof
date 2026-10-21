@@ -3,6 +3,8 @@ kind = "feature"
 level = 2
 origin = "upstream-fix"
 suites = ["interview"]
+user = "reticent"
+ask_tool = "on"
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, fourteenth search T1). Upstream:
 # scrapy/scrapy PR #8225 "Add Request.id and Request.parent_id" (squash-merged 2026-10-04 as 223065c, after the
 # model cutoff). The prompt asks for a way to tell which request led to which (an id on each request plus a link

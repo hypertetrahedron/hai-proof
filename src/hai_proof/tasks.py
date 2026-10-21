@@ -17,12 +17,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 from .config import ConfigError
-from .models import GitSource, TaskSpec
+from .models import ASK_TOOL_MODES, USER_MODES, GitSource, TaskSpec
 
 _TOP_KEYS = {
     "id", "kind", "level", "origin", "timeout_s", "budget_usd", "max_turns", "install",
     "acceptance", "acceptance_args", "acceptance_cmd", "regression", "source", "diff_categories",
-    "suites", "cost_tier", "report_order",
+    "suites", "cost_tier", "report_order", "user", "ask_tool",
 }
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _SLUG = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -144,6 +144,13 @@ def _parse(path: Path, *, check_dirs: bool) -> TaskSpec:
                                      or report_order < 1):
         raise ConfigError(f"{tf}: report_order must be a positive integer, got {report_order!r}")
 
+    user = d.get("user", "")
+    if user and user not in USER_MODES:
+        raise ConfigError(f"{tf}: user must be one of {', '.join(USER_MODES)}, got {user!r}")
+    ask_tool = d.get("ask_tool", "")
+    if ask_tool and ask_tool not in ASK_TOOL_MODES:
+        raise ConfigError(f"{tf}: ask_tool must be one of {', '.join(ASK_TOOL_MODES)}, got {ask_tool!r}")
+
     source = _parse_source(d, tf)
 
     pf = path / "prompt.md"
@@ -204,8 +211,34 @@ def _parse(path: Path, *, check_dirs: bool) -> TaskSpec:
         suites=tuple(suites),
         cost_tier=cost_tier,
         report_order=report_order,
+        user=user,
+        ask_tool=ask_tool,
         dockerfile=dockerfile,
     )
+
+
+def check_user_setup(tasks: Sequence[TaskSpec], arms: Sequence[Any]) -> list[str]:
+    """Check each arm's user and ask-tool settings against what the tasks declare (`user`, `ask_tool`).
+
+    A task that declares a user mode only means something with someone answering, so running it with the
+    conventional user (the default: nobody answers) is refused. Any other difference is deliberate (an
+    uninformative control, say) and comes back as a warning line.
+    """
+    warnings = []
+    for arm in arms:
+        conv = [t.id for t in tasks if t.user and arm.user == "conventional"]
+        if conv:
+            want = "/".join(sorted({t.user for t in tasks if t.id in conv}))
+            raise ConfigError(f"arm {arm.label}: tasks {', '.join(conv)} need a user in the loop, but nobody answers "
+                              f"(--user conventional); pass --user {want} as the tasks declare, "
+                              "or another mode on purpose")
+        for key, val in (("user", arm.user), ("ask_tool", arm.ask_tool)):
+            off = [t.id for t in tasks if getattr(t, key) and getattr(t, key) != val and t.id not in conv]
+            if off:
+                want = sorted({getattr(t, key) for t in tasks if t.id in off})
+                warnings.append(f"arm {arm.label}: --{key.replace('_', '-')} {val}, but "
+                                f"{', '.join(off)} declare {'/'.join(want)}")
+    return warnings
 
 
 def load_task(path: Path) -> TaskSpec:

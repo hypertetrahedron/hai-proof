@@ -1,0 +1,28 @@
+id = "F27"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, thirteenth search S2). Upstream:
+# BrianPugh/cyclopts PR #1004 (merged 2026-10-12 as 7063e4f, after the model cutoff). The prompt describes the
+# basic request (check a config null against the parameter's type); user.md holds the rules: which types
+# allow None, Any and unannotated parameters, a None default as the one exception, default-typed
+# parameters, non-nullable and optional classes, keyed nulls in optional dicts, validators.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=5.0.0 uv pip install --python /opt/venv/bin/python -e . pytest pytest-mock pytest-timeout pydantic==2.13.5 syrupy toml trio pyyaml pexpect"
+# Pydantic is pinned to the version in uv.lock: 2.14 breaks test_pydantic_validate_by_alias_false (upstream PR #1010).
+# Hidden tests/test_pydantic.py is the fix's version with a hand edit (re-apply after `build-task --force`):
+#  1. test_pydantic_config_null_non_nullable_model matched 'unable to convert "null"'; the match is dropped so
+#     any CoercionError passes (user.md still states the wording).
+acceptance = ["tests/config/test_dict.py", "tests/test_pydantic.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests/config tests/test_bind_none.py tests/test_bind_dict.py tests/test_bind_dataclasses.py tests/test_coercion.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/BrianPugh/cyclopts.git"
+# first parent of the merge commit
+base = "6feee65cc6f2b60418e4358d53d957e3dedc11ee"
+# PR #1004 "fix: reject a config `null` for a type that does not allow None"
+fix  = "7063e4f0445ba4177c1183461b7f4cfaf6aca8a4"

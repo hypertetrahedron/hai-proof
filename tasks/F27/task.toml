@@ -16,6 +16,12 @@ install = "SETUPTOOLS_SCM_PRETEND_VERSION=5.0.0 uv pip install --python /opt/ven
 # Hidden tests/test_pydantic.py is the fix's version with a hand edit (re-apply after `build-task --force`):
 #  1. test_pydantic_config_null_non_nullable_model matched 'unable to convert "null"'; the match is dropped so
 #     any CoercionError passes (user.md still states the wording).
+# Hidden tests/config/test_dict.py is the fix's version with a hand edit (re-apply after `build-task --force`):
+#  2. test_config_dict_null_optional_class keeps only its two dict-value rows; the four top-level rows
+#     (`x: Cls | None` etc. with config null) are removed (2026-10-21). They failed in 23 of 25 trials across
+#     runs e4ed and 9066, every arm, including agents that had the rule from the user: top-level dataclass
+#     parameters are flattened into their fields, so it is a cyclopts-internals problem rather than a design
+#     point an interview settles, and it decided every outcome. Those runs are graded on the earlier task hash.
 acceptance = ["tests/config/test_dict.py", "tests/test_pydantic.py"]
 regression = "python -m pytest -q -p no:cacheprovider tests/config tests/test_bind_none.py tests/test_bind_dict.py tests/test_bind_dataclasses.py tests/test_coercion.py"
 

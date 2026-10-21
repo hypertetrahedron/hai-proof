@@ -1,0 +1,35 @@
+id = "F32"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+suites = ["userloop"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, fourteenth search T2). Upstream:
+# scrapy/w3lib PR #336 "Add a max_scan parameter to get_base_url() and get_meta_refresh()" (merged 2026-09-22 as
+# 3ea9e8f, after the model cutoff; the base is the merge's first parent, which already has the _scannable regex
+# helpers and PR #343's quoted-bracket handling). The prompt asks for a bound on how much of a page the two
+# functions look at, named max_scan, and leaves the behaviour to the conversation; user.md holds the decisions:
+# keyword-only, characters for str and bytes for bytes, None is unbounded, 0 looks at nothing, negative raises
+# ValueError, a tag that starts before the limit is read to its end (even through a quoted ">"), a stray "<" that
+# opens no tag does not extend the scan and reading on stops at the next "<", an unterminated tag inside the limit
+# still counts, a bytes cut inside a character decodes with replacement.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest hypothesis"
+# Hidden tests/test_html.py is the fix's version with these hand edits (re-apply after `build-task --force`):
+#  1. TestMaxScan.test_negative: `match="max_scan"` is dropped, so any ValueError passes (user.md says only that a
+#     negative value raises ValueError).
+#  2. TestMaxScan.test_cut_never_invents (a Hypothesis property test) and the module's `from hypothesis import ...`
+#     line are removed: it made grading slow and nondeterministic (28 s at the base while it fails). The FRAGMENTS
+#     list it used stays in the file, unused. The explicit cases in the class cover the same rules.
+# Grading is about 6 s.
+acceptance = ["tests/test_html.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests/test_http.py tests/test_encoding.py tests/test_util.py tests/test_url.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/scrapy/w3lib.git"
+# first parent of the merge commit
+base = "73bfc870b27f99decfe6434b276bd0279a7eb409"
+# PR #336
+fix  = "3ea9e8f3e2c4a744cebeedfb41b4e451ff903d2c"

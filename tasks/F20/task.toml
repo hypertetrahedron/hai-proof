@@ -3,6 +3,8 @@ kind = "feature"
 level = 2
 origin = "upstream-fix"
 suites = ["interview"]
+user = "reticent"
+ask_tool = "on"
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, twelfth search D2). Upstream:
 # pypa/packaging PR #1377, "feat(requirements): add Requirement.__replace__" (squash-merged 2026-10-19/20, after
 # the model cutoff). The prompt asks for a way to make a modified copy of a Requirement; user.md holds the

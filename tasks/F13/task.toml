@@ -3,6 +3,8 @@ kind = "feature"
 level = 2
 origin = "upstream-fix"
 suites = ["interview"]
+user = "reticent"
+ask_tool = "on"
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, eleventh search H1). Upstream:
 # tox-dev/platformdirs PR #585 "add place_*_file methods that create parents as 0700" (squash-merged
 # 2026-09-26 as dfaeabf, after the model cutoff). The prompt asks for a way to get a file path in a user

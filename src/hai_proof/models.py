@@ -164,17 +164,20 @@ class TaskSpec:
     suites: tuple[str, ...] = ()  # named task sets this task belongs to, e.g. "standard", "smoke"
     cost_tier: str = ""  # "low" | "medium" | "high": fixed report grouping (docs/task-catalog.md)
     report_order: int | None = None  # fixed position in reports, by plain-arm output tokens
+    user: str = ""  # USER_MODES: the user in the loop the task is meant for ("" = any); setup, not content
+    ask_tool: str = ""  # ASK_TOOL_MODES: the ask-tool setting the task is meant for ("" = any)
 
     def content_hash(self) -> str:
         """Short hash of everything that can change a trial's outcome.
 
-        Leaves out report metadata (suites, cost_tier, report_order), the generated baseline.json,
+        Leaves out report and run-setup metadata (suites, cost_tier, report_order, user, ask_tool), the
+        generated baseline.json,
         caches, and repo/ when it is generated from [source] (source.lock.json pins it instead). The user
         brief (user.md) only reaches the stand-in, never a conventional trial, so it has its own hash.
         """
         h = hashlib.sha256()
         d = asdict(self)
-        for k in ("path", "suites", "cost_tier", "report_order", "user_brief"):
+        for k in ("path", "suites", "cost_tier", "report_order", "user", "ask_tool", "user_brief"):
             d.pop(k)
         h.update(json.dumps(_jsonable(d), sort_keys=True).encode())
         skip_top = {"task.toml", "baseline.json", "user.md"} | ({"repo"} if self.source is not None else set())

@@ -2,6 +2,9 @@ id = "F12"
 kind = "feature"
 level = 1
 origin = "upstream-fix"
+suites = ["interview-smoke"]
+user = "reticent"
+ask_tool = "on"
 # Underspecified feature with a user in the loop (docs/task-catalog.md, tenth search U3). Upstream:
 # twisted/towncrier issue #464 "Wrap output changelog at specified line width"; PR #740 (squash-merged
 # 2026-08-15 as ce469dd, after the model cutoff). The prompt asks for a configurable width without naming

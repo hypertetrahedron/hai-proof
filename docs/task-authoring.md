@@ -47,6 +47,9 @@ max_turns = 40            # L1 40 · L2 60 · L3 80
 #   uses "standard" (or every task if none is tagged). "all" is reserved.
 # cost_tier = "low"       # optional: low | medium | high, the report group (docs/task-catalog.md#cost-tiers-and-report-order)
 # report_order = 1        # optional: fixed position in reports; set once from plain-arm data, never re-ranked per run
+# user = "reticent"       # optional, tasks with user.md: the user in the loop the task is meant for; `run` refuses
+#   --user conventional (nobody answers) and warns on any other mismatch
+# ask_tool = "on"         # optional: the --ask-tool setting the task is meant for; a mismatch warns
 install = "uv pip install --python /opt/venv/bin/python -e . pytest"   # runs in /work at image build
 acceptance = ["tests/hai_proof/test_b1.py"]
 # acceptance_args = ["--dburi", "sqlite+aiosqlite:///:memory:"]       # optional extra pytest args (B21)
@@ -148,7 +151,7 @@ Claude Code) trial of the task. Do not edit it by hand; commit it with the task.
 - One entry per **model / CLI version / effort / task hash**. The task hash (`TaskSpec.content_hash`, also recorded
   in `run.json`) covers everything that can change a trial: the manifest's limits, install, acceptance and
   regression, the prompts, `inject.patch`, `reference.patch`, `hidden_tests/`, `grade.sh`, `source.lock.json`, and
-  `repo/` for tasks without `[source]`. It leaves out `suites`, `cost_tier`, `report_order` and `baseline.json`.
+  `repo/` for tasks without `[source]`. It leaves out `suites`, `cost_tier`, `report_order`, `user`, `ask_tool` and `baseline.json`.
   Changing a task therefore starts a new entry instead of mixing versions.
 - Each entry keeps every sample and a `summary` recomputed from them. A sample holds the run id, rep, date,
   harness code hash, status, pass, timed_out, end reason, and these metrics:

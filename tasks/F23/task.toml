@@ -2,7 +2,6 @@ id = "F23"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, twelfth search D4). Upstream:
 # python-attrs/attrs PR #1592 "Make on_setattr hooks accept generators" (merged 2026-08-01 as 4b5b295, after the
 # model cutoff). The prompt gives the goal (run code before and after an attribute is set, from one hook) and

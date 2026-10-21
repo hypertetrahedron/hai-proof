@@ -2,7 +2,7 @@
 
 **H**arness for **AI** **P**lugin **R**igorous **O**utcome and **O**verhead **F**ramework.
 
-A/B smoke test for Claude Code harness modifications (skills, hooks, CLAUDE.md, MCP servers, plugins).
+A/B| `--suite standard | smoke | diagnosis | interview | all` |test for Claude Code harness modifications (skills, hooks, CLAUDE.md, MCP servers, plugins).
 Runs plain Claude Code and a modified Claude Code through the same coding tasks in paired containers
 and reports success, wall-clock time, tokens and cost. Design: [DESIGN.md](DESIGN.md). Status: [ROADMAP.md](ROADMAP.md).
 
@@ -46,7 +46,7 @@ Open this repo in Claude Code and ask in plain words. The project skills in `.cl
 | Ask for | Skill | What it does |
 |---|---|---|
 | "make a task from our repo / from this bug-fix commit" | `hai-proof-task` | builds a task from any git repo you can clone, including private ones, into `private/tasks/<ID>/`, then builds and validates it on the execution host with no API spend, and pilots it if you agree |
-| "package my Claude Code setup / this plugin as a treatment" | `hai-proof-treatment` | turns the parts of your setup you name into a treatment in `private/treatments/<name>/`: CLAUDE.md, skills, agents, commands, hooks, plugins (vendored and pinned), MCP servers, CLI tools. It leaves out history, memory and credentials, and checks the result with a smoke run |
+| "package my Claude Code setup / this plugin as a treatment" | `hai-proof-treatment` | turns the parts of your setup you name into a treatment in `private/treatments/<name>/`: CLAUDE.md, skills, agents, commands, hooks, plugins (vendored and pinned), MCP servers, CLI tools. It leaves out history, memory and credentials, and checks the result with a| `--suite standard | smoke | diagnosis | interview | all` |run |
 | "evaluate X against plain Claude Code" / "is this result significant?" | `hai-proof-evaluate` | plans the run, dry-runs it, confirms spend with you, launches it and reads `summary.json` against the A/A noise floor |
 
 `private/` is gitignored and searched automatically (`extra_tasks_dirs` / `extra_treatments_dirs` in
@@ -62,7 +62,7 @@ languages install their toolchain in an optional `task.Dockerfile` and grade wit
 | `--arm-a X --arm-b Y` | A/B between two configurations; `--arm-a plain --arm-b plain` is the A/A calibration |
 | `--treatment X --no-control` | single arm, pass@1/pass@k and absolute metrics, no ratios |
 | `--mode lightning \| quick \| full` | 1 / 3 / 5 repetitions (quick drops level-3 tasks); `--reps N` overrides |
-| `--suite standard \| smoke \| diagnosis \| all` | which tasks run (default `standard`, 13 tasks; see [docs/task-catalog.md](docs/task-catalog.md#suites)); `--tasks A,B` picks ids instead |
+| `--suite standard | smoke | diagnosis | interview | all` |\| smoke \| diagnosis \| all` | which tasks run (default `standard`, 13 tasks; `interview` needs `--user reticent --ask-tool on`; see [docs/task-catalog.md](docs/task-catalog.md#suites)); `--tasks A,B` picks ids instead |
 | `--analysis NAME` | post-run analysis per trial or per arm (see `analyses/`) |
 | `--user conventional \| uninformative \| informative \| reticent` | who answers the agent between turns. The default `conventional` is the single-session test. The stand-in modes run each trial as several `claude -p` calls on one session, with a user stand-in that replies to questions: always "use your best judgement" (`uninformative`), or from the task's `user.md` (`informative`; `reticent` uses the same brief but answers only what the agent asks, never volunteering unasked points). `--user-a` / `--user-b` set one arm. Treatment `[workflow] turns` script multi-step workflows such as plan → apply (DESIGN §3.8) |
 | `--ask-tool off \| on \| hidden` | offer the agent AskUserQuestion, which `claude -p` alone never does. `on` runs each call in the SDK's stream-json stdio mode and answers the tool's questions like `--user` does (from `user.md` when informative, otherwise "use your best judgement"). `hidden` is the same mode without the tool, the control for `on`. `--ask-tool-a` / `--ask-tool-b` set one arm (DESIGN §3.8) |

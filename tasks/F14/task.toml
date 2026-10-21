@@ -2,7 +2,7 @@ id = "F14"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
+suites = ["interview"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, eleventh search H2). Upstream:
 # ReactiveX/RxPY PR #711, opened 2024 as `combine_throttle`, renamed and given its final completion semantics
 # in a 2026-10-16 follow-up and squash-merged that day as 92b8293 (after the model cutoff). The prompt

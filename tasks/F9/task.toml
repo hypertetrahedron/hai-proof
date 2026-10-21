@@ -1,7 +1,6 @@
 id = "F9"
 kind = "feature"
 level = 2
-suites = ["userloop"]
 cost_tier = "low"
 origin = "upstream-fix"
 # Upstream feature (python-tabulate issue #59, PR #221 merged as 95ae5eb): header alignment independent

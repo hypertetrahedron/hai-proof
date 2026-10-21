@@ -2,7 +2,6 @@ id = "F28"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, thirteenth search S3). Upstream:
 # pydantic/httpx2 PR #1071 (merged 2026-08-05 as 5d9eedc, after the model cutoff). The prompt describes the basic
 # request (cap one SSE event's buffering via sse(max_event_size=...), SSEError when exceeded); user.md holds the

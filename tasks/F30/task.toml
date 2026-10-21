@@ -2,7 +2,7 @@ id = "F30"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
+suites = ["interview"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, thirteenth search S4). Upstream:
 # tox-dev/filelock PR #625 "add on_acquired post-acquisition hook" (merged 2026-07-13 as ec3abb5, after the
 # model cutoff; fixes issue #607). The prompt asks for a way to run caller code once the lock is held and

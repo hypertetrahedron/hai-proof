@@ -2,7 +2,6 @@ id = "F34"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, fourteenth search T4). Upstream:
 # pallets-eco/flask-caching PR #675 "Add is_stale. Fixes #392" (merged 2026-08-22 as bab22fb, after the model
 # cutoff). The prompt asks for a way to drop a cached value that has gone out of date, decided from the cached

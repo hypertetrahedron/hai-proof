@@ -264,7 +264,7 @@ Notes:
 
 ## Suites
 
-Decided 2026-10-10. The goal is a sample of bugs and features that shows **large** effects between arms; the
+Decided 2026-10-10; `userloop` (F9–F34) replaced by the curated `interview` suite 2026-10-21. The other F9–F34 tasks (saturated, noisy, duplicate projects or early pilots) are kept with no suite and can still be run with `--tasks`. The goal is a sample of bugs and features that shows **large** effects between arms; the
 generated per-task data (time, tokens, cost, transcripts) matters more than the headline results. Levels set limits
 (time / budget / turns), not a difficulty tier: `--mode quick` simply drops the L3 (long-limit) tasks.
 
@@ -273,7 +273,7 @@ generated per-task data (time, tokens, cost, transcripts) matters more than the 
 | `standard` (default) | B5, B6, B7, B9, B17, B19, B20, B21, F3, F4, F5, F6, F7 | One task per project. Mixed pass rates (B6, B7, B19, B21, F7) carry the success signal; steady multi-minute tasks (B5, B9, B17, F4, F5) carry the time/cost signal. Covers 2–27 min. | ~$12, ~1.9 h serial |
 | `smoke` | B1, B13, F1 | Always pass in under a minute; checks the harness works before a real run. | ~$0.20 |
 | `diagnosis` | B-DP-1, B-DP-2 | 0/3 for plain Claude Code; only informative for treatments aimed at diagnosis. Run alongside `standard`. | ~$1.30 |
-| `userloop` | F9–F34 | Feature requests with the decisive API detail moved from the prompt to `user.md`; meaningful only with `--user informative` (the prompt alone underdetermines the hidden tests). | F11/F12 piloted 2026-10-19 (run 8fcc): ~$0.45 per rep for both |
+| `interview` | F13, F14, F15, F20, F26, F27, F29, F30, F31, F33 | User-in-the-loop feature requests whose decisive rules live in `user.md`; run with `--user reticent --ask-tool on` (the prompt alone underdetermines the hidden tests). Chosen 2026-10-21 from F9–F34: the tasks where plain Claude Code repeatedly missed rules an interview settles, one per project. Targeted, like `diagnosis`: only informative for treatments that change how the agent asks. Chosen after seeing pilot results, so effect sizes on these runs are inflated; a fresh confirmation run is pending | ~$0.25–0.35 per trial; ~$3 and ~30 min per arm per rep |
 
 ### Cost tiers and report order
 

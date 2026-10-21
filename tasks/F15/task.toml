@@ -2,7 +2,7 @@ id = "F15"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
+suites = ["interview"]
 # Decision-dense change with a user in the loop (docs/task-catalog.md, eleventh search H3). Upstream:
 # pallets/werkzeug issue #3242 "`int` and `float` converter issues" and PR #3243 (squash-merged 2026-08-19 as
 # 53633fe, after the model cutoff). The prompt says the number converters have unintended behaviours the

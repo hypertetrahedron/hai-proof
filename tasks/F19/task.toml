@@ -2,7 +2,6 @@ id = "F19"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, twelfth search D5). Upstream:
 # jab/bidict PR #393, "Raise RuntimeError when an ordered bidict is mutated during iteration" (merged
 # 2026-08-23, after the model cutoff; no prior issue or discussion). The prompt says mutating an OrderedBidict

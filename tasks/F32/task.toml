@@ -2,7 +2,6 @@ id = "F32"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, fourteenth search T2). Upstream:
 # scrapy/w3lib PR #336 "Add a max_scan parameter to get_base_url() and get_meta_refresh()" (merged 2026-09-22 as
 # 3ea9e8f, after the model cutoff; the base is the merge's first parent, which already has the _scannable regex

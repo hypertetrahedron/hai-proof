@@ -1,0 +1,1668 @@
+import sys
+from dataclasses import dataclass
+from typing import Any, Literal
+
+import pytest
+
+from cyclopts import App
+from cyclopts.config import Dict
+
+
+def test_config_dict_basic():
+    """Test basic Dict config functionality."""
+    app = App(config=Dict({"name": "Alice", "age": 30}), result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    result = app([])
+    assert result == "Alice is 30 years old."
+
+
+def test_config_dict_with_commands():
+    """Test Dict config with commands."""
+    config_data = {
+        "create": {"name": "Alice", "age": 30},
+        "update": {"name": "Bob", "age": 40},
+    }
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.command
+    def create(name: str, age: int):
+        return f"Created: {name} is {age} years old."
+
+    @app.command
+    def update(name: str, age: int):
+        return f"Updated: {name} is {age} years old."
+
+    result = app("create")
+    assert result == "Created: Alice is 30 years old."
+
+    result = app("update")
+    assert result == "Updated: Bob is 40 years old."
+
+
+def test_config_dict_with_root_keys():
+    """Test Dict config with root_keys navigation."""
+    config_data = {
+        "production": {
+            "database": {
+                "host": "prod.example.com",
+                "port": 5432,
+            }
+        }
+    }
+    app = App(
+        config=Dict(config_data, root_keys=["production", "database"]),
+        result_action="return_value",
+    )
+
+    @app.default
+    def main(host: str, port: int):
+        return f"Connecting to {host}:{port}"
+
+    result = app([])
+    assert result == "Connecting to prod.example.com:5432"
+
+
+def test_config_dict_use_commands_as_keys_false():
+    """Test Dict config with use_commands_as_keys=False."""
+    config_data = {"name": "Alice", "age": 30}
+    app = App(config=Dict(config_data, use_commands_as_keys=False), result_action="return_value")
+
+    @app.command
+    def create(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    result = app("create")
+    assert result == "Alice is 30 years old."
+
+
+def test_config_dict_use_commands_as_keys_false_with_sibling_commands():
+    """Test Dict config filters sibling command sections when use_commands_as_keys=False.
+
+    Regression test for issue where config filtering used command_app instead of parent app,
+    causing sibling command sections in the config to not be properly filtered out.
+
+    This reproduces the bug fixed in core.py where executing "polygon 1 2 3 4" would fail
+    because the "line" section in the config wasn't being filtered correctly.
+    """
+    from dataclasses import KW_ONLY, dataclass
+    from typing import Annotated
+
+    from cyclopts import Parameter
+
+    config_data = {
+        "units": "meters",
+        "line": {"color": "red"},
+        "polygon": {"color": "blue"},
+        "circle": {"color": "green"},
+    }
+
+    app = App(config=Dict(config_data, use_commands_as_keys=False), result_action="return_value")
+
+    @Parameter(name="*")
+    @dataclass
+    class DrawConfig:
+        _: KW_ONLY
+        units: str = "meters"
+        color: str = "black"
+
+    @app.command
+    def line(start: tuple[float, float], end: tuple[float, float], config: DrawConfig | None = None):
+        if config is None:
+            config = DrawConfig()
+        return f"line: {start} to {end} in {config.units}, color={config.color}"
+
+    @app.command
+    def polygon(*vertices: Annotated[tuple[float, float], Parameter(required=True)], config: DrawConfig | None = None):
+        if config is None:
+            config = DrawConfig()
+        return f"polygon: {len(vertices)} vertices in {config.units}, color={config.color}"
+
+    @app.command
+    def circle(center: tuple[float, float], radius: float, config: DrawConfig | None = None):
+        if config is None:
+            config = DrawConfig()
+        return f"circle: center={center} radius={radius} in {config.units}, color={config.color}"
+
+    result = app("line 0 0 10 10")
+    assert result == "line: (0.0, 0.0) to (10.0, 10.0) in meters, color=black"
+
+    result = app("polygon 1 2 3 4 5 6")
+    assert result == "polygon: 3 vertices in meters, color=black"
+
+    result = app("circle 0 0 5")
+    assert result == "circle: center=(0.0, 0.0) radius=5.0 in meters, color=black"
+
+
+def test_config_dict_nested_commands_with_use_commands_as_keys_true():
+    """Test Dict config with nested commands using default use_commands_as_keys=True.
+
+    Regression test to ensure that when use_commands_as_keys=True (default), the filtering
+    uses command_app (not root_app) so that subcommand sections at the command's config level
+    are properly filtered out.
+
+    Without the correct fix, this would fail with "Unknown option" errors because cmd1/cmd2
+    sections wouldn't be filtered when executing the sub default command.
+    """
+    config_data = {
+        "sub": {
+            "shared_param": "shared_value",
+            "cmd1": {"cmd1_param": "cmd1_value"},
+            "cmd2": {"cmd2_param": "cmd2_value"},
+        }
+    }
+
+    app = App(config=Dict(config_data), result_action="return_value")
+    sub_app = App()
+    app.command(sub_app, name="sub")
+
+    @sub_app.default
+    def sub_default(shared_param: str):
+        return f"sub_default: {shared_param}"
+
+    @sub_app.command
+    def cmd1(cmd1_param: str):
+        return f"cmd1: {cmd1_param}"
+
+    @sub_app.command
+    def cmd2(cmd2_param: str):
+        return f"cmd2: {cmd2_param}"
+
+    result = app("sub")
+    assert result == "sub_default: shared_value"
+
+    result = app("sub cmd1")
+    assert result == "cmd1: cmd1_value"
+
+    result = app("sub cmd2")
+    assert result == "cmd2: cmd2_value"
+
+
+def test_config_dict_nested_commands_with_use_commands_as_keys_false():
+    """Test Dict config with nested App commands using use_commands_as_keys=False.
+
+    With use_commands_as_keys=False, config stays at root level and is shared
+    across all commands, including nested App commands and their subcommands.
+    """
+    config_data = {
+        "global_setting": "shared_value",
+    }
+
+    app = App(config=Dict(config_data, use_commands_as_keys=False), result_action="return_value")
+    sub_app = App()
+    app.command(sub_app, name="sub")
+
+    @sub_app.default
+    def sub_default(global_setting: str):
+        return f"sub_default: {global_setting}"
+
+    @sub_app.command
+    def cmd1(global_setting: str):
+        return f"cmd1: {global_setting}"
+
+    result = app("sub")
+    assert result == "sub_default: shared_value"
+
+    result = app("sub cmd1")
+    assert result == "cmd1: shared_value"
+
+
+def test_config_dict_deeply_nested_with_use_commands_as_keys_false():
+    """Test Dict config with deeply nested commands and use_commands_as_keys=False.
+
+    Ensures that even with multiple levels of nesting, flat config is shared
+    across all command levels.
+    """
+    config_data = {
+        "shared": "value",
+        "another": 42,
+    }
+
+    app = App(config=Dict(config_data, use_commands_as_keys=False), result_action="return_value")
+    level1_app = App()
+    level2_app = App()
+
+    app.command(level1_app, name="level1")
+    level1_app.command(level2_app, name="level2")
+
+    @level2_app.default
+    def deeply_nested(shared: str, another: int):
+        return f"deeply_nested: {shared}, {another}"
+
+    result = app("level1 level2")
+    assert result == "deeply_nested: value, 42"
+
+
+def test_config_dict_mixed_nested_and_flat_commands():
+    """Test Dict config with mix of nested apps and flat config.
+
+    This tests that both simple commands and nested App commands can share
+    the same flat config when use_commands_as_keys=False.
+    """
+    config_data = {
+        "base_value": "base",
+        "count": 10,
+    }
+
+    app = App(config=Dict(config_data, use_commands_as_keys=False), result_action="return_value")
+
+    @app.command
+    def simple(base_value: str, count: int):
+        return f"simple: {base_value}, count={count}"
+
+    nested_app = App()
+    app.command(nested_app, name="nested")
+
+    @nested_app.default
+    def nested_default(base_value: str, count: int):
+        return f"nested: {base_value}, count={count}"
+
+    result = app("simple")
+    assert result == "simple: base, count=10"
+
+    result = app("nested")
+    assert result == "nested: base, count=10"
+
+
+def test_config_dict_use_commands_as_keys_true_filters_subcommands():
+    """Test that use_commands_as_keys=True correctly filters sibling subcommands.
+
+    When navigating into a command's config section, sibling command sections at that
+    level should be filtered using the command's app (not root app). This ensures
+    that "create" and "delete" sections are filtered when executing each other.
+    """
+    config_data = {
+        "db": {
+            "timeout": 30,
+            "create": {"timeout": 10, "operation": "create_op"},
+            "delete": {"timeout": 20, "operation": "delete_op"},
+        }
+    }
+
+    app = App(config=Dict(config_data, use_commands_as_keys=True), result_action="return_value")
+    db_app = App()
+    app.command(db_app, name="db")
+
+    @db_app.default
+    def db_default(timeout: int):
+        return f"db: timeout={timeout}"
+
+    @db_app.command
+    def create(timeout: int, operation: str):
+        return f"create: timeout={timeout}, operation={operation}"
+
+    @db_app.command
+    def delete(timeout: int, operation: str):
+        return f"delete: timeout={timeout}, operation={operation}"
+
+    result = app("db")
+    assert result == "db: timeout=30"
+
+    result = app("db create")
+    assert result == "create: timeout=10, operation=create_op"
+
+    result = app("db delete")
+    assert result == "delete: timeout=20, operation=delete_op"
+
+
+def test_config_dict_allow_unknown():
+    """Test Dict config with allow_unknown=True."""
+    config_data = {
+        "name": "Alice",
+        "age": 30,
+        "unknown_field": "should_be_ignored",
+    }
+    app = App(config=Dict(config_data, allow_unknown=True), result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    result = app([])
+    assert result == "Alice is 30 years old."
+
+
+def test_config_dict_allow_unknown_nested_user_class():
+    """Test that unknown nested keys are ignored with user classes when allow_unknown=True.
+
+    Regression test for https://github.com/BrianPugh/cyclopts/issues/731
+    """
+    from dataclasses import dataclass
+
+    @dataclass
+    class ConnectionParameter:
+        timeout: float
+
+    config_data = {
+        "p": {"timeout": 3},
+        "np": {"timeout": 4},  # Unknown, should be ignored
+    }
+    app = App(
+        config=Dict(config_data, allow_unknown=True, use_commands_as_keys=False),
+        result_action="return_value",
+    )
+
+    @app.default
+    def connect(*, p: ConnectionParameter):
+        return p.timeout
+
+    result = app([])
+    assert result == 3.0
+
+
+@pytest.mark.parametrize(
+    "config_data",
+    [
+        {"p": {"timeout": 5}},
+        {"timeout": 5},
+    ],
+)
+def test_config_dict_remapped_nested_parameter(config_data):
+    """Test that nested config paths don't match remapped parameters.
+
+    When a nested parameter has Parameter(name="--timeout") (remapped to root level),
+    config should use {"timeout": 5}, not {"p": {"timeout": 5}}. The nested path
+    should raise UnknownOptionError because it doesn't match the remapped CLI name.
+    """
+    from dataclasses import dataclass
+    from typing import Annotated
+
+    from cyclopts import Parameter
+
+    @dataclass
+    class ConnectionParameter:
+        timeout: Annotated[float, Parameter(name="--timeout")]
+
+    app = App(
+        config=Dict(config_data, use_commands_as_keys=False),
+        result_action="return_value",
+    )
+
+    @app.default
+    def connect(*, p: ConnectionParameter):
+        return p.timeout
+
+    app([], exit_on_error=False)
+
+
+def test_config_dict_partial_override():
+    """Test that CLI args override Dict config values."""
+    config_data = {"name": "Alice", "age": 30}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    result = app("--name Bob")
+    assert result == "Bob is 30 years old."
+
+
+def test_config_dict_empty():
+    """Test Dict config with empty dict."""
+    app = App(config=Dict({}), result_action="return_value")
+
+    @app.default
+    def main(name: str = "Default", age: int = 0):
+        return f"{name} is {age} years old."
+
+    result = app([])
+    assert result == "Default is 0 years old."
+
+
+def test_config_dict_empty_dict_value():
+    """An empty dict config value binds as ``{}`` instead of raising MissingArgumentError, like an empty list does."""
+    app = App(config=Dict({"x": {}}), result_action="return_value")
+
+    @app.default
+    def main(x: dict):
+        return x
+
+    assert app([]) == {}
+
+
+def test_config_dict_empty_dict_value_dataclass():
+    """An empty dict config value constructs an all-defaults dataclass."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class Options:
+        threshold: int = 5
+
+    app = App(config=Dict({"options": {}}), result_action="return_value")
+
+    @app.default
+    def main(options: Options):
+        return options
+
+    assert app([]) == Options(threshold=5)
+
+
+def test_config_dict_root_keys_non_mapping_node():
+    """A non-mapping value where ``root_keys`` expects a table raises a clean CycloptsError, not AttributeError."""
+    from cyclopts import CycloptsError
+
+    app = App(config=Dict({"tool": 5}, root_keys=("tool",)), result_action="return_value")
+
+    @app.default
+    def main(x: int = 0):
+        return x
+
+    with pytest.raises(CycloptsError, match=r"\[tool\].*mapping.*int"):
+        app([], exit_on_error=False)
+
+
+def test_config_dict_root_keys_non_mapping_intermediate_node():
+    """A non-mapping partway through the ``root_keys`` path raises a clean CycloptsError, not TypeError."""
+    from cyclopts import CycloptsError
+
+    app = App(config=Dict({"tool": [1, 2]}, root_keys=("tool", "cyclopts")), result_action="return_value")
+
+    @app.default
+    def main(x: int = 0):
+        return x
+
+    with pytest.raises(CycloptsError, match=r"\[tool\].*mapping.*list"):
+        app([], exit_on_error=False)
+
+
+def test_config_dict_command_key_non_mapping_node():
+    """A non-mapping value at a command's key raises a clean CycloptsError, not AttributeError."""
+    from cyclopts import CycloptsError
+
+    app = App(config=Dict({"sub": 5}), result_action="return_value")
+
+    @app.command
+    def sub(x: int = 0):
+        return x
+
+    with pytest.raises(CycloptsError, match=r"\[sub\].*mapping.*int"):
+        app(["sub"], exit_on_error=False)
+
+
+def test_config_dict_nested_structure():
+    """Test Dict config with nested dataclass-like structures."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class Database:
+        host: str
+        port: int
+
+    config_data = {
+        "database": {
+            "host": "localhost",
+            "port": 5432,
+        }
+    }
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(database: Database):
+        return f"{database.host}:{database.port}"
+
+    result = app([])
+    assert result == "localhost:5432"
+
+
+def test_config_dict_source():
+    """Test that Dict.source returns 'dict' by default."""
+    config = Dict({"key": "value"})
+    assert config.source == "dict"
+
+
+def test_config_dict_custom_source():
+    """Test that Dict.source can be customized."""
+    config = Dict({"key": "value"}, source="api")
+    assert config.source == "api"
+
+    config_network = Dict({"key": "value"}, source="network")
+    assert config_network.source == "network"
+
+
+def test_config_dict_source_setter():
+    """Test that Dict.source can be modified via setter."""
+    config = Dict({"key": "value"})
+    assert config.source == "dict"
+
+    config.source = "api"
+    assert config.source == "api"
+
+    config.source = "network-response"
+    assert config.source == "network-response"
+
+
+def test_config_dict_with_subcommands():
+    """Test that Dict config correctly filters out subcommand keys."""
+    config_data = {
+        "global_flag": True,
+        "subcommand": {
+            "sub_value": 123,
+        },
+    }
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(global_flag: bool = False):
+        return f"global_flag={global_flag}"
+
+    @app.command
+    def subcommand(sub_value: int):
+        return f"sub_value={sub_value}"
+
+    result = app([])
+    assert result == "global_flag=True"
+
+    result = app("subcommand")
+    assert result == "sub_value=123"
+
+
+def test_config_dict_unknown_field_error():
+    """Test that unknown fields raise error when allow_unknown=False."""
+    import pytest
+
+    from cyclopts.exceptions import UnknownOptionError
+
+    config_data = {
+        "name": "Alice",
+        "age": 30,
+        "unknown_field": "should_error",
+    }
+    app = App(config=Dict(config_data, allow_unknown=False), result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    with pytest.raises(UnknownOptionError):
+        app([], exit_on_error=False)
+
+
+def test_config_dict_multiple_configs():
+    """Test using multiple Dict configs in a list."""
+    config1 = Dict({"name": "Alice"})
+    config2 = Dict({"age": 30})
+
+    app = App(config=[config1, config2], result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    result = app([])
+    assert result == "Alice is 30 years old."
+
+
+def test_config_dict_with_env():
+    """Test combining Dict config with Env config."""
+    import os
+
+    from cyclopts.config import Env
+
+    config_data = {"name": "Alice"}
+    app = App(config=[Dict(config_data), Env("TEST_")], result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int = 0):
+        return f"{name} is {age} years old."
+
+    os.environ["TEST_AGE"] = "30"
+    try:
+        result = app([])
+        assert result == "Alice is 30 years old."
+    finally:
+        del os.environ["TEST_AGE"]
+
+
+def test_config_dict_modification_after_creation():
+    """Test modifying Dict config after app creation."""
+    config = Dict({"name": "Alice", "age": 30})
+    app = App(config=config, result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    result = app([])
+    assert result == "Alice is 30 years old."
+
+    config.data["name"] = "Bob"
+    result = app([])
+    assert result == "Bob is 30 years old."
+
+
+def test_config_dict_with_meta_app():
+    """Test Dict config with meta app."""
+    from typing import Annotated
+
+    from cyclopts import Parameter
+
+    app = App(result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    @app.meta.default
+    def meta(*tokens: Annotated[str, Parameter(show=False, allow_leading_hyphen=True)], config_source: str = "dict"):
+        app.config = Dict({"name": "Alice", "age": 30}, source=config_source)
+        return app(tokens)
+
+    result = app.meta([])
+    assert result == "Alice is 30 years old."
+
+
+def test_config_dict_deep_nesting():
+    """Test Dict config with deep root_keys nesting."""
+    config_data = {"level1": {"level2": {"level3": {"level4": {"name": "Alice", "age": 30}}}}}
+    app = App(
+        config=Dict(config_data, root_keys=["level1", "level2", "level3", "level4"]),
+        result_action="return_value",
+    )
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    result = app([])
+    assert result == "Alice is 30 years old."
+
+
+def test_config_dict_cli_priority():
+    """Test that CLI arguments have priority over Dict config."""
+    config_data = {"name": "Alice", "age": 30}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    result = app("--name Bob --age 40")
+    assert result == "Bob is 40 years old."
+
+
+def test_config_dict_with_optional():
+    """Test Dict config with Optional parameters."""
+    from typing import Any
+
+    config_data: dict[str, Any] = {"name": "Alice"}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int | None = None):
+        if age is None:
+            return f"{name} has no age"
+        return f"{name} is {age} years old."
+
+    result = app([])
+    assert result == "Alice has no age"
+
+    config_data["age"] = 30
+    result = app([])
+    assert result == "Alice is 30 years old."
+
+
+def test_config_dict_with_list():
+    """Test Dict config with list parameters."""
+    config_data = {"names": ["Alice", "Bob", "Charlie"]}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(names: list[str]):
+        return ", ".join(names)
+
+    result = app([])
+    assert result == "Alice, Bob, Charlie"
+
+
+def test_config_dict_with_typed_dict():
+    """Test Dict config with TypedDict."""
+    from typing import TypedDict
+
+    class UserConfig(TypedDict):
+        name: str
+        age: int
+
+    config_data = {"user": {"name": "Alice", "age": 30}}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(user: UserConfig):
+        return f"{user['name']} is {user['age']} years old."
+
+    result = app([])
+    assert result == "Alice is 30 years old."
+
+
+def test_config_dict_immutability():
+    """Test that Dict.config returns the actual data (not a copy)."""
+    config_data = {"name": "Alice", "age": 30}
+    config = Dict(config_data)
+
+    assert config.config is config.data
+    config.config["name"] = "Bob"
+    assert config.data["name"] == "Bob"
+
+
+def test_config_dict_missing_root_key():
+    """Test Dict config when root_keys don't exist in data."""
+    config_data = {"production": {"name": "Alice"}}
+    app = App(
+        config=Dict(config_data, root_keys=["development", "database"]),
+        result_action="return_value",
+    )
+
+    @app.default
+    def main(name: str = "Default", age: int = 0):
+        return f"{name} is {age} years old."
+
+    result = app([])
+    assert result == "Default is 0 years old."
+
+
+def test_config_dict_reassignment():
+    """Test reassigning app.config with new Dict."""
+    app = App(config=Dict({"name": "Alice", "age": 30}), result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    result = app([])
+    assert result == "Alice is 30 years old."
+
+    app.config = Dict({"name": "Bob", "age": 40})
+    result = app([])
+    assert result == "Bob is 40 years old."
+
+
+def test_config_dict_with_boolean_flags():
+    """Test Dict config with boolean flags."""
+    config_data = {"verbose": True, "quiet": False, "debug": True}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(verbose: bool = False, quiet: bool = False, debug: bool = False):
+        flags = []
+        if verbose:
+            flags.append("verbose")
+        if quiet:
+            flags.append("quiet")
+        if debug:
+            flags.append("debug")
+        return ", ".join(flags) if flags else "no flags"
+
+    result = app([])
+    assert result == "verbose, debug"
+
+
+def test_config_dict_nested_commands():
+    """Test Dict config with nested command structure."""
+    config_data = {
+        "db": {
+            "create": {"name": "testdb", "size": 100},
+            "delete": {"name": "olddb", "force": True},
+        }
+    }
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    db_app = App()
+    app.command(db_app, name="db")
+
+    @db_app.command
+    def create(name: str, size: int):
+        return f"Creating {name} with size {size}"
+
+    @db_app.command
+    def delete(name: str, force: bool = False):
+        return f"Deleting {name} (force={force})"
+
+    result = app("db create")
+    assert result == "Creating testdb with size 100"
+
+    result = app("db delete")
+    assert result == "Deleting olddb (force=True)"
+
+
+def test_config_dict_error_message_with_custom_source():
+    """Test that custom source appears in error messages."""
+    import pytest
+
+    from cyclopts.exceptions import MissingArgumentError
+
+    config_data = {"age": 30}
+    app = App(config=Dict(config_data, source="api-response"), result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    with pytest.raises(MissingArgumentError) as exc_info:
+        app([], exit_on_error=False)
+
+    assert "name" in str(exc_info.value).lower()
+
+
+def test_config_dict_with_default_values():
+    """Test Dict config interacts correctly with function default values."""
+    config_data = {"name": "Alice"}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(name: str = "Default", age: int = 99, city: str = "Unknown"):
+        return f"{name}, {age}, {city}"
+
+    result = app([])
+    assert result == "Alice, 99, Unknown"
+
+
+def test_config_dict_with_enum():
+    """Test Dict config with Enum parameters."""
+    from enum import Enum
+
+    class Color(Enum):
+        RED = "red"
+        GREEN = "green"
+        BLUE = "blue"
+
+    config_data = {"color": "red"}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(color: Color):
+        return f"Color is {color.value}"
+
+    result = app([])
+    assert result == "Color is red"
+
+
+def test_config_dict_with_complex_types():
+    """Test Dict config with complex nested types."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class Address:
+        street: str
+        city: str
+
+    @dataclass
+    class Person:
+        name: str
+        address: Address
+
+    config_data = {
+        "person": {
+            "name": "Alice",
+            "address": {"street": "123 Main St", "city": "Springfield"},
+        }
+    }
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(person: Person):
+        return f"{person.name} lives at {person.address.street}, {person.address.city}"
+
+    result = app([])
+    assert result == "Alice lives at 123 Main St, Springfield"
+
+
+def test_config_dict_with_union_types():
+    """Test Dict config with Union types."""
+    from typing import Any
+
+    config_data: dict[str, Any] = {"value": 42}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(value: int | str):
+        return f"Value is {value} (type: {type(value).__name__})"
+
+    result = app([])
+    assert result == "Value is 42 (type: int)"
+
+    config_data["value"] = "hello"
+    result = app([])
+    assert result == "Value is hello (type: str)"
+
+
+def test_config_dict_empty_root_keys():
+    """Test Dict config with empty root_keys tuple."""
+    config_data = {"name": "Alice", "age": 30}
+    app = App(config=Dict(config_data, root_keys=()), result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    result = app([])
+    assert result == "Alice is 30 years old."
+
+
+def test_config_dict_single_root_key():
+    """Test Dict config with single root_key."""
+    config_data = {"production": {"name": "Alice", "age": 30}}
+    app = App(config=Dict(config_data, root_keys=["production"]), result_action="return_value")
+
+    @app.default
+    def main(name: str, age: int):
+        return f"{name} is {age} years old."
+
+    result = app([])
+    assert result == "Alice is 30 years old."
+
+
+def test_config_dict_with_attrs_class():
+    """Test Dict config with attrs class."""
+    from attrs import define
+
+    @define
+    class User:
+        name: str
+        age: int
+
+    config_data = {"user": {"name": "Alice", "age": 30}}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(user: User):
+        return f"{user.name} is {user.age} years old."
+
+    result = app([])
+    assert result == "Alice is 30 years old."
+
+
+def test_config_dict_comparison_with_json_file():
+    """Test that Dict produces same result as Json for equivalent data."""
+    import json
+    from pathlib import Path
+
+    from cyclopts.config import Json
+
+    config_data = {"count": {"character": "t"}}
+
+    dict_app = App(config=Dict(config_data), result_action="return_value")
+
+    @dict_app.command
+    def count(character: str):  # noqa: F811  # pyright: ignore[reportRedeclaration]
+        return f"Character: {character}"
+
+    dict_result = dict_app("count")
+
+    json_app = App(result_action="return_value")
+
+    @json_app.command
+    def count(character: str):  # noqa: F811  # pyright: ignore[reportRedeclaration]
+        return f"Character: {character}"
+
+    tmp_file = Path("temp_test.json")
+    tmp_file.write_text(json.dumps(config_data))
+    try:
+        json_app.config = Json(tmp_file)
+        json_result = json_app("count")
+        assert dict_result == json_result
+    finally:
+        tmp_file.unlink()
+
+
+def test_config_dict_repr():
+    """Test Dict has a useful repr."""
+    config = Dict({"key": "value"}, source="api")
+    repr_str = repr(config)
+    assert "Dict" in repr_str
+    assert "key" in repr_str or "value" in repr_str
+
+
+def test_config_dict_with_tuple_type():
+    """Test Dict config with tuple parameters."""
+    config_data = {"coordinates": [1, 2, 3]}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(coordinates: tuple[int, int, int]):
+        return f"Coordinates: {coordinates}"
+
+    result = app([])
+    assert result == "Coordinates: (1, 2, 3)"
+
+
+def test_config_dict_with_set_type():
+    """Test Dict config with set parameters."""
+    config_data = {"tags": ["python", "cli", "config"]}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(tags: set[str]):
+        return f"Tags: {sorted(tags)}"
+
+    result = app([])
+    assert result == "Tags: ['cli', 'config', 'python']"
+
+
+def test_config_dict_with_negative_numbers():
+    """Test Dict config with negative numbers."""
+    config_data = {"offset": -10, "temperature": -5.5}
+    app = App(config=Dict(config_data), result_action="return_value")
+
+    @app.default
+    def main(offset: int, temperature: float):
+        return f"offset={offset}, temperature={temperature}"
+
+    result = app([])
+    assert result == "offset=-10, temperature=-5.5"
+
+
+def test_config_dict_root_non_mapping_node():
+    """A non-mapping document root raises a clean CycloptsError, not AttributeError."""
+    from cyclopts import CycloptsError
+
+    app = App(config=Dict([1, 2], source="dict"), result_action="return_value")  # pyright: ignore[reportArgumentType]
+
+    @app.default
+    def main(x: int = 0):
+        return x
+
+    with pytest.raises(CycloptsError) as e:
+        app([], exit_on_error=False)
+
+    assert str(e.value) == 'Configuration in "dict" must be a mapping, but got list.'
+
+
+def test_config_dict_root_non_mapping_node_with_root_keys():
+    """A non-mapping document root is reported before ``root_keys`` are descended."""
+    from cyclopts import CycloptsError
+
+    app = App(config=Dict(5, root_keys=("tool",), source="dict"), result_action="return_value")  # pyright: ignore[reportArgumentType]
+
+    @app.default
+    def main(x: int = 0):
+        return x
+
+    with pytest.raises(CycloptsError) as e:
+        app([], exit_on_error=False)
+
+    assert str(e.value) == 'Configuration in "dict" must be a mapping, but got int.'
+
+
+@pytest.mark.parametrize(
+    "hint, value",
+    [
+        (dict[str, dict[str, int]], {"k": {}}),
+        (dict[str, list[int]], {"k": []}),
+        (dict[str, dict[str, int]], {"k": {"a": 1}, "j": {}}),
+    ],
+)
+def test_config_dict_empty_container_inside_dict(hint, value):
+    """An empty container under a key binds as that key's value instead of replacing the whole dict."""
+    app = App(config=Dict({"x": value}), result_action="return_value")
+
+    @app.default
+    def main(x: hint):  # pyright: ignore[reportInvalidTypeForm]
+        return x
+
+    assert app([]) == value
+
+
+def test_config_dict_empty_dict_inside_dict_of_scalars():
+    """An empty dict where a dict value must be a scalar is a clean coercion error."""
+    from cyclopts import CoercionError
+
+    app = App(config=Dict({"x": {"k": 1, "j": {}}}), result_action="return_value")
+
+    @app.default
+    def main(x: dict[str, int]):
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)
+
+
+def test_config_dict_empty_dict_value_list_of_dataclass():
+    """``x = {}`` on a list of dataclasses binds a single all-defaults element, like ``--x={}`` does."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class Options:
+        threshold: int = 5
+
+    app = App(config=Dict({"x": {}}), result_action="return_value")
+
+    @app.default
+    def main(x: list[Options]):
+        return x
+
+    assert app([]) == [Options()]
+
+
+def test_config_dict_empty_dict_value_list_of_pydantic():
+    """``x = {}`` on a list of pydantic models binds a single all-defaults element, like ``--x={}`` does."""
+    pydantic = pytest.importorskip("pydantic")
+
+    class Options(pydantic.BaseModel):
+        threshold: int = 5
+
+    app = App(config=Dict({"x": {}}), result_action="return_value")
+
+    @app.default
+    def main(x: list[Options]):
+        return x
+
+    assert app([]) == [Options()]
+
+
+@pytest.mark.parametrize("first_field", [int, str])
+@pytest.mark.parametrize("nested", [False, True])
+def test_config_dict_empty_list_value_dataclass(first_field, nested):
+    """``x = []`` on a dataclass is an error instead of being bound into the first field."""
+    from dataclasses import make_dataclass
+
+    from cyclopts import CoercionError
+
+    Options = make_dataclass("Options", [("first", first_field), ("threshold", int, 5)])
+    hint = dict[str, Options] if nested else Options
+
+    app = App(config=Dict({"x": {"k": []} if nested else []}), result_action="return_value")
+
+    @app.default
+    def main(x: hint):  # pyright: ignore[reportInvalidTypeForm]
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)
+
+
+@pytest.mark.parametrize(
+    "hint, value",
+    [
+        (str, []),
+        (str, {}),
+        (list[str], {}),
+        (dict[str, str], {"k": []}),
+        (dict[str, str], {"k": {}}),
+        (Any, []),
+        (dict[str, Any], {"k": []}),
+        (dict[str, Any], {"k": {}}),
+        (list, {}),
+        (dict[str, list], {"k": {}}),
+    ],
+)
+def test_config_dict_empty_container_into_str(hint, value):
+    """An empty container is an error for a ``str`` (or ``Any``, which converts like ``str``)."""
+    from cyclopts import CoercionError
+
+    app = App(config=Dict({"x": value}), result_action="return_value")
+
+    @app.default
+    def main(x: hint):  # pyright: ignore[reportInvalidTypeForm]
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)
+
+
+@pytest.mark.parametrize(
+    "hint, value",
+    [
+        (dict[str, dict[str, int] | list[int]], {"k": {}}),
+        (dict[str, dict[str, int] | list[int]], {"k": []}),
+        (dict[str, list[int] | None], {"k": []}),
+    ],
+)
+def test_config_dict_empty_container_union(hint, value):
+    """An empty container binds through whichever union member can hold it."""
+    app = App(config=Dict({"x": value}), result_action="return_value")
+
+    @app.default
+    def main(x: hint):  # pyright: ignore[reportInvalidTypeForm]
+        return x
+
+    assert app([]) == value
+
+
+def test_config_dict_empty_dict_union_str_first():
+    """``{}`` for ``str | Options`` builds ``Options`` instead of binding the text ``"{}"`` into ``str``."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class Options:
+        threshold: int = 5
+
+    app = App(config=Dict({"x": {"k": {}}}), result_action="return_value")
+
+    @app.default
+    def main(x: dict[str, str | Options]):
+        return x
+
+    assert app([]) == {"k": Options()}
+
+
+def test_config_dict_empty_dict_union_bare_list_first():
+    """``{}`` for ``list | Options`` skips the bare ``list`` (whose elements are ``str``) and builds ``Options``."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class Options:
+        threshold: int = 5
+
+    app = App(config=Dict({"x": {"k": {}}}), result_action="return_value")
+
+    @app.default
+    def main(x: dict[str, list | Options]):
+        return x
+
+    assert app([]) == {"k": Options()}
+
+
+def test_config_dict_empty_dict_union_required_class_first():
+    """``{}`` skips a union's class member that has a missing required field, falling back to ``dict``."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class Options:
+        threshold: int
+
+    app = App(config=Dict({"x": {"k": {}}}), result_action="return_value")
+
+    @app.default
+    def main(x: dict[str, Options | dict[str, int]]):
+        return x
+
+    assert app([]) == {"k": {}}
+
+
+def test_config_dict_empty_dict_optional_required_class():
+    """With no fallback member, ``{}`` for ``Options | None`` reports the missing field itself."""
+    from dataclasses import dataclass
+
+    from cyclopts import MissingArgumentError
+
+    @dataclass
+    class Options:
+        threshold: int
+
+    app = App(config=Dict({"x": {"k": {}}}), result_action="return_value")
+
+    @app.default
+    def main(x: dict[str, Options | None]):
+        return x
+
+    with pytest.raises(MissingArgumentError, match=r"--x\.k\.threshold"):
+        app([], exit_on_error=False)
+
+
+def test_config_dict_empty_dict_annotated_union_validator():
+    """``{}`` for an ``Annotated`` union still runs the annotation's validator, like ``--x.k {}`` does."""
+    from dataclasses import dataclass
+    from typing import Annotated
+
+    from cyclopts import Parameter
+
+    @dataclass
+    class Options:
+        threshold: int = 5
+
+    validated = []
+    app = App(config=Dict({"x": {"k": {}}}), result_action="return_value")
+
+    @app.default
+    def main(x: dict[str, Annotated[Options | None, Parameter(validator=lambda _, v: validated.append(v))]]):
+        return x
+
+    assert app([]) == {"k": Options()}
+    assert validated == [Options()]
+
+
+def test_config_dict_empty_dict_missing_field_names_key():
+    """A required field missing from ``k = {}`` is reported under the dict key, like ``--x.k {}`` does."""
+    from dataclasses import dataclass
+
+    from cyclopts import MissingArgumentError
+
+    @dataclass
+    class Options:
+        threshold: int
+
+    app = App(config=Dict({"x": {"k": {}}}), result_action="return_value")
+
+    @app.default
+    def main(x: dict[str, Options]):
+        return x
+
+    with pytest.raises(MissingArgumentError, match=r"--x\.k\.threshold"):
+        app([], exit_on_error=False)
+
+
+@pytest.mark.parametrize(
+    "hint, value",
+    [
+        (dict[str, int | None], {"k": []}),
+        (dict[str, int | list[int]], {"k": {}}),
+    ],
+)
+def test_config_dict_empty_container_union_no_member(hint, value):
+    """An empty container is an error when no union member can hold it."""
+    from cyclopts import CoercionError
+
+    app = App(config=Dict({"x": value}), result_action="return_value")
+
+    @app.default
+    def main(x: hint):  # pyright: ignore[reportInvalidTypeForm]
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)
+
+
+@pytest.mark.parametrize(
+    "hint, expected",
+    [
+        (tuple[int, ...], ()),
+        (set[int], set()),
+        (frozenset[int], frozenset()),
+    ],
+)
+def test_config_dict_empty_list_value_iterables(hint, expected):
+    """``x = []`` binds an empty container for every iterable kind, like it does for ``list``."""
+    app = App(config=Dict({"x": []}), result_action="return_value")
+
+    @app.default
+    def main(x: hint):  # pyright: ignore[reportInvalidTypeForm]
+        return x
+
+    assert app([]) == expected
+
+
+@pytest.mark.parametrize(
+    "element, expected_name",
+    [
+        ({"port": 1}, "--servers.host"),
+        ({"host": "a", "port": "abc"}, "[servers][port]"),
+    ],
+)
+def test_config_dict_list_of_dataclass_error_names_parameter(element, expected_name):
+    """An error inside a list element from config names the real parameter, not a placeholder."""
+    from dataclasses import dataclass
+
+    from cyclopts import CycloptsError
+
+    @dataclass
+    class Server:
+        host: str
+        port: int = 80
+
+    app = App(config=Dict({"servers": [element]}), result_action="return_value")
+
+    @app.default
+    def main(servers: list[Server]):
+        return servers
+
+    with pytest.raises(CycloptsError) as e:
+        app([], exit_on_error=False)
+
+    assert expected_name in str(e.value)
+    assert "json" not in str(e.value)
+
+
+@pytest.mark.parametrize(
+    "hint, value",
+    [
+        (int, None),
+        (str, None),
+        (dict[str, int], {"k": None}),
+        (dict[str, str], {"k": None}),
+        (list[int], [None]),
+    ],
+)
+def test_config_dict_null_non_nullable(hint, value):
+    """A config ``null`` is an error for a type that doesn't allow ``None``."""
+    from cyclopts import CoercionError
+
+    app = App(config=Dict({"x": value}), result_action="return_value")
+
+    @app.default
+    def main(x: hint):  # pyright: ignore[reportInvalidTypeForm]
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)
+
+
+def test_config_dict_null_non_nullable_dataclass_field():
+    """A config ``null`` for a required non-nullable dataclass field is an error."""
+    from dataclasses import dataclass
+
+    from cyclopts import CoercionError
+
+    @dataclass
+    class Options:
+        n: int
+
+    app = App(config=Dict({"x": {"n": None}}), result_action="return_value")
+
+    @app.default
+    def main(x: Options):
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)
+
+
+@pytest.mark.parametrize(
+    "hint, value, expected",
+    [
+        (int | None, None, None),
+        (Any | None, None, None),
+        (Any, None, None),
+        (dict[str, int | None], {"k": None}, {"k": None}),
+        (dict[str, Any | None], {"k": None}, {"k": None}),
+        (dict[str, Any], {"k": None}, {"k": None}),
+        (list[int | None], [1, None], [1, None]),
+        (Any | int, None, None),
+        (dict[str, Any | int], {"k": None}, {"k": None}),
+        (list[Any], [None], [None]),
+        (tuple[Any, ...], [None], (None,)),
+    ],
+)
+def test_config_dict_null_nullable(hint, value, expected):
+    """A config ``null`` binds ``None`` when the type allows it."""
+    app = App(config=Dict({"x": value}), result_action="return_value")
+
+    @app.default
+    def main(x: hint):  # pyright: ignore[reportInvalidTypeForm]
+        return x
+
+    assert app([]) == expected
+
+
+def test_config_dict_null_annotated_any_validator():
+    """A config ``null`` for an ``Annotated[Any, ...]`` dict value still runs its validator."""
+    from typing import Annotated
+
+    from cyclopts import Parameter
+
+    validated = []
+    app = App(config=Dict({"x": {"k": None}}), result_action="return_value")
+
+    @app.default
+    def main(x: dict[str, Annotated[Any, Parameter(validator=lambda _, v: validated.append(v))]]):
+        return x
+
+    assert app([]) == {"k": None}
+    assert validated == [None]
+
+
+def test_config_dict_null_none_default(monkeypatch):
+    """A config ``null`` for ``x: int = None`` binds the ``None`` default, as when the key is absent."""
+    monkeypatch.delitem(sys.modules, "pydantic", raising=False)  # Pydantic rejects the ``None`` default itself.
+    app = App(config=Dict({"x": None}), result_action="return_value")
+
+    @app.default
+    def main(x: int = None):  # pyright: ignore[reportArgumentType]
+        return x
+
+    assert app([], exit_on_error=False) is None
+
+
+def test_config_dict_null_none_default_dataclass_field(monkeypatch):
+    """A config ``null`` for a dataclass field ``n: int = None`` binds the ``None`` default."""
+    monkeypatch.delitem(sys.modules, "pydantic", raising=False)
+
+    @dataclass
+    class Options:
+        n: int = None  # pyright: ignore[reportAssignmentType]
+
+    app = App(config=Dict({"x": {"n": None}}), result_action="return_value")
+
+    @app.default
+    def main(x: Options):
+        return x
+
+    assert app([], exit_on_error=False) == Options(n=None)  # pyright: ignore[reportArgumentType]
+
+
+def test_config_dict_null_non_none_default():
+    """Only a ``None`` default makes a config ``null`` acceptable for ``x: int``."""
+    from cyclopts import CoercionError
+
+    app = App(config=Dict({"x": None}), result_action="return_value")
+
+    @app.default
+    def main(x: int = 5):
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)
+
+
+@pytest.mark.parametrize("value", [{"k": None}, {"a": 1, "k": None}])
+def test_config_dict_null_keyed_in_optional_dict(value):
+    """A keyed ``null`` for a non-nullable value is an error instead of replacing the whole ``dict | None``."""
+    from cyclopts import CoercionError
+
+    app = App(config=Dict({"x": value}), result_action="return_value")
+
+    @app.default
+    def main(x: dict[str, int] | None = None):
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)
+
+
+def test_config_dict_null_keyed_nullable_in_optional_dict():
+    """A keyed ``null`` binds ``None`` under its key when the value type allows it."""
+    app = App(config=Dict({"x": {"a": 1, "k": None}}), result_action="return_value")
+
+    @app.default
+    def main(x: dict[str, int | None] | None = None):
+        return x
+
+    assert app([]) == {"a": 1, "k": None}
+
+
+def test_config_dict_null_unannotated():
+    """A config ``null`` binds ``None`` for an unannotated parameter, like ``Any``."""
+    app = App(config=Dict({"x": None}), result_action="return_value")
+
+    @app.default
+    def main(x):
+        return x
+
+    assert app([]) is None
+
+
+def test_config_dict_null_any_dataclass_field():
+    """A config ``null`` binds ``None`` for an ``Any`` dataclass field."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class Options:
+        a: Any
+
+    app = App(config=Dict({"x": {"a": None}}), result_action="return_value")
+
+    @app.default
+    def main(x: Options):
+        return x
+
+    assert app([]) == Options(a=None)
+
+
+def test_config_dict_null_unannotated_typed_default():
+    """An unannotated parameter is typed by its default, so ``null`` errors for ``x=0`` like for ``x: int = 0``."""
+    from cyclopts import CoercionError
+
+    app = App(config=Dict({"x": None}), result_action="return_value")
+
+    @app.default
+    def main(x=0):
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)
+
+
+def test_config_dict_null_any_typed_default():
+    """``x: Any = 5`` is typed by its default (see rules.rst), so ``null`` errors like for ``x: int = 5``."""
+    from cyclopts import CoercionError
+
+    app = App(config=Dict({"x": None}), result_action="return_value")
+
+    @app.default
+    def main(x: Any = 5):
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)
+
+
+@dataclass
+class _NullFirstStr:
+    first: str
+    n: int = 0
+
+
+@pytest.mark.parametrize(
+    "hint, value",
+    [
+        (dict[str, _NullFirstStr], {"k": None}),
+        (list[_NullFirstStr], [None]),
+        (_NullFirstStr, None),
+    ],
+)
+def test_config_dict_null_non_nullable_class(hint, value):
+    """A config ``null`` for a non-nullable class is an error instead of constructing it from an empty value."""
+    from cyclopts import CycloptsError
+
+    app = App(config=Dict({"x": value}), result_action="return_value")
+
+    @app.default
+    def main(x: hint):  # pyright: ignore[reportInvalidTypeForm]
+        return x
+
+    with pytest.raises(CycloptsError):
+        app([], exit_on_error=False)
+
+
+@pytest.mark.parametrize(
+    "hint, value, expected",
+    [
+        (dict[str, _NullFirstStr | None], {"k": None}, {"k": None}),
+        (_NullFirstStr | None, None, None),
+        (_NullFirstStr | Literal[None], None, None),
+        (Literal[None] | _NullFirstStr, None, None),
+        (_NullFirstStr | Literal["null-first-str", None], None, None),
+        (dict[str, _NullFirstStr | Literal[None]], {"k": None}, {"k": None}),
+    ],
+)
+def test_config_dict_null_optional_class(hint, value, expected):
+    """A config ``null`` for an optional class binds ``None`` instead of an instance or a missing-field error."""
+    app = App(config=Dict({"x": value}), result_action="return_value")
+
+    @app.default
+    def main(x: hint):  # pyright: ignore[reportInvalidTypeForm]
+        return x
+
+    assert app([]) == expected

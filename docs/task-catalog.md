@@ -71,6 +71,11 @@ wall-clock per agent run. The run ID is the `results/<run>` directory, which is 
 | F23 | feature · L2 | attrs @ d3a98cf (upstream PR #1592, merged 2026-08-01) | User-in-the-loop, decision-dense: Generator `on_setattr` hooks (D4). `user.md`: yielded value is set; post-yield code sees the new value; not in `__init__`; exception before yield keeps the old value, after keeps the new; second yield `RuntimeError` with the generator closed. Hand edits: private `test_compat` tests excluded, yield-twice message unpinned. Issue #1437 (2025) settles the headline | Validated 2026-10-20 (16 s grading). Pilot 7c93 (reticent, Sonnet 5.5, x3): plain 3/3, guide 3/3: no headroom |
 | F24 | feature · L2 | click @ 8dd4d60 (upstream PR #3677, merged 2026-07-08) | User-in-the-loop, decision-dense: `style()` colour validation (D9). `user.md`: index 0 honoured; names case-sensitive; 0..255; RGB exactly three ints, list accepted; bools rejected; every invalid value `ValueError`. Hand edit: `match="Unknown color"` dropped; pager tests ignored in regression (no `less`). Risk: the rule fits in one sentence | Validated 2026-10-20 (7.7 s grading). Pilot 7c93 (reticent, Sonnet 5.5, x3): plain 3/3, guide 3/3: no headroom |
 | F25 | feature · L2 | icalendar @ 8e80304 (upstream PR #1852, merged 2026-09-30) | User-in-the-loop, decision-dense: `vRecur.count` (D1). `user.md`: int reads; absent or empty list `None`; 0 valid; first of several; `None`/`del` remove, `del` unset no-op; non-int and bool `TypeError`; negative `InvalidCalendar`; unreadable stored value `InvalidCalendar` on read. Hand edits: message unpinned, a parser-text test removed. Installed with pip and a throwaway git repo (uv workspace source, hatch-vcs) | Validated 2026-10-20 (4.1 s grading). Pilot 7c93 (reticent, Sonnet 5.5, x3): plain 2/3, guide 3/3; plain missed the unreadable-stored-value rule |
+| F26 | feature · L2 | pytest @ ef052d0 (upstream PR #14751, merged 2026-07-24) | User-in-the-loop, decision-dense: `addini(type=...)` type expressions (S1). Hand edits: 8 message pins dropped; the `--help` format test removed | Validated 2026-10-20 (12 s grading); not run |
+| F27 | feature · L2 | cyclopts @ 6feee65 (upstream PR #1004, merged 2026-10-12) | User-in-the-loop, decision-dense: config `null` checked against the type (S2). Hand edit: one message pin dropped; `pydantic==2.13.5` pinned so an unrelated test passes | Validated 2026-10-20 (5.9 s grading); not run |
+| F28 | feature · L2 | httpx2 @ b36e77b (upstream PR #1071, merged 2026-08-05) | User-in-the-loop, decision-dense: `sse(max_event_size=...)` (S3). Hand edits: 9 message pins dropped; a private-attribute async test removed; `chardet` pinned | Validated 2026-10-20 (7.2 s grading); not run |
+| F29 | feature · L2 | python-json-pointer @ 57a8e8d (upstream PR #84, merged 2026-10-19) | User-in-the-loop, decision-dense: `set_pointer(create=...)` (S5). Top-level `tests.py` is not detected as a test file, so it is excluded from the fix and copied into `hidden_tests/` by hand; regression is the module doctests | Validated 2026-10-20 (2.6 s grading); not run |
+| F30 | feature · L2 | filelock @ 0b9adaa (upstream PR #625, merged 2026-07-13) | User-in-the-loop, decision-dense: `on_acquired` hook (S4). Hand edits: 2 private-patching tests removed, 3 message pins dropped; threaded tests deselected (`-k "not threaded"`) to keep grading short | Validated 2026-10-20 (21 s grading); not run |
 
 Notes:
 
@@ -264,7 +269,7 @@ generated per-task data (time, tokens, cost, transcripts) matters more than the 
 | `standard` (default) | B5, B6, B7, B9, B17, B19, B20, B21, F3, F4, F5, F6, F7 | One task per project. Mixed pass rates (B6, B7, B19, B21, F7) carry the success signal; steady multi-minute tasks (B5, B9, B17, F4, F5) carry the time/cost signal. Covers 2–27 min. | ~$12, ~1.9 h serial |
 | `smoke` | B1, B13, F1 | Always pass in under a minute; checks the harness works before a real run. | ~$0.20 |
 | `diagnosis` | B-DP-1, B-DP-2 | 0/3 for plain Claude Code; only informative for treatments aimed at diagnosis. Run alongside `standard`. | ~$1.30 |
-| `userloop` | F9–F25 | Feature requests with the decisive API detail moved from the prompt to `user.md`; meaningful only with `--user informative` (the prompt alone underdetermines the hidden tests). | F11/F12 piloted 2026-10-19 (run 8fcc): ~$0.45 per rep for both |
+| `userloop` | F9–F30 | Feature requests with the decisive API detail moved from the prompt to `user.md`; meaningful only with `--user informative` (the prompt alone underdetermines the hidden tests). | F11/F12 piloted 2026-10-19 (run 8fcc): ~$0.45 per rep for both |
 
 ### Cost tiers and report order
 
@@ -563,6 +568,26 @@ Near-misses: packaging #1376, dj-database-url
 plumbing (toolz #634, jsonpath-ng #292, icalendar #1672), fixes not features (json-patch, bidict #392/#401/#403,
 tomlkit #567, cattrs #765/#778, more-itertools #1248/#1253/#1260), too few decisions (more-itertools #1116,
 wcwidth #250, packaging #1334/#1346, cssselect #178, fsspec #2272).
+
+### Thirteenth search: surprising decisive rules (2026-10-20)
+
+After pilot 7c93, F19/F23/F24 saturated: their rules follow a familiar precedent. This search asked for >= 3 decisive
+rules not derivable from a precedent or spec. Each finalist was run in `python:3.12` Docker (fix passes; fix's tests
+on the base fail), with merge and first-parent SHAs checked by `gh`.
+
+| # | Upstream, base | Merged | Size | Decisions (surprising) | Fails at base | Grading | Edits / notes |
+|---|---|---|---|---|---|---|---|
+| S1 | **Built as F26.** pytest #14751 `addini(type=...)` type expressions, `ef052d0` | 2026-07-24 | +163/-25 | 10 (7) | 24 of 294 | 4.4 s | Unions coerce ini strings to the first member that accepts them but keep native TOML types; no implicit default for unions/`Literal`; mismatches raise `TypeError` at `getini`; `Literal` choices must be str. Relax 8 message pins and the `--help` format test |
+| S2 | **Built as F27.** cyclopts #1004 config `null` for non-nullable types, `6feee65` | 2026-10-12 | +59/-24 | 12 (8) | 21 of 71 | 3.5 s | `x:int=None` keeps None but `x:int=5` raises; unannotated and `Any` typed by their default; optional dict with keyed null raises. Relax one pin; exclude a pydantic-drift test |
+| S3 | **Built as F28.** httpx2 #1071 `sse(max_event_size=...)`, `b36e77b` | 2026-08-05 | +56/-27 | 10 (8) | 18 of 48 | 2.0 s | Default on at 1 MiB (the PR body says None), UTF-8 bytes, all field lines count but comments don't, pending line counted per chunk, reset per event. Relax 8 pins; drop one private-attribute test; monorepo install |
+| S4 | **Built as F30.** filelock #625 `on_acquired` hook, `0b9adaa` | 2026-07-13 | +150/-56 | 9 (6) | 15 of 341 | 17 s | Once per physical acquire; after truncation; a losing contender must not truncate; hook error releases and re-raises; `SoftFileLock` `ValueError`. Drop 2 private-patching tests, relax 6 pins |
+| S5 | **Built as F29.** python-json-pointer #84 `set(create=...)`, `57a8e8d` | 2026-10-19 | +67/-8 | 8 (6) | 5 of 67 | 2.5 s | Intermediates are dicts; list end via `-` or len; atomic on failure; tuples raise. No edits. Requested in 2013 (#41) |
+| S6 | voluptuous #538 `extend` with Schema, `6cf9450` | 2026-07-05 | +37/-3 | 8 (6) | 8 of 180 | 0.9 s | Below the size floor |
+| S7 | filelock #618 `context_error_policy`, `94a80aa` | 2026-07-13 | +110/-9 | 9 (6) | 14 of 251 | 20 s | Flaky at the fix (caplog leak); don't pair with S4 |
+| S8 | wheel #694 `pack --local-version`, `4a63caf` | 2026-07-19 | +58/-3 | 6 (3) | 5 of 9 | 0.8 s | Most guessable |
+
+Build: S1, S2, S3, S5, S4. Rejected: httpx2 #1165 (internal-name tests, curl/Go precedent), pydantic-settings #900,
+cyclopts #978/#859/#851 (too small), mobly #1061 and yarl #1899 (precedent), dateparser #1473 (data-heavy).
 
 ## Rejected
 

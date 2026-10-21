@@ -1,0 +1,1263 @@
+import json
+from dataclasses import dataclass, field
+from datetime import datetime
+from textwrap import dedent
+from typing import Annotated, Literal
+
+import pydantic
+import pytest
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, SecretBytes, SecretStr, model_validator, validate_call
+from pydantic import ValidationError as PydanticValidationError
+from pydantic.alias_generators import to_camel
+
+from cyclopts import CoercionError, MissingArgumentError, Parameter, UnknownOptionError, ValidationError
+
+
+# Modified from https://docs.pydantic.dev/latest/#pydantic-examples
+class Outfit(BaseModel):
+    body: str
+    head: str
+    has_socks: bool
+
+
+class User(BaseModel):
+    id: PositiveInt
+    name: str = Field(default="John Doe")
+    signup_ts: datetime | None
+    tastes: dict[str, PositiveInt]
+    outfit: Outfit | None = None
+
+
+def test_pydantic_error_msg(app, console):
+    @app.command
+    @validate_call
+    def foo(value: PositiveInt):
+        print(value)
+
+    assert app["foo"].default_command == foo
+
+    # foo(1)
+    with pytest.raises(PydanticValidationError):
+        foo(-1)
+
+    with console.capture() as capture, pytest.raises(ValidationError):
+        app(["foo", "-1"], error_console=console, exit_on_error=False, print_error=True)
+
+    actual = capture.get()
+
+    expected_prefix = dedent(
+        """\
+        ╭─ Error ────────────────────────────────────────────────────────────╮
+        │ Invalid value "-1" for VALUE. 1 validation error for               │
+        │ constrained-int                                                    │
+        │   Input should be greater than 0 [type=greater_than,               │
+        │ input_value=-1, input_type=int]                                    │
+        │     For further information visit                                  │
+        """
+    )
+
+    assert actual.startswith(expected_prefix)
+
+
+def test_pydantic_validator_called_once(app):
+    class M(BaseModel):
+        x: list = Field(default_factory=list)
+
+        @model_validator(mode="after")
+        def fill(self):
+            self.x.append("validator called")
+            return self
+
+    @app.default
+    def default(
+        m: Annotated[M, Field(default_factory=M)],
+    ):
+        assert m.x == ["foo", "validator called"]
+
+    app(["foo"])
+
+
+def test_pydantic_error_from_function_body(app):
+    @app.command
+    def foo(value: int):
+        # id=-1 is not a valid PositiveError
+        User(id=-1, signup_ts=None, tastes={})
+
+    with pytest.raises(PydanticValidationError):
+        app(["foo", "-1"])
+
+
+def test_bind_pydantic_basemodel(app, assert_parse_args):
+    @app.command
+    def foo(user: User):
+        pass
+
+    external_data = {
+        "id": 123,
+        "signup_ts": "2019-06-01 12:22",
+        "tastes": {
+            "wine": 9,
+            b"cheese": 7,
+            "cabbage": "1",
+        },
+        "outfit": {
+            "body": "t-shirt",
+            "head": "baseball-cap",
+            "has_socks": True,
+        },
+    }
+
+    assert_parse_args(
+        foo,
+        'foo --user.id=123 --user.signup-ts="2019-06-01 12:22" --user.tastes.wine=9 --user.tastes.cheese=7 --user.tastes.cabbage=1 --user.outfit.body=t-shirt --user.outfit.head=baseball-cap --user.outfit.has-socks',
+        User(**external_data),
+    )
+
+
+def test_bind_pydantic_basemodel_from_json(app, assert_parse_args, monkeypatch):
+    @app.command
+    def foo(user: Annotated[User, Parameter(env_var="USER")]):
+        pass
+
+    external_data = {
+        "id": 123,
+        "signup_ts": "2019-06-01 12:22",
+        "tastes": {
+            "wine": 9,
+            "cheese": 7,
+            "cabbage": "1",
+        },
+        "outfit": {
+            "body": "t-shirt",
+            "head": "baseball-cap",
+            "has_socks": True,
+        },
+    }
+
+    monkeypatch.setenv("USER", json.dumps(external_data))
+
+    assert_parse_args(
+        foo,
+        'foo --user.id=123 --user.signup-ts="2019-06-01 12:22" --user.tastes.wine=9 --user.tastes.cheese=7 --user.tastes.cabbage=1 --user.outfit.body=t-shirt --user.outfit.head=baseball-cap --user.outfit.has-socks',
+        User(**external_data),
+    )
+
+
+def test_bind_pydantic_basemodel_help(app, console):
+    @app.default
+    def foo(user: User):
+        pass
+
+    with console.capture() as capture:
+        app("--help", console=console)
+    actual = capture.get()
+    expected = dedent(
+        """\
+        Usage: test_pydantic --user.tastes [OPTIONS] USER.ID USER.SIGNUP-TS\x20
+        [ARGS]
+
+        ╭─ Commands ─────────────────────────────────────────────────────────╮
+        │ --help (-h)  Display this message and exit.                        │
+        │ --version    Display application version.                          │
+        ╰────────────────────────────────────────────────────────────────────╯
+        ╭─ Parameters ───────────────────────────────────────────────────────╮
+        │ *  USER.ID --user.id        [required]                             │
+        │    USER.NAME --user.name    [default: John Doe]                    │
+        │ *  USER.SIGNUP-TS           [required]                             │
+        │      --user.signup-ts                                              │
+        │ *  --user.tastes            [required]                             │
+        │    --user.outfit.body STR                                          │
+        │    --user.outfit.head STR                                          │
+        │    --user.outfit.has-socks                                         │
+        │      --user.outfit                                                 │
+        │      .no-has-socks                                                 │
+        ╰────────────────────────────────────────────────────────────────────╯
+        """
+    )
+    assert actual == expected
+
+
+def test_bind_pydantic_basemodel_missing_arg(app, console):
+    """Partially defining an Outfit should raise a MissingArgumentError."""
+
+    @app.command
+    def foo(user: User):
+        pass
+
+    with console.capture() as capture, pytest.raises(MissingArgumentError):
+        app.parse_args(
+            'foo --user.id=123 --user.signup-ts="2019-06-01 12:22" --user.tastes.wine=9 --user.tastes.cheese=7 --user.tastes.cabbage=1 --user.outfit.body=t-shirt',
+            error_console=console,
+            exit_on_error=False,
+        )
+
+    actual = capture.get()
+
+    expected = dedent(
+        """\
+        ╭─ Error ────────────────────────────────────────────────────────────╮
+        │ Command "foo" parameter --user.outfit.head requires an argument.   │
+        ╰────────────────────────────────────────────────────────────────────╯
+        """
+    )
+
+    assert actual == expected
+
+
+def test_pydantic_alias_1(app, console, assert_parse_args):
+    class User(BaseModel):
+        model_config = ConfigDict(
+            # A callable that takes a field name and returns an alias for it.
+            alias_generator=to_camel,
+            # Whether an aliased field may be populated by its name as given by the model attribute, as well as the alias.
+            # e.g. for this model, both "user_name=" and "userName=" should work.
+            populate_by_name=True,
+            # Whether to build models and look up discriminators of tagged unions using python object attributes.
+            from_attributes=True,
+        )
+
+        user_name: str
+        "Name of user."
+
+        age_in_years: int
+        "Age of user in years."
+
+    @app.command
+    def foo(user: User):
+        pass
+
+    with console.capture() as capture:
+        app("foo --help", console=console)
+
+    actual = capture.get()
+
+    expected = dedent(
+        """\
+        Usage: test_pydantic foo USER.USER-NAME USER.AGE-IN-YEARS
+
+        ╭─ Parameters ───────────────────────────────────────────────────────╮
+        │ *  USER.USER-NAME         Name of user. [required]                 │
+        │      --user.user-name                                              │
+        │      --user.username                                               │
+        │ *  USER.AGE-IN-YEARS      Age of user in years. [required]         │
+        │      --user.age-in-years                                           │
+        │      --user.ageinyears                                             │
+        ╰────────────────────────────────────────────────────────────────────╯
+        """
+    )
+
+    assert actual == expected
+
+    # Test both the new canonical form and legacy form work
+    assert_parse_args(
+        foo,
+        "foo --user.user-name='Bob Smith' --user.age-in-years=100",
+        user=User(user_name="Bob Smith", age_in_years=100),
+    )
+
+    assert_parse_args(
+        foo,
+        "foo --user.username='Alice Jones' --user.ageinyears=50",
+        user=User(user_name="Alice Jones", age_in_years=50),
+    )
+
+
+def test_pydantic_validate_by_name(app, assert_parse_args):
+    """Field-name CLI options are registered when ``validate_by_name`` is set.
+
+    https://github.com/BrianPugh/cyclopts/issues/908
+
+    pydantic 2.11 split ``validate_by_name`` out of ``populate_by_name``. A model
+    that configures ``validate_by_name=True`` accepts its field names during
+    validation, so cyclopts must register the field-name CLI option even though
+    ``populate_by_name`` is unset.
+    """
+
+    class Model(BaseModel):
+        model_config = ConfigDict(validate_by_name=True)
+
+        full_name: str = Field(alias="userName")
+
+    @app.default
+    def main(model: Model):
+        pass
+
+    # The field name (the thing ``validate_by_name=True`` opts into).
+    assert_parse_args(main, "--model.full_name Alice", model=Model(userName="Alice"))
+
+    # The alias continues to work.
+    assert_parse_args(main, "--model.user-name Alice", model=Model(userName="Alice"))
+
+
+def test_pydantic_validate_by_alias_false(app, assert_parse_args):
+    """When ``validate_by_alias=False``, the alias is not registered as a CLI option.
+
+    https://github.com/BrianPugh/cyclopts/issues/908
+
+    ``validate_by_alias=False`` tells pydantic to reject the alias during validation
+    (it implies ``validate_by_name=True``), so only the field-name CLI option should
+    be registered; the alias form must not silently parse into a value the model then
+    rejects.
+    """
+
+    class Model(BaseModel):
+        model_config = ConfigDict(validate_by_alias=False)
+
+        full_name: str = Field(alias="userName")
+
+    @app.default
+    def main(model: Model):
+        pass
+
+    # The field name is accepted.
+    assert_parse_args(main, "--model.full_name Alice", model=Model.model_validate({"full_name": "Alice"}))
+
+    # The alias is not registered, since the model would reject it during validation.
+    with pytest.raises(UnknownOptionError):
+        app.parse_args("--model.user-name Alice", exit_on_error=False)
+
+
+@pytest.mark.parametrize(
+    "env_var",
+    [
+        '{"storage_class": "longhorn"}',
+        '{"storageclass": "longhorn"}',  # Legacy form of camelCase alias
+        # check for incorrectly parsing "null" as a string
+        '{"storage_class": "longhorn", "limit": null}',
+        # Test the actual Pydantic camelCase alias
+        '{"storageClass": "longhorn"}',
+    ],
+)
+def test_pydantic_alias_env_var_json(app, assert_parse_args, monkeypatch, env_var):
+    """
+    https://github.com/BrianPugh/cyclopts/issues/332
+    """
+    monkeypatch.setenv("SPEC", env_var)
+
+    class BaseK8sModel(BaseModel):
+        model_config = ConfigDict(
+            alias_generator=to_camel,
+            populate_by_name=True,
+            from_attributes=True,
+        )
+
+    class Spec(BaseK8sModel):
+        storage_class: str
+        limit: int | None = None
+
+    @app.default
+    def run(spec: Annotated[Spec, Parameter(env_var="SPEC")]) -> None:
+        pass
+
+    assert_parse_args(run, "", Spec(storage_class="longhorn"))
+
+
+def test_parameter_decorator_pydantic_nested_1(app, console):
+    """
+    https://github.com/BrianPugh/cyclopts/issues/320
+
+    See Also
+    --------
+        test_parameter_decorator_dataclass_nested_1
+    """
+
+    class S3Path(BaseModel):
+        bucket: Annotated[str, Parameter()]
+        key: str
+
+    @Parameter(name="*")  # Flatten namespace.
+    class S3CliParams(BaseModel):
+        path: Annotated[S3Path, Parameter(name="*")]
+        region: Annotated[str, Parameter(name="area")]
+
+    @app.command
+    def action(*, s3_path: S3CliParams):
+        pass
+
+    with console.capture() as capture:
+        app("action --help", console=console)
+
+    actual = capture.get()
+    expected = dedent(
+        """\
+        Usage: test_pydantic action --bucket STR --key STR --area STR
+
+        ╭─ Parameters ───────────────────────────────────────────────────────╮
+        │ *  --bucket STR  [required]                                        │
+        │ *  --key STR     [required]                                        │
+        │ *  --area STR    [required]                                        │
+        ╰────────────────────────────────────────────────────────────────────╯
+        """
+    )
+    assert actual == expected
+
+
+def test_pydantic_field_description(app, console):
+    """Test that pydantic Field.description is used for help text."""
+
+    class UserModel(BaseModel):
+        # Simple case - Field.description should be used
+        name: str = Field(description="User name.")
+
+        # Parameter(help=...) takes precedence over Field
+        name_with_param: Annotated[
+            str,
+            Parameter(help="User name with Parameter help."),
+        ] = "Jane Doe"
+
+        # Field description in Annotated should be used
+        name_with_field_in_annotated: Annotated[
+            str,
+            Field(description="Description from Field in Annotated."),
+        ] = "John Doe"
+
+        # Another simple case
+        age: int = Field(description="User age in years.")
+
+    @app.default
+    def main(user: UserModel):
+        pass
+
+    with console.capture() as capture:
+        app("--help", console=console)
+
+    actual = capture.get()
+    # Debugging output removed to avoid cluttering test outputs
+    # If needed, use: logging.debug(f"Actual help content: {actual}")
+
+    # Verify that Field.description is used for help text
+    assert "User name." in actual
+
+    # Verify that Parameter(help=...) takes precedence
+    assert "User name with Parameter help." in actual
+
+    # Verify that Field.description is used from Annotated as well
+    assert "Description from Field in Annotated." in actual
+
+    # Verify the other description is present
+    assert "User age in years." in actual
+
+
+def test_pydantic_annotated_field_discriminator(app, assert_parse_args, console):
+    """From https://github.com/BrianPugh/cyclopts/issues/377"""
+
+    class DatasetImage(pydantic.BaseModel):
+        type: Literal["image"] = "image"
+        path: str
+        resolution: tuple[int, int]
+
+    class DatasetVideo(pydantic.BaseModel):
+        type: Literal["video"] = "video"
+        path: str
+        resolution: tuple[int, int]
+        fps: int
+
+    Dataset = Annotated[DatasetImage | DatasetVideo, pydantic.Field(discriminator="type")]
+
+    @dataclass
+    class Config:
+        dataset: Dataset  # pyright: ignore[reportInvalidTypeForm]
+
+    @app.default
+    def main(
+        config: Annotated[Config | None, Parameter(name="*")] = None,
+    ):
+        pass
+
+    assert_parse_args(
+        main,
+        "--dataset.type=image --dataset.path foo.png --dataset.resolution 640 480",
+        Config(DatasetImage(path="foo.png", resolution=(640, 480))),
+    )
+    assert_parse_args(
+        main,
+        "--dataset.type=video --dataset.path foo.mp4 --dataset.resolution 640 480 --dataset.fps 30",
+        Config(DatasetVideo(path="foo.mp4", resolution=(640, 480), fps=30)),
+    )
+
+    with console.capture() as capture:
+        app("--help", console=console)
+
+    actual = capture.get()
+    expected = dedent(
+        """\
+        Usage: test_pydantic [ARGS]
+
+        ╭─ Commands ─────────────────────────────────────────────────────────╮
+        │ --help (-h)  Display this message and exit.                        │
+        │ --version    Display application version.                          │
+        ╰────────────────────────────────────────────────────────────────────╯
+        ╭─ Parameters ───────────────────────────────────────────────────────╮
+        │ DATASET.TYPE               [choices: image, video]                 │
+        │   --dataset.type                                                   │
+        │ DATASET.PATH                                                       │
+        │   --dataset.path                                                   │
+        │ DATASET.RESOLUTION                                                 │
+        │   --dataset.resolution                                             │
+        │   --dataset                                                        │
+        │   .empty-resolution                                                │
+        │ DATASET.FPS --dataset.fps                                          │
+        ╰────────────────────────────────────────────────────────────────────╯
+        """
+    )
+    assert actual == expected
+
+
+def test_pydantic_annotated_field_discriminator_basemodel_container(app, assert_parse_args):
+    """Regression test for https://github.com/BrianPugh/cyclopts/issues/726
+
+    Discriminated unions should work when the container is also a pydantic.BaseModel.
+    """
+
+    class DatasetImage(pydantic.BaseModel):
+        type: Literal["image"] = "image"
+        path: str
+
+    class DatasetVideo(pydantic.BaseModel):
+        type: Literal["video"] = "video"
+        path: str
+        fps: int
+
+    class Config(pydantic.BaseModel):
+        dataset: Annotated[DatasetImage | DatasetVideo, pydantic.Field(discriminator="type")]
+
+    @app.default
+    def main(
+        config: Annotated[Config | None, Parameter(name="*")] = None,
+    ):
+        pass
+
+    assert_parse_args(
+        main,
+        "--dataset.type=image --dataset.path foo.png",
+        Config(dataset=DatasetImage(path="foo.png")),
+    )
+    assert_parse_args(
+        main,
+        "--dataset.type=video --dataset.path foo.mp4 --dataset.fps 30",
+        Config(dataset=DatasetVideo(path="foo.mp4", fps=30)),
+    )
+
+
+def test_pydantic_annotated_field_discriminator_list(app, assert_parse_args):
+    """Regression test for https://github.com/BrianPugh/cyclopts/issues/785
+
+    list[DiscriminatedUnion] fields in a BaseModel should not crash with
+    ``ValueError: Cannot Union types that consume different numbers of tokens``.
+    """
+
+    class Cat(pydantic.BaseModel):
+        dead_birds: int
+        dead_rats: int
+        type: Literal["cat"] = "cat"
+
+    class Dog(pydantic.BaseModel):
+        type: Literal["dog"] = "dog"
+
+    Animal = Annotated[Cat | Dog, pydantic.Field(discriminator="type")]
+
+    class Home(pydantic.BaseModel):
+        animals: list[Animal]  # pyright: ignore[reportInvalidTypeForm]
+
+    @app.default
+    def main(
+        home: Annotated[Home | None, Parameter(name="*")] = None,
+    ):
+        pass
+
+    # Single dog
+    assert_parse_args(
+        main,
+        """--animals '{"type": "dog"}'""",
+        Home(animals=[Dog()]),
+    )
+
+    # Single cat
+    assert_parse_args(
+        main,
+        """--animals '{"type": "cat", "dead_birds": 1, "dead_rats": 2}'""",
+        Home(animals=[Cat(dead_birds=1, dead_rats=2)]),
+    )
+
+    # Multiple animals
+    assert_parse_args(
+        main,
+        """--animals '{"type": "dog"}' --animals '{"type": "cat", "dead_birds": 3, "dead_rats": 4}'""",
+        Home(animals=[Dog(), Cat(dead_birds=3, dead_rats=4)]),
+    )
+
+
+def test_pydantic_roundtrip_json_with_aliases(app, assert_parse_args, monkeypatch):
+    """
+    Test that Pydantic's own JSON serialization (which uses aliases by default)
+    can be round-tripped through cyclopts environment variable loading.
+
+    This ensures that if a user saves a Pydantic model to JSON and then loads it
+    back through cyclopts, it works correctly.
+    """
+    import json
+
+    class BaseK8sModel(BaseModel):
+        model_config = ConfigDict(
+            alias_generator=to_camel,
+            populate_by_name=True,
+            from_attributes=True,
+        )
+
+    class DatabaseConfig(BaseK8sModel):
+        host: str = "localhost"
+        port: int = 5432
+        connection_timeout: int = 30
+        max_pool_size: int = 10
+
+    class Spec(BaseK8sModel):
+        storage_class: str
+        enable_caching: bool = True
+        database_config: DatabaseConfig | None = None
+        api_key: str | None = None
+
+    # Create a Pydantic model instance with data
+    original_spec = Spec(
+        storage_class="fast-ssd",
+        enable_caching=False,
+        database_config=DatabaseConfig(host="db.example.com", port=3306, connection_timeout=60, max_pool_size=50),
+        api_key="secret123",
+    )
+
+    # Serialize to JSON using Pydantic's model_dump_json with by_alias=True
+    # This will use the camelCase aliases
+    json_str = original_spec.model_dump_json(by_alias=True)
+
+    # Verify the JSON has the expected camelCase structure
+    json_data = json.loads(json_str)
+    expected_json = {
+        "storageClass": "fast-ssd",
+        "enableCaching": False,
+        "databaseConfig": {"host": "db.example.com", "port": 3306, "connectionTimeout": 60, "maxPoolSize": 50},
+        "apiKey": "secret123",
+    }
+    assert json_data == expected_json
+
+    # Now set this as environment variable and parse with cyclopts
+    monkeypatch.setenv("SPEC", json_str)
+
+    @app.default
+    def run(spec: Annotated[Spec, Parameter(env_var="SPEC")]) -> None:
+        pass
+
+    # Should parse back to the exact same object
+    assert_parse_args(run, "", original_spec)
+
+
+@pytest.mark.parametrize(
+    "dataclass_decorator",
+    [
+        dataclass,
+        pydantic.dataclasses.dataclass,
+    ],
+)
+def test_pydantic_annotated_field_discriminator_dataclass(app, assert_parse_args, dataclass_decorator):
+    """Pydantic discriminator should work, even if the union'd types are not pydantic.BaseModel."""
+
+    @dataclass_decorator
+    class DatasetImage:
+        type: Literal["image"]
+        path: str
+        resolution: tuple[int, int]
+
+    @dataclass_decorator
+    class DatasetVideo:
+        type: Literal["video"]
+        path: str
+        resolution: tuple[int, int]
+        fps: int
+
+    Dataset = Annotated[DatasetImage | DatasetVideo, pydantic.Field(discriminator="type")]
+
+    @dataclass_decorator
+    class Config:
+        dataset: Dataset  # pyright: ignore[reportInvalidTypeForm]
+
+    @app.default
+    def main(
+        config: Annotated[Config | None, Parameter(name="*")] = None,
+    ):
+        pass
+
+    assert_parse_args(
+        main,
+        "--dataset.type=image --dataset.path foo.png --dataset.resolution 640 480",
+        Config(DatasetImage(type="image", path="foo.png", resolution=(640, 480))),  # pyright: ignore
+    )
+    assert_parse_args(
+        main,
+        "--dataset.type=video --dataset.path foo.mp4 --dataset.resolution 640 480 --dataset.fps 30",
+        Config(DatasetVideo(type="video", path="foo.mp4", resolution=(640, 480), fps=30)),  # pyright: ignore
+    )
+
+
+def test_pydantic_annotated_field_discriminator_missing_argument(app):
+    """Regression test for https://github.com/BrianPugh/cyclopts/issues/725
+
+    Missing required field in a discriminated union should raise MissingArgumentError,
+    not an IndexError.
+    """
+
+    @dataclass
+    class Cat:
+        rainbow: bool
+        type: Literal["cat"]
+
+    @dataclass
+    class Dog:
+        type: Literal["dog"]
+
+    @dataclass
+    class AnimalParameter:
+        animal: Annotated[Cat | Dog, pydantic.Field(discriminator="type")]
+
+    @app.default
+    def main(animal_parameter: Annotated[AnimalParameter, Parameter(name="*")]):
+        pass
+
+    with pytest.raises(MissingArgumentError) as exc_info:
+        app(["--animal.type", "cat"], exit_on_error=False)
+
+    assert exc_info.value.argument is not None
+    assert exc_info.value.argument.parameter.name == ("--animal.rainbow",)
+
+
+def test_pydantic_discriminated_union_in_list_sibling_field(app):
+    """Regression test for follow-up to issue #785 surfaced during PR #789 review.
+
+    When a pydantic BaseModel contains both a ``list[DiscriminatedUnion]`` field
+    and a sibling field that's provided on the CLI, a missing nested field inside
+    the list element's JSON must raise a ValidationError naming the nested path,
+    not a bogus MissingArgumentError on the populated sibling.
+    """
+
+    class AnimalBase(pydantic.BaseModel):
+        name: str
+
+    class Cat(AnimalBase):
+        dead_birds: int
+        dead_rats: int
+        type: Literal["cat"] = "cat"
+
+    class Dog(AnimalBase):
+        type: Literal["dog"] = "dog"
+
+    Animal = Annotated[Cat | Dog, pydantic.Field(discriminator="type")]
+
+    class Home(pydantic.BaseModel):
+        animals: list[Animal]  # pyright: ignore[reportInvalidTypeForm]
+        name: str
+
+    @app.default
+    def main(*, home: Home):
+        pass
+
+    with pytest.raises(ValidationError) as exc_info:
+        app(
+            ["--home.animals", '{"type": "dog"}', "--home.name", "ISS"],
+            exit_on_error=False,
+        )
+
+    message = str(exc_info.value)
+    assert "animals" in message
+    assert "name" in message
+    assert not isinstance(exc_info.value, MissingArgumentError)
+
+
+def test_pydantic_discriminated_union_in_list_sibling_field_success(app, assert_parse_args):
+    """Happy-path counterpart to ``test_pydantic_discriminated_union_in_list_sibling_field``.
+
+    When a list-element's JSON provides all required fields (including those
+    inherited from a common base), it must parse successfully alongside a
+    sibling field on the parent model.
+    """
+
+    class AnimalBase(pydantic.BaseModel):
+        name: str
+
+    class Cat(AnimalBase):
+        dead_birds: int
+        dead_rats: int
+        type: Literal["cat"] = "cat"
+
+    class Dog(AnimalBase):
+        type: Literal["dog"] = "dog"
+
+    Animal = Annotated[Cat | Dog, pydantic.Field(discriminator="type")]
+
+    class Home(pydantic.BaseModel):
+        animals: list[Animal]  # pyright: ignore[reportInvalidTypeForm]
+        name: str
+
+    @app.default
+    def main(*, home: Home):
+        pass
+
+    assert_parse_args(
+        main,
+        """--home.animals '{"type": "dog", "name": "Rex"}' --home.name "ISS" """,
+        home=Home(animals=[Dog(name="Rex")], name="ISS"),
+    )
+
+
+def test_pydantic_list_empty_flag(app, assert_parse_args):
+    """Regression test for https://github.com/BrianPugh/cyclopts/issues/572"""
+
+    @Parameter(name="*")
+    class Config(BaseModel):
+        urls: Annotated[
+            list[str] | None,
+            Field(default=None, description="Optional list of URLs"),
+            Parameter(
+                consume_multiple=True,
+            ),
+        ]
+
+    @app.default
+    def command(config: Config | None = None):
+        pass
+
+    assert_parse_args(command, "--empty-urls", Config(urls=[]))
+
+
+def test_pydantic_list_with_value(app, assert_parse_args):
+    @Parameter(name="*")
+    class Config(BaseModel):
+        urls: Annotated[
+            list[str] | None,
+            Field(default=None, description="Optional list of URLs"),
+            Parameter(
+                consume_multiple=True,
+            ),
+        ]
+
+    @app.default
+    def command(config: Config | None = None):
+        pass
+
+    assert_parse_args(
+        command,
+        "--urls http://example.com http://example2.com",
+        Config(
+            urls=["http://example.com", "http://example2.com"],
+        ),
+    )
+
+
+def test_pydantic_list_omitted(app, assert_parse_args):
+    @Parameter(name="*")
+    class Config(BaseModel):
+        urls: Annotated[
+            list[str] | None,
+            Field(default=None, description="Optional list of URLs"),
+            Parameter(
+                consume_multiple=True,
+            ),
+        ]
+
+    @app.default
+    def command(config: Config | None = None):
+        pass
+
+    assert_parse_args(command, "")
+
+
+def test_pydantic_nested_list_json(app):
+    """Test that nested lists with JSON-serialized dicts are correctly parsed.
+
+    Regression test for issue where JSON dict strings in lists were not being
+    deserialized, causing Pydantic validation errors.
+    Related to https://github.com/BrianPugh/cyclopts/issues/507
+    """
+
+    class SimpleConfig(BaseModel):
+        bar: str
+
+    class NestedConfig(BaseModel):
+        foo: str
+        simple_list: list[SimpleConfig]
+
+    @app.command
+    def nested_cmd(config: NestedConfig) -> NestedConfig:
+        return config
+
+    result = app(
+        [
+            "nested-cmd",
+            "--config",
+            '{"foo": "test", "simple_list": [{"bar": "simple1"}]}',
+        ],
+        exit_on_error=False,
+    )
+
+    assert result == NestedConfig(
+        foo="test",
+        simple_list=[SimpleConfig(bar="simple1")],
+    )
+
+
+def test_pydantic_list_of_models_with_nested_list_json(app, assert_parse_args):
+    """Regression test for https://github.com/BrianPugh/cyclopts/issues/953
+
+    A ``list[Model]`` bound from a single JSON token must preserve a nested
+    collection-of-models field instead of silently dropping it.
+    """
+
+    class Bucket(BaseModel):
+        bid: str
+        amt: str
+
+    class Alloc(BaseModel):
+        partner: str
+        buckets: list[Bucket]
+
+    @app.default
+    def main(*, allocs: list[Alloc] | None = None):
+        pass
+
+    assert_parse_args(
+        main,
+        ["--allocs", '[{"partner": "p1", "buckets": [{"bid": "b1", "amt": "10"}]}]'],
+        allocs=[Alloc(partner="p1", buckets=[Bucket(bid="b1", amt="10")])],
+    )
+
+
+def test_pydantic_list_of_models_json_alias_key(app, assert_parse_args):
+    """A JSON element of a ``list[Model]`` may use the pydantic alias as its key."""
+
+    class Model(BaseModel):
+        model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+        my_field: str
+
+    @app.default
+    def main(*, xs: list[Model] | None = None):
+        pass
+
+    assert_parse_args(main, ["--xs", '[{"myField": "v"}]'], xs=[Model(my_field="v")])
+
+
+@pytest.mark.parametrize("as_list", [False, True], ids=["single", "list"])
+def test_pydantic_json_null_for_nested_model_and_collection_fields(app, assert_parse_args, as_list):
+    class Inner(BaseModel):
+        a: str
+
+    class Outer(BaseModel):
+        inner: Inner | None
+        tags: list[str] | None = None
+
+    annotation = list[Outer] if as_list else Outer
+
+    @app.default
+    def main(*, xs: annotation | None = None):  # pyright: ignore[reportInvalidTypeForm]
+        pass
+
+    payload = '{"inner": null, "tags": null}'
+    expected = Outer(inner=None, tags=None)
+    if as_list:
+        assert_parse_args(main, ["--xs", f"[{payload}]"], xs=[expected])
+    else:
+        assert_parse_args(main, ["--xs", payload], xs=expected)
+
+
+def test_pydantic_list_of_models_json_choices_enforced(app, assert_parse_args):
+    """``Parameter(choices=)`` on a model field is checked for elements bound from JSON."""
+
+    class Model(BaseModel):
+        color: Annotated[str, Parameter(choices=["red", "blue"])]
+
+    @app.default
+    def main(*, xs: list[Model] | None = None):
+        pass
+
+    assert_parse_args(main, ["--xs", '[{"color": "red"}]'], xs=[Model(color="red")])
+
+    with pytest.raises(CoercionError) as exc_info:
+        app(["--xs", '[{"color": "green"}]'], exit_on_error=False)
+
+    assert "[xs][color]" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "token, exception",
+    [
+        ('[{"buckets": []}]', MissingArgumentError),
+        ('[{"partner": "p1", "buckets": [{}]}]', ValidationError),
+    ],
+    ids=["element-level", "nested-level"],
+)
+def test_pydantic_list_of_models_json_missing_required(app, token, exception):
+    """A field missing at the element level is caught by cyclopts; one missing deeper is caught by pydantic."""
+
+    class Bucket(BaseModel):
+        bid: str
+
+    class Alloc(BaseModel):
+        partner: str
+        buckets: list[Bucket]
+
+    @app.default
+    def main(*, allocs: list[Alloc] | None = None):
+        pass
+
+    with pytest.raises(exception):
+        app(["--allocs", token], exit_on_error=False)
+
+
+def test_pydantic_secretstr_from_env(app, assert_parse_args, monkeypatch):
+    """Test that Pydantic SecretStr works with environment variables.
+
+    Regression test for https://github.com/BrianPugh/cyclopts/issues/619
+    """
+    monkeypatch.setenv("SOME_SECRET", "cycloptsIsAmazing")
+
+    class ScriptSettings(BaseModel):
+        some_secret: Annotated[SecretStr, Parameter(env_var="SOME_SECRET")]
+
+    @app.command
+    def test_cmd(s: Annotated[ScriptSettings, Parameter(name="*")]):
+        pass
+
+    assert_parse_args(
+        test_cmd,
+        "test-cmd",
+        ScriptSettings(some_secret=SecretStr("cycloptsIsAmazing")),
+    )
+
+
+@pytest.mark.parametrize(
+    "secret_type,value,expected_value",
+    [
+        (SecretStr, "mySecretValue", SecretStr("mySecretValue")),
+        (SecretBytes, "mySecretBytes", SecretBytes(b"mySecretBytes")),
+    ],
+)
+def test_pydantic_secret_explicit_value(app, assert_parse_args, secret_type, value, expected_value):
+    """Test that Pydantic secret types work with explicit CLI values.
+
+    Regression test for https://github.com/BrianPugh/cyclopts/issues/619
+    """
+
+    class ScriptSettings(BaseModel):
+        some_secret: secret_type  # pyright: ignore[reportInvalidTypeForm]
+
+    @app.command
+    def test_cmd(s: Annotated[ScriptSettings, Parameter(name="*")]):
+        pass
+
+    assert_parse_args(
+        test_cmd,
+        f"test-cmd --some-secret {value}",
+        ScriptSettings(some_secret=expected_value),
+    )
+
+
+def test_pydantic_inheritance_simple(app, console):
+    """Test that Field descriptions from base pydantic model are inherited by derived model."""
+
+    class BaseModelCustom(BaseModel):
+        """Base pydantic model."""
+
+        base_field: int = Field(default=42, description="Field from base pydantic model")
+
+    class DerivedModel(BaseModelCustom):
+        """Derived pydantic model."""
+
+        derived_field: str = Field(default="test", description="Field from derived pydantic model")
+
+    @app.default
+    def main(params: DerivedModel):
+        pass
+
+    with console.capture() as capture:
+        app("--help", console=console)
+
+    actual = capture.get()
+
+    # Check that both base and derived field descriptions are present
+    assert "Field from base pydantic model" in actual
+    assert "Field from derived pydantic model" in actual
+
+
+def test_stdlib_dataclass_command_default_factory(app, assert_parse_args):
+    """Stdlib dataclass commands with a ``default_factory`` must not be pydantic-validated against the sentinel.
+
+    With pydantic installed, the unfilled ``default_factory`` sentinel
+    (``_HAS_DEFAULT_FACTORY``) was passed to ``pydantic.TypeAdapter.validate_python``,
+    raising a ValidationError even though the user provided no tokens.
+
+    https://github.com/BrianPugh/cyclopts/issues/857
+    """
+
+    @app.command
+    @dataclass
+    class Test:
+        numbers: list[int] = field(default_factory=lambda: [1, 2, 3])
+
+        def __call__(self) -> str:
+            return str(self.numbers)
+
+    assert_parse_args(Test, "test")
+
+    assert app(["test"], result_action=("call_if_callable", "return_value"), exit_on_error=False) == "[1, 2, 3]"
+
+
+def test_pydantic_basemodel_command_default_factory(app, assert_parse_args):
+    """BaseModel commands with a ``default_factory`` must not be validated against the sentinel.
+
+    Pydantic's generated ``__signature__`` reuses dataclasses'
+    ``_HAS_DEFAULT_FACTORY`` sentinel as the default for ``default_factory``
+    fields, which was passed to ``pydantic.TypeAdapter.validate_python``,
+    raising a ValidationError even though the user provided no tokens.
+
+    https://github.com/BrianPugh/cyclopts/issues/857
+    """
+
+    @app.command
+    class Test(BaseModel):
+        numbers: list[int] = Field(default_factory=lambda: [1, 2, 3])
+
+        def __call__(self) -> str:
+            return str(self.numbers)
+
+    assert_parse_args(Test, "test")
+
+    assert app(["test"], result_action=("call_if_callable", "return_value"), exit_on_error=False) == "[1, 2, 3]"
+
+
+def test_attrs_nested_factory(app, assert_parse_args):
+    """Attrs fields with a ``factory`` must not have a substituted ``None`` default pydantic-validated.
+
+    ``_attrs_field_infos`` substituted ``default=None`` for factory fields; with
+    pydantic installed, that ``None`` was passed to
+    ``pydantic.TypeAdapter.validate_python`` against the field's real annotation
+    (e.g. ``list[int]``), raising a ValidationError even though the user provided
+    no tokens.
+
+    https://github.com/BrianPugh/cyclopts/issues/857
+    """
+    import attrs
+
+    @attrs.define
+    class Config:
+        numbers: list[int] = attrs.field(factory=lambda: [1, 2, 3])
+
+    @app.command
+    def cmd(config: Config | None = None):
+        pass
+
+    assert_parse_args(cmd, "cmd")
+    assert_parse_args(cmd, "cmd --config.numbers=5", Config(numbers=[5]))
+
+
+def test_attrs_command_factory(app, assert_parse_args):
+    """Attrs commands with a ``factory`` must not be pydantic-validated against the ``NOTHING`` sentinel.
+
+    Attrs' generated ``__init__`` signature uses ``attrs.NOTHING`` as the default for
+    factory fields; with pydantic installed it was passed to
+    ``pydantic.TypeAdapter.validate_python``, raising a ValidationError even though
+    the user provided no tokens.
+
+    https://github.com/BrianPugh/cyclopts/issues/857
+    """
+    import attrs
+
+    @app.command
+    @attrs.define
+    class Test:
+        numbers: list[int] = attrs.field(factory=lambda: [1, 2, 3])
+
+        def __call__(self) -> str:
+            return str(self.numbers)
+
+    assert_parse_args(Test, "test")
+
+    assert app(["test"], result_action=("call_if_callable", "return_value"), exit_on_error=False) == "[1, 2, 3]"
+
+
+def test_pydantic_empty_dict_config_value(app, assert_parse_args):
+    """An empty dict config value constructs an all-defaults model instead of raising MissingArgumentError."""
+    from cyclopts.config import Dict
+
+    class Options(BaseModel):
+        threshold: int = 5
+
+    app.config = (Dict({"options": {}}),)
+
+    @app.default
+    def main(options: Options):
+        pass
+
+    assert_parse_args(main, "", Options(threshold=5))
+
+
+def test_pydantic_default_factory_help(app, console):
+    """Zero-arg ``default_factory`` values render in help, consistent with dataclass/attrs.
+
+    Factories that require validated data cannot be invoked during introspection,
+    so those fields show no default.
+    """
+
+    class Config(BaseModel):
+        numbers: list[int] = Field(default_factory=lambda: [1, 2, 3])
+        derived: int = Field(default_factory=lambda data: len(data["numbers"]))
+
+    @app.command
+    def nested(config: Config | None = None):
+        pass
+
+    @app.command
+    class Direct(BaseModel):
+        numbers: list[int] = Field(default_factory=lambda: [1, 2, 3])
+
+    for cmd in ("nested --help", "direct --help"):
+        with console.capture() as capture:
+            app(cmd, console=console)
+        actual = capture.get()
+        assert "[default: [1, 2, 3]]" in actual
+        assert "factory" not in actual
+
+
+@pytest.mark.parametrize(
+    "cmd_str, expected_a",
+    [
+        ("--outer.inner='{\"a\": 2}'", 2),
+        ("--outer.inner={}", 1),
+    ],
+)
+def test_pydantic_nested_model_field_from_cli_json(app, cmd_str, expected_a):
+    """A JSON object supplied to a nested model field binds like a top-level one."""
+
+    class Inner(BaseModel):
+        a: int = 1
+
+    class Outer(BaseModel):
+        inner: Inner = Inner()
+
+    @app.default
+    def main(outer: Outer):
+        return outer
+
+    assert app(cmd_str, result_action="return_value") == Outer(inner=Inner(a=expected_a))
+
+
+def test_pydantic_config_null_non_nullable_model():
+    """A config ``null`` for a non-nullable model names the value instead of a JSON decode error."""
+    from cyclopts import App
+    from cyclopts.config import Dict
+
+    class Model(BaseModel):
+        first: str
+
+    app = App(config=Dict({"x": None}), result_action="return_value")
+
+    @app.default
+    def main(x: Model):
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)

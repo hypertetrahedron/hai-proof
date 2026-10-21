@@ -2,7 +2,6 @@ id = "F11"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Underspecified feature with a user in the loop (docs/task-catalog.md, tenth search U1). Upstream:
 # copier-org/copier issue #2763 "Questions that are hidden by default" (opened 2026-07-16) and PR #2849
 # (squash-merged 2026-10-06 as 6d985b8), both after the model cutoff. The issue thread debated a `hide` key,

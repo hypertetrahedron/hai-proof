@@ -2,7 +2,6 @@ id = "F21"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Decision-dense change with a user in the loop (docs/task-catalog.md, twelfth search D10). Upstream:
 # h2non/jsonpath-ng PR #289 "Stop coercing non-arrays into arrays when slicing/wildcarding", merged
 # 2026-10-16 (after the model cutoff). The prompt says the user wants RFC 9535-like behaviour for slices and

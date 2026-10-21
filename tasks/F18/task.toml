@@ -2,7 +2,6 @@ id = "F18"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, eleventh search H5). Upstream:
 # pytest-dev/pytest-rerunfailures issue #230 (2023) and PR #365 (merged 2026-09-09 as be14a6b, after the model
 # cutoff). The request (let `condition` see the exception) is old; the design decisions are the 2026 review's:

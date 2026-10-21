@@ -2,7 +2,6 @@ id = "F16"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, eleventh search H6). Upstream:
 # tox-dev/platformdirs PR #586 "find_*_file(s)" (squash-merged 2026-09-26 as f88693c, after the model
 # cutoff), the companion of F13's #585, which is already in this base. The prompt asks for a way to look up a

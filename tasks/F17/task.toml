@@ -2,7 +2,6 @@ id = "F17"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, eleventh search H4). Upstream:
 # pdm-project/pdm issue #3809 and PR #3875 "exclude-newer-override" (merged 2026-09-03 as f1bb362, after the
 # model cutoff). The issue proposed `0` as the "no cutoff" value; the merged design uses `false` and rejects

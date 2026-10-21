@@ -2,7 +2,6 @@ id = "F24"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Decision-dense change with a user in the loop (docs/task-catalog.md, twelfth search D9). Upstream:
 # pallets/click PR #3677 "style() colour validation" (merged 2026-07-08 as 8a4ce84, after the model cutoff).
 # The prompt says `style()`/`secho()` handle colour arguments inconsistently (a colour index of 0 is dropped,

@@ -2,7 +2,6 @@ id = "F22"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, twelfth search D6). Upstream:
 # pypa/packaging PR #1313 "add accepted-version relation helpers", squash-merged 2026-07-21 as ba0188d (after
 # the model cutoff). The prompt names the three methods and the basic meaning; user.md holds the second-order

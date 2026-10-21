@@ -2,7 +2,6 @@ id = "F25"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, twelfth search D1). Upstream:
 # collective/icalendar PR #1852 "vRecur.count accessor" for issue #1851 (merged 2026-09-30 as 53fe55f, after the
 # model cutoff). The prompt asks for a `count` property on vRecur (name and get/set/delete shape given) and

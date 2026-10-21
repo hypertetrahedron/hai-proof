@@ -2,7 +2,7 @@ id = "F33"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
+suites = ["interview"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, fourteenth search T3). Upstream:
 # rthalley/dnspython PR #1363 "follow BIND substitution rules in $GENERATE" (merged 2026-10-18 as 9b82172, after
 # the model cutoff). The prompt states the motivation (dnspython's $GENERATE output differs from BIND's for the

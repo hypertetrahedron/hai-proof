@@ -1,0 +1,45 @@
+id = "F64"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+cost_tier = "low"
+suites = ["interview-v2-candidates"]
+# Follow-up-dependent feature with a user in the loop (sixteenth search, V4). Upstream: benoitc/gunicorn PR
+# #3688 "reload: support glob patterns in reload_extra_files" (merged 2026-08-17 as df3a0f7, after the model
+# cutoff). The prompt asks for glob patterns in --reload-extra-file / reload_extra_files and leaves the
+# behaviour to the conversation. user.md holds the decisions as a branch: the first-level choice is that
+# globs are supported at all, and the sub-decisions only matter once that is answered: patterns are
+# expanded on every reload check so files created later are watched, while the config keeps the pattern
+# unexpanded; a pattern matching nothing warns with RuntimeWarning (a missing plain path is still a
+# ValueError); ** recurses; * skips dotfiles; a literal path containing * ? or [ is read as a pattern;
+# patterns resolve against the directory gunicorn was launched from, not chdir. Linux only (fcntl), so
+# it is validated in Docker.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest pytest-cov"
+# Hidden tests/hai_proof/test_f64.py is written by hand from the PR's tests/test_config.py and
+# tests/test_reload.py additions, because build-task's derived copies are whole upstream files that would
+# overwrite the existing tests (delete the derived hidden_tests/tests/test_config.py and test_reload.py after
+# `build-task --force`, and restore test_f64.py from git). Edits:
+#  1. test_reload_extra_files_pattern_without_match_warns: the match="matches no files" pin on the warning
+#     text is dropped; only RuntimeWarning is required.
+#  2. test_extra_files_and_patterns_are_separated is dropped: it asserts the private _extra_files and
+#     _extra_patterns attributes.
+#  3. test_extra_patterns_expand_on_every_call: the `r._extra_files == set()` assertion is dropped (private).
+# The other three tests are the PR's unchanged (imports hoisted to module level).
+acceptance = ["tests/hai_proof/test_f64.py"]
+# The existing config and reload tests; the full suite is slow and fails in Docker.
+regression = "python -m pytest -q -p no:cacheprovider tests/test_config.py tests/test_reload.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/benoitc/gunicorn.git"
+# first parent of the merge commit
+base = "3a8fa91c7aba0ff188824811edd0a538bb748f81"
+# PR #3688
+fix  = "df3a0f76b7dcd6b66046a49e7c84f9161d34e13d"

@@ -1,0 +1,211 @@
+diff --git a/docs/content/2026-news.md b/docs/content/2026-news.md
+index c663a410..811a8880 100644
+--- a/docs/content/2026-news.md
++++ b/docs/content/2026-news.md
+@@ -3,6 +3,17 @@
+ 
+ ## Unreleased
+ 
++### New Features
++
++- **Glob patterns in `reload_extra_files`**: entries containing `*`, `?` or `[`
++  are treated as patterns, so `ui/*/config.json` watches every view's config
++  without listing them one by one. Patterns are re-expanded on every reload
++  check rather than once at startup, so a file created later starts being
++  watched without restarting gunicorn, and `**` recurses. A pattern matching
++  nothing warns instead of failing, since with live expansion it may match later
++  ([#1643](https://github.com/benoitc/gunicorn/issues/1643),
++  [#3662](https://github.com/benoitc/gunicorn/pull/3662)).
++
+ ### Bug Fixes
+ 
+ - **Dirty arbiter returned stale responses after a worker timeout**: when a
+diff --git a/docs/content/reference/settings.md b/docs/content/reference/settings.md
+index c7d54265..675b1348 100644
+--- a/docs/content/reference/settings.md
++++ b/docs/content/reference/settings.md
+@@ -153,8 +153,27 @@ Valid engines are:
+ Extends [reload](#reload) option to also watch and reload on additional files
+ (e.g., templates, configurations, specifications, etc.).
+ 
++Entries containing ``*``, ``?`` or ``[`` are treated as glob patterns and
++are re-expanded on every reload check, so a file created after startup
++starts being watched without restarting gunicorn. Note that it is the
++first edit to that file which triggers a reload, not its creation. Use
++``**`` to recurse, and keep patterns narrow: a recursive pattern over a
++large tree is walked once per check.
++
++Two things behave the way glob does, not the way a path does. ``*`` does
++not match dotfiles, so list ``.env`` literally rather than expecting
++``*`` to find it. And a literal path that happens to contain ``*``, ``?``
++or ``[`` is read as a pattern, so it warns and matches nothing instead of
++failing outright the way a missing plain path does.
++
++Patterns are relative to the directory gunicorn is started from, not to
++chdir, which is applied later.
++
+ !!! info "Added in 19.8"
+ 
++!!! info "Changed in 26.1.0"
++    Glob patterns are supported.
++
+ ### `spew`
+ 
+ **Command line:** `--spew`
+diff --git a/gunicorn/config.py b/gunicorn/config.py
+index c6ab3777..12a299e6 100644
+--- a/gunicorn/config.py
++++ b/gunicorn/config.py
+@@ -6,6 +6,7 @@
+ 
+ import argparse
+ import copy
++import glob
+ import grp
+ import inspect
+ import ipaddress
+@@ -16,6 +17,7 @@ import shlex
+ import ssl
+ import sys
+ import textwrap
++import warnings
+ 
+ from gunicorn import __version__, util
+ from gunicorn.errors import ConfigError
+@@ -435,8 +437,25 @@ def validate_list_string(val):
+     return [validate_string(v) for v in val]
+ 
+ 
+-def validate_list_of_existing_files(val):
+-    return [validate_file_exists(v) for v in validate_list_string(val)]
++def validate_list_of_files_or_patterns(val):
++    """Validate literal paths, and pass glob patterns through unexpanded.
++
++    Patterns are kept as-is so that the reloader can re-expand them on every
++    cycle and pick up files created after startup. A pattern matching nothing
++    is legitimate for that reason, so it only warns.
++    """
++    entries = []
++    for entry in validate_list_string(val):
++        if not util.is_glob_pattern(entry):
++            entries.append(validate_file_exists(entry))
++            continue
++        if not glob.glob(entry, recursive=True):
++            warnings.warn(
++                "Pattern %s currently matches no files." % entry,
++                RuntimeWarning, stacklevel=2,
++            )
++        entries.append(entry)
++    return entries
+ 
+ 
+ def validate_string_to_addr_list(val):
+@@ -996,13 +1015,32 @@ class ReloadExtraFiles(Setting):
+     section = "Debugging"
+     cli = ["--reload-extra-file"]
+     meta = "FILES"
+-    validator = validate_list_of_existing_files
++    validator = validate_list_of_files_or_patterns
+     default = []
+     desc = """\
+         Extends :ref:`reload` option to also watch and reload on additional files
+         (e.g., templates, configurations, specifications, etc.).
+ 
++        Entries containing ``*``, ``?`` or ``[`` are treated as glob patterns and
++        are re-expanded on every reload check, so a file created after startup
++        starts being watched without restarting gunicorn. Note that it is the
++        first edit to that file which triggers a reload, not its creation. Use
++        ``**`` to recurse, and keep patterns narrow: a recursive pattern over a
++        large tree is walked once per check.
++
++        Two things behave the way glob does, not the way a path does. ``*`` does
++        not match dotfiles, so list ``.env`` literally rather than expecting
++        ``*`` to find it. And a literal path that happens to contain ``*``, ``?``
++        or ``[`` is read as a pattern, so it warns and matches nothing instead of
++        failing outright the way a missing plain path does.
++
++        Patterns are relative to the directory gunicorn is started from, not to
++        :ref:`chdir`, which is applied later.
++
+         .. versionadded:: 19.8
++
++        .. versionchanged:: 26.1.0
++           Glob patterns are supported.
+         """
+ 
+ 
+diff --git a/gunicorn/reloader.py b/gunicorn/reloader.py
+index a475b5a7..156881dc 100644
+--- a/gunicorn/reloader.py
++++ b/gunicorn/reloader.py
+@@ -3,6 +3,7 @@
+ # See the NOTICE for more information.
+ # pylint: disable=no-else-continue
+ 
++import glob
+ import os
+ import os.path
+ import re
+@@ -10,6 +11,8 @@ import sys
+ import time
+ import threading
+ 
++from gunicorn import util
++
+ COMPILED_EXT_RE = re.compile(r'py[co]$')
+ 
+ 
+@@ -17,7 +20,13 @@ class ReloaderBase(threading.Thread):
+     def __init__(self, extra_files=None, interval=1, callback=None):
+         super().__init__()
+         self.daemon = True
+-        self._extra_files = set(extra_files or ())
++        self._extra_files = set()
++        self._extra_patterns = set()
++        for entry in extra_files or ():
++            if util.is_glob_pattern(entry):
++                self._extra_patterns.add(entry)
++            else:
++                self._extra_files.add(entry)
+         self._interval = interval
+         self._callback = callback
+ 
+@@ -33,6 +42,11 @@ class ReloaderBase(threading.Thread):
+ 
+         fnames.extend(self._extra_files)
+ 
++        # Expanded on every call rather than once at startup, so that files
++        # created after the server booted are picked up too.
++        for pattern in self._extra_patterns:
++            fnames.extend(sorted(glob.glob(pattern, recursive=True)))
++
+         return fnames
+ 
+ 
+diff --git a/gunicorn/util.py b/gunicorn/util.py
+index d5730105..6dec339f 100644
+--- a/gunicorn/util.py
++++ b/gunicorn/util.py
+@@ -32,6 +32,10 @@ import urllib.parse
+ 
+ REDIRECT_TO = getattr(os, 'devnull', '/dev/null')
+ 
++# Characters that make a path a glob pattern rather than a literal path.
++# glob.has_magic() does the same thing but is absent from glob.__all__.
++GLOB_MAGIC_RE = re.compile(r'[*?[]')
++
+ # Server and Date aren't technically hop-by-hop
+ # headers, but they are in the purview of the
+ # origin server which the WSGI spec says we should
+@@ -67,6 +71,11 @@ else:
+             pass
+ 
+ 
++def is_glob_pattern(value):
++    """Return True if the string should be treated as a glob pattern."""
++    return GLOB_MAGIC_RE.search(value) is not None
++
++
+ def load_entry_point(distribution, group, name):
+     dist_obj = importlib_metadata.distribution(distribution)
+     eps = [ep for ep in dist_obj.entry_points

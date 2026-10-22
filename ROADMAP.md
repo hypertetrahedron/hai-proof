@@ -7,7 +7,7 @@ Last updated: 2026-10-21
 |---|---|---|
 | Stand-in reply audit (reticent leakage) | In Progress | Started 2026-10-21 22:10 EDT: read every reticent stand-in reply in the interview runs for facts given before the agent asked. No API spend. |
 | interview-guide with nobody answering (`standard`, conventional user) | In Progress | Started 2026-10-21 22:10 EDT: plain vs interview-guide, Sonnet 5.5, x3, seed 241. Checks the guide does not hang, lose passes or add cost when no user answers. |
-| Frozen-suite head-to-heads (guide vs superpowers x5; spartan vs plain) | Not Started | Agreed 2026-10-21; queued after the no-user run (runs share the usage limit). |
+| Frozen-suite head-to-heads (guide vs superpowers x5; spartan vs plain) | In Progress | Agreed 2026-10-21. Superpowers (A) vs interview-guide (B), reticent, Sonnet 5.5, x5, seed 251, started 22:14 EDT alongside the no-user run. Spartan vs plain queued after. |
 | Why the guide wins: transcript read (F14, F20; Opus F30) | In Progress | Started 2026-10-21 22:10 EDT from runs d6d8, 027d, b0c9. |
 | Harder interview tasks (headroom above 47/50) | Not Started | Agreed 2026-10-21; only F27 still separates treatments. |
 | `hai-proof-evaluate` knows the interview suite | Complete | 2026-10-21: the skill's options now cover user modes, the `interview` suite's required flags (the run refuses it with nobody answering), `interview-smoke` first, cost and the plain/guide pass rates, and a no-user check on `standard`. Docs-only change; flags checked against `cli.py` and the 2026-10-21 runs. |

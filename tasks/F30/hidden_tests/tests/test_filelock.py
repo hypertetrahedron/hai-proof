@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import inspect
 import logging
 import os
@@ -81,6 +82,14 @@ def make_ro(path: Path) -> Iterator[None]:
         yield
     finally:
         path.chmod(path.stat().st_mode | write)
+
+
+@pytest.fixture(autouse=True)
+def _collect_leaked_locks() -> Iterator[None]:
+    # hai-proof hand edit 3: tests that mock `release` to fail leave their lock held; collect it here, after
+    # mocker restores `release`, so its release log lines don't land in a later test's caplog.
+    yield
+    gc.collect()
 
 
 @pytest.fixture

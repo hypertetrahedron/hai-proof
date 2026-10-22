@@ -1,0 +1,38 @@
+id = "F38"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+user = "reticent"
+ask_tool = "on"
+cost_tier = "low"
+# Decision-dense feature with a user in the loop (fifteenth search). Upstream: python-poetry/poetry-core PR #945
+# "add Marker.apply(environment) to partially evaluate a marker" (merged 2026-06-06 as 60516b6, after the
+# model cutoff). The prompt asks for a method that partially evaluates a marker against a known environment
+# and keeps what cannot be decided, and leaves the odd cases to the conversation; user.md holds the decisions:
+# the method is `apply(environment)` and returns a marker, not a bool; a single marker whose variable is in
+# the environment becomes AnyMarker or EmptyMarker; a variable absent from the environment is kept (unlike
+# `validate`, which treats it as satisfied); AnyMarker and EmptyMarker come back unchanged; an empty
+# environment returns the marker itself; composites are simplified as usual (and-with-empty is empty,
+# or-with-any is any, the residual of the undecided branch is kept, nested forms work); `extra` is evaluated
+# against a collection of extras, so with an empty tuple `extra == 'a'` becomes Empty and `extra != 'a'`
+# becomes Any; the compact forms (`extra != 'a' and extra != 'b'`, `extra == 'a' or extra == 'b'`) behave
+# the same.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=2.4.0 uv pip install --python /opt/venv/bin/python -e . pytest pytest-mock virtualenv build setuptools tomli-w trove-classifiers"
+# Hidden tests/version/test_markers.py is the fix's version trimmed by hand (re-apply after `build-task --force`):
+#  1. Everything except the imports, the EMPTY constant and test_apply is removed, so grading is fast (the full
+#     file takes about 30 s); test_apply is the PR's test unchanged.
+# Install sets SETUPTOOLS_SCM_PRETEND_VERSION in case the build strips .git.
+acceptance = ["tests/version/test_markers.py"]
+# The regression list leaves out tests/version/test_markers.py: it holds the hidden tests, so including it would fail at the start state.
+regression = "python -m pytest -q -p no:cacheprovider tests/version/test_requirements.py tests/test_core_version.py tests/version/pep440 tests/packages/test_dependency.py tests/packages/test_main.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/python-poetry/poetry-core.git"
+# first parent of the merge commit
+base = "eedb8875e41a505d95fbc86f2069d1184c23c85b"
+# PR #945
+fix  = "60516b6ce7b7e19c5e5af3a4e9c5bdf30fef92a2"

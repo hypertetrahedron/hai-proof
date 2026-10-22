@@ -674,7 +674,7 @@ vetted locally (Windows, Python 3.12, one venv each, offline; the PR's tests fai
 
 Build: T1, T3, T4 (2026-10-21, as F35-F37). T2 and T5 next if those leave headroom; T1 or T2, not both.
 
-Pilot (run 20261021-224113-db09, reticent user, x3): plain 3/9 (1/3 on each), interview-guide 9/9, p=0.031. Plain's misses are genuine decisions (a raising `_missing_` swallowed, merged choices not deduped, overrides applied to `TIMEZONE`, the pairs form honouring `allow_multiple`). The three discriminate like the rest of the suite but give no headroom above the guide, so T5 was built (as F38, `validate-task` [ok], 4.6 s grading) and the four are piloted under `--reticence strict`.
+Pilot (run 20261021-224113-db09, reticent user, x3): plain 3/9 (1/3 on each), interview-guide 9/9, p=0.031. Plain's misses are genuine decisions (a raising `_missing_` swallowed, merged choices not deduped, overrides applied to `TIMEZONE`, the pairs form honouring `allow_multiple`). The three discriminate like the rest of the suite but give no headroom above the guide, so T5 was built (as F38, `validate-task` [ok], 4.6 s grading) and the four are piloted under `--reticence strict`. Strict pilot (run 20261022-013120-c9c3, x3): plain 6/12, guide 10/12; F35 0/3 vs 2/3, F36 1/3 vs 3/3, F37 2/3 vs 3/3, F38 3/3 vs 2/3. F38 leaves plain no headroom. F35-F37 are candidates for a later `interview` revision; none of the four gives headroom above a good interviewer.
 
 Rejected after reading: urllib3 #5055 (few decisions, dummyserver), pyjwt #1216 (RFC 4648 precedent, private-method tests),
 cattrs #737 (internal refactor), face #27 (loose tests, private pins), pytest-order #246 (message pins), falcon #2715

@@ -674,6 +674,8 @@ vetted locally (Windows, Python 3.12, one venv each, offline; the PR's tests fai
 
 Build: T1, T3, T4 (2026-10-21, as F35-F37). T2 and T5 next if those leave headroom; T1 or T2, not both.
 
+Pilot (run 20261021-224113-db09, reticent user, x3): plain 3/9 (1/3 on each), interview-guide 9/9, p=0.031. Plain's misses are genuine decisions (a raising `_missing_` swallowed, merged choices not deduped, overrides applied to `TIMEZONE`, the pairs form honouring `allow_multiple`). The three discriminate like the rest of the suite but give no headroom above the guide, so T5 is built next (as F38) and the four are piloted under `--reticence strict`.
+
 Rejected after reading: urllib3 #5055 (few decisions, dummyserver), pyjwt #1216 (RFC 4648 precedent, private-method tests),
 cattrs #737 (internal refactor), face #27 (loose tests, private pins), pytest-order #246 (message pins), falcon #2715
 (guessable), pydash #328 (concurrency fix), readme_renderer #365 (HTML fixtures).

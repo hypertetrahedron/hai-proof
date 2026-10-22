@@ -1,0 +1,44 @@
+id = "F63"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+cost_tier = "low"
+suites = ["interview-v2-candidates"]
+# Follow-up-dependent feature with a user in the loop (sixteenth search, V2). Upstream: scrapy/queuelib PR #86
+# "Add clear()" (merged 2026-08-23 as eaf554a, after the model cutoff). The prompt asks for a way to empty a
+# queue, names the method `clear()` and leaves open which queues get it and how it behaves; user.md holds the
+# decisions, organised as one first-level choice with its sub-decisions that only come up after the answer:
+#  - which queues: all six get clear() (FifoMemoryQueue/LifoMemoryQueue, FifoDiskQueue, LifoDiskQueue, the
+#    SQLite queues, PriorityQueue, RoundRobinQueue); then
+#  - disk FIFO: chunk files deleted, exactly q00000 left, counters (size, head, tail) reset, queue still usable;
+#  - LIFO disk: file truncated, queue still usable;
+#  - composites (PriorityQueue, RoundRobinQueue): clear each inner queue, then close it, drop the inner queues,
+#    reset curprio / the key queue; pushing afterwards works and close() afterwards returns nothing active;
+#  - an inner queue without clear() is emptied by popping it.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest"
+# Hidden tests are the whole fix's test directory: queuelib/tests/__init__.py (DummyQueue moves there from
+# test_queue.py, so test_pqueue.py and test_rrqueue.py import it), test_pqueue.py, test_queue.py and
+# test_rrqueue.py, with no hand edits. They replace the agent's versions of those files, so its own
+# tests in them are not graded.
+acceptance = ["queuelib/tests/test_pqueue.py", "queuelib/tests/test_queue.py", "queuelib/tests/test_rrqueue.py"]
+# Every pre-existing test lives in the hidden files, so the regression list runs them with the new clear tests
+# deselected (-k): at the start state they must pass, with the fix too. The grader appends --ignore for the
+# acceptance files to any command containing "pytest", which would leave nothing to collect, so the module name
+# is spelled py""test (the shell joins it) to keep that from happening.
+regression = "python -m py\"\"test -q -p no:cacheprovider -k 'not clear' queuelib"
+
+
+[source]
+kind = "git"
+url  = "https://github.com/scrapy/queuelib.git"
+# first parent of the merge commit
+base = "433f9c82f5da9bba6bbeda0cb0c501ce6bbbb361"
+# PR #86
+fix  = "eaf554afeda3520517e2be99492a6f5598db5b65"

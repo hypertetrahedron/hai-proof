@@ -699,3 +699,23 @@ included). All 23 `validate-task` [ok] on developmenthost1. A naming convention 
 
 Calibration (plain, interview-catchall, interview-guide, superpowers, x3) picks 12-15 of them in three tiers: easy (plain
 passes about 30-80%), middle (plain fails, the catch-all passes), hard (the catch-all or guide sometimes misses).
+
+### Sixteenth search: follow-up-dependent interview tasks (2026-10-22)
+
+Goal: the hard end of `interview` v2. A two-sentence treatment that asks everything in one round plus "anything else?"
+matches the full guide, so these need decisions the tests pin that only become relevant after the user's answer to an
+earlier question (a branch with its own sub-decisions). About 400 repos swept by merge date, about 35 PRs read, 7 vetted
+locally (V4 in a `python:3.12` container). None has two independent deep branches; each has one with 5-8 sub-decisions.
+
+| # | Upstream, merge | Merged | Decisions (2nd) | Fails at base | Grading | Branch (first answer -> pinned sub-decisions) |
+|---|---|---|---|---|---|---|
+| V1 | watchdog #1325 polling observer survives unreadable dirs, `7d4d2b8` | 2026-10-20 | 8 (6) | 5 of 7 | 10 s | Survive? -> which errors mean "gone" (ENOENT/ENOTDIR deletion, other OSError transient) -> keep snapshot and retry, report changes made during the outage on recovery, one warning per outage, info on resume, subdirectory EIO the same, retry forever |
+| V2 | queuelib #86 `clear()`, `eaf554a` | 2026-08-23 | 9 (7) | 42 of 247 | 3.5 s | Which queues? (all six) -> disk FIFO leaves exactly `q00000` and stays usable, LIFO truncated; composites clear, close and drop inner queues, reset `curprio`; an inner queue without `clear()` is drained |
+| V3 | async-lru #782 `key=`, `bda9915` | 2026-08-09 | 9 (6) | 11 of 12 | 0.5 s | Custom key? -> same args incl. `self`; invalidate/contains use it; `typed` + `key` ValueError; non-callable TypeError; unhashable key TypeError before counters move. Relax three message pins |
+| V4 | gunicorn #3688 globs in `reload_extra_files`, `df3a0f7` | 2026-08-17 | 8 (6) | 5 of 61 | 5 s | Globs? -> expanded on every reload check (config keeps the pattern), no match a `RuntimeWarning` (missing plain path still `ValueError`), `**` recursive, `*` skips dotfiles, literal `*?[` read as a pattern, relative to launch dir. Linux only; narrow regression |
+
+Rejected: pytest-benchmark #318 (private-method tests), omegaconf #1376 (no branching), watchdog #1320 (100 s test),
+tqdm #1576 and #1265 (thin wrappers), cibuildwheel #2928, progressbar #327, aiofiles #235, setuptools_scm #1523 (too
+big), Flask #6133, environs #481 and #487, boltons #453, python-jsonpath #133 (too small).
+
+Build: V1, V2, V4 as F62-F64, defined with the v2 stand-in (`reticence = "strict"`, `tool_answers = "full"`).

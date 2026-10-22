@@ -279,7 +279,7 @@ def _run_turns(ctx: TrialContext, container: str, arm: ArmSpec, task: TaskSpec, 
             ex, image=ctx.stand_in_image, model=run.stand_in_model, run_id=run.run_id, name=stand_in_name,
             auth_env=ctx.auth_env, network=ctx.arm_networks.get(arm.label), proxy=ctx.arm_proxies.get(arm.label),
             task_prompt=task_prompt, brief=task.user_brief, reticent=arm.user == "reticent",
-            tool_answers=run.tool_answers)
+            tool_answers=run.tool_answers, reticence=run.reticence)
     answerer = userloop.ToolAnswerer(arm.user, stand_in, run.max_user_replies) if arm.sdk_input else None
     log = userloop.LoopLog(mode=arm.user)
     timeout_s, max_turns, budget_usd = run.task_limits(task)

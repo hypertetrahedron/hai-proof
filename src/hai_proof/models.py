@@ -257,6 +257,7 @@ class RunConfig:
     stand_in_model: str = "claude-sonnet-5-5"  # the user stand-in's model (DESIGN §3.8), same for both arms
     max_user_replies: int = 5  # stand-in replies per trial; after that the script moves on or the trial ends
     tool_answers: str = "brief"  # reticent stand-in's ask-tool answers: brief (one sentence) or full (as in text)
+    reticence: str = "standard"  # reticent stand-in: standard, or strict (tighter plan rule + filter pass)
     limit_scale: float = 1.0  # multiplies every task's time limit, turn limit and budget, for both arms
 
     def task_limits(self, task: TaskSpec) -> tuple[int, int, float]:
@@ -272,6 +273,8 @@ class RunConfig:
         loop = {"stand_in_model": self.stand_in_model, "max_user_replies": self.max_user_replies}
         if self.tool_answers != "brief":
             loop["tool_answers"] = self.tool_answers
+        if self.reticence != "standard":
+            loop["reticence"] = self.reticence
         return loop
 
     @property

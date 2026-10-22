@@ -147,6 +147,41 @@ about other points. If the brief does not settle it, say you have no preference.
 new line with "<number>: ", in order; an answer may continue onto the following lines. Output only the \
 answers."""
 
+# --reticence strict (2026-10-21): the reticent stand-in volunteered facts a proposed plan left out, framed as
+# corrections ("the plan doesn't say X"), in about 17% of its answers to superpowers' plan-approval turns
+# (audit of run 20261021-114732-027d). Strict mode tightens the plan rule and passes every text reply through
+# a second call that deletes what the agent's message did not raise. In an offline replay of 027d's 23
+# plan-approval replies, leaking replies fell from 21 to 5 while answers to open questions kept their content.
+RETICENCE_LEVELS: tuple[str, ...] = ("standard", "strict")
+
+_STRICT_PLAN_RULE = """- If the agent proposes a plan or design, look only at the choices it states explicitly. Approve the ones \
+that agree with the brief, and correct the ones that contradict it, in the brief's terms. Do not bring up \
+anything the plan leaves out or does not mention, even if the brief covers it: no "also", "one more thing", \
+"you haven't mentioned" or "don't forget". Asking whether the plan looks right, or whether to proceed, is \
+not an open question; it asks only about the choices the plan states. Before you reply, check each \
+sentence against the agent's message and delete any that concerns a point the message does not mention.
+"""
+
+RETICENT_RESPONDER_SYSTEM_STRICT = RETICENT_RESPONDER_SYSTEM.replace(
+    RETICENT_RESPONDER_SYSTEM[RETICENT_RESPONDER_SYSTEM.index("- If the agent proposes"):
+                              RETICENT_RESPONDER_SYSTEM.index("- If the agent asks an open question")],
+    _STRICT_PLAN_RULE)
+
+STRICT_FILTER_SYSTEM = """\
+You edit a simulated user's reply before it is sent to a coding agent. The user is RETICENT: they reply only \
+about what the agent's latest message explicitly asks, or explicitly states as a choice or plan item. They \
+never raise points the agent's message does not mention, even as "corrections", "one more thing", or "the \
+plan doesn't say X".
+
+Remove every sentence or clause of the reply that concerns a point the agent's message neither asks about \
+nor states. Keep approvals, answers to the agent's questions, and corrections of choices the agent actually \
+stated (a correction may say what the brief wants instead on that same point). Exception: if the agent asks \
+an open question (for example "anything else?", "which edge cases matter to you?", "how should errors \
+behave?"), keep everything the reply says on that topic.
+
+Do not add anything, do not rephrase what you keep beyond what grammar needs. If nothing is left but an \
+approval, output a short approval. Output only the edited reply."""
+
 
 # --------------------------------------------------------------------------- data
 
@@ -177,6 +212,8 @@ class StandInCall:
     cost_usd: float = 0.0
     wall_s: float = 0.0
     error: str | None = None
+    draft: str | None = None  # --reticence strict: the reply before the filter pass removed unraised points
+    filter_error: str | None = None  # the filter pass failed; the draft was sent
 
 
 @dataclass
@@ -254,6 +291,11 @@ def responder_prompt(task_prompt: str, brief: str, history: list[tuple[str, str]
         lines.append("The conversation so far:\n<<<\n" + conv + "\n>>>")
     lines.append("The agent's latest message, which you are replying to:\n<<<\n" + _cap(agent_message) + "\n>>>")
     return "\n\n".join(lines)
+
+
+def strict_filter_prompt(agent_message: str, reply: str) -> str:
+    return ("The agent's latest message:\n<<<\n" + _cap(agent_message) + "\n>>>\n\n"
+            "Reply to edit:\n<<<\n" + reply + "\n>>>")
 
 
 def tool_responder_prompt(task_prompt: str, brief: str, history: list[tuple[str, str]],
@@ -432,7 +474,7 @@ class ContainerStandIn:
 
     def __init__(self, ex: "Executor", *, image: str, model: str, run_id: str, name: str, auth_env: dict[str, str],
                  network: str | None, proxy: str | None, task_prompt: str, brief: str, timeout_s: float = 300,
-                 reticent: bool = False, tool_answers: str = "brief"):
+                 reticent: bool = False, tool_answers: str = "brief", reticence: str = "standard"):
         self.ex, self.image, self.model, self.run_id, self.name = ex, image, model, run_id, name
         self.auth_env, self.network, self.proxy = auth_env, network, proxy
         self.task_prompt, self.brief, self.timeout_s = task_prompt, brief, timeout_s
@@ -442,14 +484,28 @@ class ContainerStandIn:
         self.tool_answer_format = RETICENT_TOOL_ANSWER_FORMAT if reticent else TOOL_ANSWER_FORMAT
         if reticent and tool_answers == "full":
             self.tool_answer_format = RETICENT_TOOL_ANSWER_FORMAT_FULL
+        self.strict = reticent and reticence == "strict"
+        if self.strict:
+            self.responder_system = RETICENT_RESPONDER_SYSTEM_STRICT
 
     def classify(self, user_message: str, agent_message: str) -> StandInCall:
         return self._call("classify", CLASSIFIER_SYSTEM, classifier_prompt(user_message, agent_message))
 
     def reply(self, history: list[tuple[str, str]], agent_message: str) -> StandInCall:
         # The last history pair is the exchange being answered; it is shown separately.
-        return self._call("reply", self.responder_system,
+        call = self._call("reply", self.responder_system,
                           responder_prompt(self.task_prompt, self.brief, history[:-1], agent_message))
+        if not self.strict or call.error or not call.output.strip():
+            return call
+        f = self._call("filter", STRICT_FILTER_SYSTEM, strict_filter_prompt(agent_message, call.output))
+        call.cost_usd += f.cost_usd
+        call.wall_s += f.wall_s
+        call.draft = call.output
+        if f.error or not f.output.strip():
+            call.filter_error = f.error or "empty filter output"
+        else:
+            call.output = f.output
+        return call
 
     def answer_tool(self, history: list[tuple[str, str]], questions: list[dict]) -> StandInCall:
         return self._call("tool-answer", self.responder_system,

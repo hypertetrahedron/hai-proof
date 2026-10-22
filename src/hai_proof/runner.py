@@ -63,6 +63,7 @@ def make_plan(run: RunConfig) -> Plan:
                 f"{len(a.treatment.workflow) or 1} scripted turn(s)" for a in loop_arms)
             + (f"; stand-in {run.stand_in_model}, up to {run.max_user_replies} replies per trial"
                + (f", {run.tool_answers} tool answers" if run.tool_answers != "brief" else "")
+               + (f", {run.reticence} reticence" if run.reticence != "standard" else "")
                + " (its cost is small and not in the ceiling)" if any(a.user != "conventional" for a in loop_arms) else ""))
     return Plan(agent_runs, probe_runs, warmup, sessions, ceiling, lines)
 

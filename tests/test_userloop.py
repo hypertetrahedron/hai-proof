@@ -13,7 +13,7 @@ from hai_proof.models import PLAIN, ArmSpec, TreatmentSpec
 from hai_proof.tasks import load_task
 from hai_proof.treatments import load_treatment
 from hai_proof.userloop import (CLASSIFIER_SYSTEM, NO_INFO_REPLY, RESPONDER_SYSTEM, RETICENT_RESPONDER_SYSTEM,
-                                UNINFORMATIVE_REPLY, AgentTurn, ContainerStandIn, StandInCall, ToolAnswerer,
+                                RETICENT_RESPONDER_SYSTEM_STRICT, STRICT_FILTER_SYSTEM, UNINFORMATIVE_REPLY, AgentTurn, ContainerStandIn, StandInCall, ToolAnswerer,
                                 classifier_prompt, parse_decision, parse_tool_answers, responder_prompt, run_loop,
                                 tool_responder_prompt)
 
@@ -305,6 +305,26 @@ def test_reticent_full_tool_answers():
         assert want in prompt and unwanted not in prompt
 
 
+def test_strict_reticence_filters_text_replies():
+    kw = dict(image="i", model="m", run_id="r", name="n", auth_env={}, network=None, proxy=None,
+              task_prompt="fix it", brief="Wants B.")
+    si = _RecordingStandIn(None, reticent=True, reticence="strict", **kw)
+    si.calls = []
+    call = si.reply([("user", "fix it"), ("agent", "Plan: B. OK?")], "Plan: B. OK?")
+    (k1, s1, _), (k2, s2, p2) = si.calls
+    assert k1 == "reply" and s1 == RETICENT_RESPONDER_SYSTEM_STRICT and "not an open question" in s1
+    assert k2 == "filter" and s2 == STRICT_FILTER_SYSTEM and "Plan: B. OK?" in p2
+    assert call.draft is not None and call.output  # the filter's output is what gets sent
+    si.calls = []
+    si.answer_tool([("user", "fix it")], QS)  # tool answers are not filtered
+    assert len(si.calls) == 1
+    for reticent, reticence in ((True, "standard"), (False, "strict")):  # strict applies to reticent only
+        si = _RecordingStandIn(None, reticent=reticent, reticence=reticence, **kw)
+        si.calls = []
+        si.reply([("user", "fix it"), ("agent", "A or B?")], "A or B?")
+        assert len(si.calls) == 1 and si.calls[0][1] != RETICENT_RESPONDER_SYSTEM_STRICT
+
+
 def test_cli_tool_answers(tmp_path, capsys):
     _task_copy(tmp_path)
     (tmp_path / "hai-proof.toml").write_text('model = "claude-test-model"\n')
@@ -314,6 +334,8 @@ def test_cli_tool_answers(tmp_path, capsys):
     assert "tool answers" not in capsys.readouterr().out
     assert cli.main(base + ["--tool-answers", "full"]) == 0
     assert "full tool answers" in capsys.readouterr().out
+    assert cli.main(base + ["--reticence", "strict"]) == 0
+    assert "strict reticence" in capsys.readouterr().out
 
 
 def test_run_loop_records_tool_questions_per_call():

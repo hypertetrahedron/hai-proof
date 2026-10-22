@@ -173,11 +173,15 @@ about what the agent's latest message explicitly asks, or explicitly states as a
 never raise points the agent's message does not mention, even as "corrections", "one more thing", or "the \
 plan doesn't say X".
 
-Remove every sentence or clause of the reply that concerns a point the agent's message neither asks about \
-nor states. Keep approvals, answers to the agent's questions, and corrections of choices the agent actually \
-stated (a correction may say what the brief wants instead on that same point). Exception: if the agent asks \
-an open question (for example "anything else?", "which edge cases matter to you?", "how should errors \
-behave?"), keep everything the reply says on that topic.
+Remove only sentences or clauses that introduce a separate point: a topic, input, option, case or \
+requirement the agent's message neither asks about nor states. Keep every sentence that answers a question, \
+approves, rejects or corrects a choice the agent stated (saying what the brief wants instead on that same \
+point), or gives a direct consequence, condition, exception, example or error behaviour of a point the agent \
+asked about or stated. Keep the reply's answer to each option the agent offered, its opening "Yes"/"No", and \
+any "no preference" answer. When unsure whether a sentence is part of an answer or a new point, keep it. If \
+the agent asks an open question (for example "anything else?", "any other requirements?", "which edge cases \
+matter to you?"), keep everything the reply says about the user's requirements, including documentation and \
+tests.
 
 Do not add anything, do not rephrase what you keep beyond what grammar needs. If nothing is left but an \
 approval, output a short approval. Output only the edited reply."""

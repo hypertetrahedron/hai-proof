@@ -132,6 +132,21 @@ exactly this point; say nothing about other points. If the brief does not settle
 preference. Start each answer on a new line with "<number>: ", in order; an answer may continue onto the \
 following lines. Output only the answers."""
 
+# --tool-answers full: a tool answer carries as much as a plain-text reply on the same point would, so the
+# question channel (tool menu vs text) does not decide how much of the brief the agent hears.
+RETICENT_TOOL_ANSWER_FORMAT_FULL = """\
+The agent asked these questions with its question tool:
+
+{questions}
+
+Answer every question as the user, following the rules, as fully as you would if the agent had asked \
+about the same point in plain text. Start with the label of the matching option (several labels separated \
+by ", " where several may be chosen), or say that none fits. If the chosen option gets this question's \
+point wrong or leaves out part of it, add everything the brief says about exactly this point; say nothing \
+about other points. If the brief does not settle it, say you have no preference. Start each answer on a \
+new line with "<number>: ", in order; an answer may continue onto the following lines. Output only the \
+answers."""
+
 
 # --------------------------------------------------------------------------- data
 
@@ -417,7 +432,7 @@ class ContainerStandIn:
 
     def __init__(self, ex: "Executor", *, image: str, model: str, run_id: str, name: str, auth_env: dict[str, str],
                  network: str | None, proxy: str | None, task_prompt: str, brief: str, timeout_s: float = 300,
-                 reticent: bool = False):
+                 reticent: bool = False, tool_answers: str = "brief"):
         self.ex, self.image, self.model, self.run_id, self.name = ex, image, model, run_id, name
         self.auth_env, self.network, self.proxy = auth_env, network, proxy
         self.task_prompt, self.brief, self.timeout_s = task_prompt, brief, timeout_s
@@ -425,6 +440,8 @@ class ContainerStandIn:
         self._n = 0
         self.responder_system = RETICENT_RESPONDER_SYSTEM if reticent else RESPONDER_SYSTEM
         self.tool_answer_format = RETICENT_TOOL_ANSWER_FORMAT if reticent else TOOL_ANSWER_FORMAT
+        if reticent and tool_answers == "full":
+            self.tool_answer_format = RETICENT_TOOL_ANSWER_FORMAT_FULL
 
     def classify(self, user_message: str, agent_message: str) -> StandInCall:
         return self._call("classify", CLASSIFIER_SYSTEM, classifier_prompt(user_message, agent_message))

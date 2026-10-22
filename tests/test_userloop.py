@@ -291,6 +291,31 @@ def test_reticent_stand_in_uses_its_own_prompts():
     assert "Do not bring up" in RETICENT_RESPONDER_SYSTEM and "Do not bring up" not in RESPONDER_SYSTEM
 
 
+def test_reticent_full_tool_answers():
+    kw = dict(image="i", model="m", run_id="r", name="n", auth_env={}, network=None, proxy=None,
+              task_prompt="fix it", brief="Wants B.")
+    for reticent, tool_answers, want, unwanted in (
+            (True, "brief", "add in a sentence", "add everything the brief says"),
+            (True, "full", "add everything the brief says", "add in a sentence"),
+            (False, "full", "in a sentence or two", "add everything the brief says")):  # reticent only
+        si = _RecordingStandIn(None, reticent=reticent, tool_answers=tool_answers, **kw)
+        si.calls = []
+        si.answer_tool([("user", "fix it")], QS)
+        (_, _, prompt), = si.calls
+        assert want in prompt and unwanted not in prompt
+
+
+def test_cli_tool_answers(tmp_path, capsys):
+    _task_copy(tmp_path)
+    (tmp_path / "hai-proof.toml").write_text('model = "claude-test-model"\n')
+    base = ["--root", str(tmp_path), "run", "--reps", "1", "--dry-run", "--arm-a", "plain", "--arm-b", "plain",
+            "--ask-tool", "on", "--user", "uninformative"]
+    assert cli.main(base) == 0
+    assert "tool answers" not in capsys.readouterr().out
+    assert cli.main(base + ["--tool-answers", "full"]) == 0
+    assert "full tool answers" in capsys.readouterr().out
+
+
 def test_run_loop_records_tool_questions_per_call():
     si = FakeStandIn()
     ans = ToolAnswerer("informative", si, max_answers=5)

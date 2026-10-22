@@ -1,0 +1,423 @@
+from datetime import datetime, timedelta, tzinfo
+from typing import Any
+
+import pytest
+from parameterized import param, parameterized
+
+from dateparser import DateDataParser, parse
+from dateparser.conf import Settings, SettingValidationError, apply_settings, settings
+from dateparser.search import search_dates
+from tests import BaseTestCase
+
+
+def test_function(settings: object = None) -> object:
+    return settings
+
+
+class TimeZoneSettingsTest(BaseTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.given_ds: str = NotImplemented
+        self.result: datetime | None = NotImplemented
+        self.timezone = NotImplemented
+        self.confs: Settings = NotImplemented
+
+    @parameterized.expand(
+        [
+            param(
+                "12 Feb 2015 10:30 PM +0100",
+                datetime(2015, 2, 12, 22, 30),
+                r"UTC\+01:00",
+            ),
+            param("12 Feb 2015 4:30 PM EST", datetime(2015, 2, 12, 16, 30), "EST"),
+            param("12 Feb 2015 8:30 PM PKT", datetime(2015, 2, 12, 20, 30), "PKT"),
+            param("12 Feb 2015 8:30 PM ACT", datetime(2015, 2, 12, 20, 30), "ACT"),
+        ]
+    )
+    def test_should_return_and_assert_tz(self, ds: str, dt: datetime, tz: str) -> None:
+        self.given(ds)
+        self.given_configurations({})
+        self.when_date_is_parsed()
+        self.then_date_is_tz_aware()
+        self.then_date_is(dt)
+        self.then_timezone_is(tz)
+
+    @parameterized.expand(
+        [
+            param("12 Feb 2015 4:30 PM EST", datetime(2015, 2, 12, 16, 30), "EST"),
+            param("12 Feb 2015 8:30 PM PKT", datetime(2015, 2, 12, 20, 30), "PKT"),
+            param("12 Feb 2015 8:30 PM ACT", datetime(2015, 2, 12, 20, 30), "ACT"),
+            param("12 Feb 2015 8:30 PM", datetime(2015, 2, 12, 20, 30), ""),
+        ]
+    )
+    def test_only_return_explicit_timezone(
+        self, ds: str, dt: datetime, tz: str
+    ) -> None:
+        self.given(ds)
+        self.given_configurations({})
+        self.when_date_is_parsed()
+        self.then_date_is(dt)
+        if tz:
+            self.then_date_is_tz_aware()
+            self.then_timezone_is(tz)
+        else:
+            self.then_date_is_not_tz_aware()
+
+    @parameterized.expand(
+        [
+            param(
+                "12 Feb 2015 4:30 PM EST",
+                datetime(2015, 2, 12, 16, 30),
+            ),
+            param(
+                "12 Feb 2015 8:30 PM PKT",
+                datetime(2015, 2, 12, 20, 30),
+            ),
+            param(
+                "12 Feb 2015 8:30 PM ACT",
+                datetime(2015, 2, 12, 20, 30),
+            ),
+            param(
+                "12 Feb 2015 8:30 PM +0100",
+                datetime(2015, 2, 12, 20, 30),
+            ),
+        ]
+    )
+    def test_should_return_naive_if_RETURN_AS_TIMEZONE_AWARE_IS_FALSE(
+        self, ds: str, dt: datetime
+    ) -> None:
+        self.given(ds)
+        self.given_configurations({"RETURN_AS_TIMEZONE_AWARE": False})
+        self.when_date_is_parsed()
+        self.then_date_is(dt)
+        self.then_date_is_not_tz_aware()
+
+    def then_timezone_is(self, tzname: str) -> None:
+        assert self.result is not None
+        assert self.result.tzinfo is not None
+        self.assertEqual(self.result.tzinfo.tzname(None), tzname)
+
+    def given(self, ds: str) -> None:
+        self.given_ds = ds
+
+    def given_configurations(self, confs: dict[str, Any]) -> None:
+        if "TIMEZONE" not in confs:
+            confs.update({"TIMEZONE": "local"})
+
+        self.confs = settings.replace(**confs)
+
+    def when_date_is_parsed(self) -> None:
+        self.result = parse(self.given_ds, settings=(self.confs or {}))
+
+    def then_date_is_tz_aware(self) -> None:
+        assert self.result is not None
+        self.assertIsInstance(self.result.tzinfo, tzinfo)
+
+    def then_date_is_not_tz_aware(self) -> None:
+        assert self.result is not None
+        self.assertIsNone(self.result.tzinfo)
+
+    def then_date_is(self, date: datetime) -> None:
+        assert self.result is not None
+        dtc = self.result.replace(tzinfo=None)
+        self.assertEqual(dtc, date)
+
+
+class SettingsTest(BaseTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.default_settings = settings
+
+    def test_apply_settings_should_return_default_settings_when_no_settings_are_supplied_to_the_decorated_function(
+        self,
+    ) -> None:
+        test_func = apply_settings(test_function)
+        self.assertEqual(test_func(), self.default_settings)
+
+    def test_apply_settings_should_return_non_default_settings_when_settings_are_supplied_to_the_decorated_function(
+        self,
+    ) -> None:
+        test_func = apply_settings(test_function)
+        self.assertNotEqual(
+            test_func(settings={"PREFER_DATES_FROM": "past"}), self.default_settings
+        )
+
+    def test_apply_settings_shouldnt_create_new_settings_when_same_settings_are_supplied_to_the_decorated_function_more_than_once(
+        self,
+    ) -> None:
+        test_func = apply_settings(test_function)
+        settings_once = test_func(settings={"PREFER_DATES_FROM": "past"})
+        settings_twice = test_func(settings={"PREFER_DATES_FROM": "past"})
+        self.assertEqual(settings_once, settings_twice)
+
+    def test_apply_settings_should_return_default_settings_when_called_with_no_settings_after_once_called_with_settings_supplied_to_the_decorated_function(
+        self,
+    ) -> None:
+        test_func = apply_settings(test_function)
+        settings_once = test_func(settings={"PREFER_DATES_FROM": "past"})
+        settings_twice = test_func()
+        self.assertNotEqual(settings_once, self.default_settings)
+        self.assertEqual(settings_twice, self.default_settings)
+
+    def test_replace_keeps_the_settings_that_the_caller_set(self) -> None:
+        test_func = apply_settings(test_function)
+        caller_settings = test_func(settings={"DATE_ORDER": "DMY"})
+        assert isinstance(caller_settings, Settings)
+        replaced = caller_settings.replace(RELATIVE_BASE=datetime(2020, 12, 25))
+        # A DATE_ORDER that the caller set wins over the MDY order of the locale.
+        parser = DateDataParser(languages=["en"], settings=replaced)
+        self.assertEqual(
+            datetime(2021, 1, 2), parser.get_date_data("02/01/2021")["date_obj"]
+        )
+
+    def test_replace_does_not_count_the_settings_it_copies_as_set_by_the_caller(
+        self,
+    ) -> None:
+        test_func = apply_settings(test_function)
+        caller_settings = test_func(settings={"PREFER_DATES_FROM": "past"})
+        assert isinstance(caller_settings, Settings)
+        replaced = caller_settings.replace(RELATIVE_BASE=datetime(2020, 12, 25))
+        # The default DATE_ORDER, MDY, gives way to the DMY order of the locale.
+        parser = DateDataParser(languages=["de"], settings=replaced)
+        self.assertEqual(
+            datetime(2021, 1, 2), parser.get_date_data("02.01.2021")["date_obj"]
+        )
+
+
+class InvalidSettingsTest(BaseTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+
+    def test_error_is_raised_when_none_is_passed_in_settings(self) -> None:
+        test_func = apply_settings(test_function)
+        with self.assertRaisesRegex(TypeError, r"Invalid.*None\}"):
+            test_func(settings={"PREFER_DATES_FROM": None})
+
+        with self.assertRaisesRegex(TypeError, r"Invalid.*None\}"):
+            test_func(settings={"TIMEZONE": None})
+
+        with self.assertRaisesRegex(TypeError, r"Invalid.*None\}"):
+            test_func(settings={"TO_TIMEZONE": None})
+
+    def test_error_is_raised_for_invalid_type_settings(self) -> None:
+        test_func = apply_settings(test_function)
+        try:
+            test_func(settings=["current_period", False, "current"])
+        except Exception as error:
+            self.error = error
+            self.then_error_was_raised(
+                TypeError,
+                ["settings can only be either dict or instance of Settings class"],
+            )
+
+    def test_check_settings_wrong_setting_name(self) -> None:
+        with self.assertRaisesRegex(
+            SettingValidationError, r".* is not a valid setting"
+        ):
+            DateDataParser(settings={"AAAAA": "foo"})
+
+    @parameterized.expand(
+        [
+            param("DATE_ORDER", 2, "YYY", "MDY"),
+            param(
+                "TIMEZONE", False, "", "Europe/Madrid"
+            ),  # should we check valid timezones?
+            param(
+                "TO_TIMEZONE", True, "", "Europe/Madrid"
+            ),  # should we check valid timezones?
+            param("RETURN_AS_TIMEZONE_AWARE", "false", "", True),
+            param("PREFER_DAY_OF_MONTH", False, "current_period", "current"),
+            param("PREFER_DATES_FROM", True, "current", "current_period"),
+            param("RELATIVE_BASE", "yesterday", "", datetime.now()),
+            param("SKIP_TOKENS", "foo", "", ["foo"]),
+            param("REQUIRE_PARTS", "day", "", ["month", "day"]),
+            param("PARSERS", "absolute-time", "", ["absolute-time", "no-spaces-time"]),
+            param("STRICT_PARSING", "true", "", True),
+            param("RETURN_TIME_AS_PERIOD", "false", "", True),
+            param("PREFER_LOCALE_DATE_ORDER", "true", "", False),
+            param("STRICT_DATE_ORDER", True, "full", "none"),
+            param("NORMALIZE", "true", "", True),
+            param("FUZZY", "true", "", False),
+            param("PREFER_LOCALE_DATE_ORDER", "false", "", True),
+            param("DEFAULT_LANGUAGES", "en", "", ["en"]),
+            param("USE_GIVEN_LANGUAGE_ORDER", "yes", "", True),
+            param("LANGUAGE_DETECTION_CONFIDENCE_THRESHOLD", "1", "", 0.5),
+        ]
+    )
+    def test_check_settings(
+        self, setting: str, wrong_type: object, wrong_value: str, valid_value: object
+    ) -> None:
+        with self.assertRaisesRegex(
+            SettingValidationError,
+            rf'"{setting}" must be .*, not "{type(wrong_type).__name__}".',
+        ):
+            DateDataParser(settings={setting: wrong_type})
+
+        if wrong_value:
+            with self.assertRaisesRegex(
+                SettingValidationError,
+                r'"{}" is not a valid value for "{}", it should be: .*'.format(
+                    str(wrong_value).replace("[", "\\[").replace("]", "\\]"), setting
+                ),
+            ):
+                DateDataParser(settings={setting: wrong_value})
+
+        # check that a valid value doesn't raise an error
+        assert DateDataParser(settings={setting: valid_value})
+
+    def test_check_settings_extra_check_require_parts(self) -> None:
+        with self.assertRaisesRegex(
+            SettingValidationError,
+            r'"REQUIRE_PARTS" setting contains invalid values: time',
+        ):
+            DateDataParser(settings={"REQUIRE_PARTS": ["time", "day"]})
+        with self.assertRaisesRegex(
+            SettingValidationError,
+            r'There are repeated values in the "REQUIRE_PARTS" setting',
+        ):
+            DateDataParser(settings={"REQUIRE_PARTS": ["month", "day", "month"]})
+
+    def test_check_settings_extra_check_parsers(self) -> None:
+        with self.assertRaisesRegex(
+            SettingValidationError,
+            r'Found unknown parsers in the "PARSERS" setting: no-spaces',
+        ):
+            DateDataParser(settings={"PARSERS": ["absolute-time", "no-spaces"]})
+
+        with self.assertRaisesRegex(
+            SettingValidationError,
+            r'There are repeated values in the "PARSERS" setting',
+        ):
+            DateDataParser(
+                settings={"PARSERS": ["absolute-time", "timestamp", "absolute-time"]}
+            )
+
+    def test_check_settings_extra_check_timezone_abbreviations(self) -> None:
+        with self.assertRaises(SettingValidationError):
+            DateDataParser(settings={"TIMEZONE_ABBREVIATIONS": {"XYZ": timedelta()}})
+
+        with self.assertRaises(SettingValidationError):
+            DateDataParser(settings={"TIMEZONE_ABBREVIATIONS": {"IST": "+05:30"}})
+
+    def test_check_settings_extra_check_confidence_threshold(self) -> None:
+        with self.assertRaisesRegex(
+            SettingValidationError,
+            r"1.1 is not a valid value for "
+            r"LANGUAGE_DETECTION_CONFIDENCE_THRESHOLD. It can take values "
+            r"between 0 and 1",
+        ):
+            DateDataParser(settings={"LANGUAGE_DETECTION_CONFIDENCE_THRESHOLD": 1.1})
+
+    def test_check_settings_extra_check_default_languages(self) -> None:
+        with self.assertRaisesRegex(
+            SettingValidationError,
+            "Found invalid languages in the 'DEFAULT_LANGUAGES' setting: 'abcd'",
+        ):
+            DateDataParser(settings={"DEFAULT_LANGUAGES": ["abcd"]})
+
+
+class StrictDateOrderSettingsTest(BaseTestCase):
+    """STRICT_DATE_ORDER enforces the DATE_ORDER that the caller sets, so it
+    needs one."""
+
+    @parameterized.expand([param("year"), param("all")])
+    def test_strict_date_order_requires_date_order(self, strict: str) -> None:
+        with self.assertRaisesRegex(
+            SettingValidationError,
+            rf'"STRICT_DATE_ORDER": "{strict}" requires the "DATE_ORDER" setting',
+        ):
+            DateDataParser(settings={"STRICT_DATE_ORDER": strict})
+
+        # parse() builds the parser too, whatever the date string.
+        with self.assertRaises(SettingValidationError):
+            parse("12/10/95", settings={"STRICT_DATE_ORDER": strict})
+
+        # The default DATE_ORDER is a preference, but one that the caller sets
+        # is enforced, even if it is the default one.
+        assert DateDataParser(
+            settings={"STRICT_DATE_ORDER": strict, "DATE_ORDER": "MDY"}
+        )
+
+    def test_strict_date_order_none_does_not_require_date_order(self) -> None:
+        assert DateDataParser(settings={"STRICT_DATE_ORDER": "none"})
+        self.assertEqual(
+            datetime(1995, 12, 10),
+            parse("12/10/95", settings={"STRICT_DATE_ORDER": "none"}),
+        )
+
+    @parameterized.expand([param("year"), param("all")])
+    def test_strict_date_order_stays_in_force_when_a_parser_is_reused(
+        self, strict: str
+    ) -> None:
+        parser = DateDataParser(
+            settings={"DATE_ORDER": "DMY", "STRICT_DATE_ORDER": strict}
+        )
+        for _ in range(2):
+            self.assertIsNone(parser.get_date_data("32 DEC 10")["date_obj"])
+            self.assertEqual(
+                datetime(2010, 12, 31), parser.get_date_data("31 DEC 10")["date_obj"]
+            )
+
+    @parameterized.expand([param("year"), param("all")])
+    def test_search_dates_does_not_check_the_rebuilt_settings(
+        self, strict: str
+    ) -> None:
+        """Test that search_dates does not raise SettingValidationError for the
+        settings that it rebuilds for the dates after the first one, which
+        remember which settings the caller set."""
+        text = "Opened 25/12/2020, closed 31/12/2020."
+        self.assertEqual(
+            [
+                ("25/12/2020", datetime(2020, 12, 25)),
+                ("31/12/2020", datetime(2020, 12, 31)),
+            ],
+            search_dates(
+                text,
+                languages=["en"],
+                settings={"DATE_ORDER": "DMY", "STRICT_DATE_ORDER": strict},
+            ),
+        )
+        with self.assertRaises(SettingValidationError):
+            search_dates(text, languages=["en"], settings={"STRICT_DATE_ORDER": strict})
+
+
+@pytest.mark.parametrize(
+    ("date_string", "expected_result"),
+    [
+        # Note that these results are "valid" but probably they shouldn't be considered
+        ("2020", datetime(1900, 1, 1, 20, 2)),
+        ("333", datetime(1900, 1, 1, 3, 3, 3)),
+        ("1000", datetime(1900, 1, 1, 10, 0)),
+        ("100000", datetime(1900, 1, 1, 10, 0)),
+    ],
+)
+def test_no_spaces_strict_parsing(date_string: str, expected_result: datetime) -> None:
+    parser = DateDataParser(
+        settings={"PARSERS": ["no-spaces-time"], "STRICT_PARSING": False}
+    )
+    assert parser.get_date_data(date_string)["date_obj"] == expected_result
+
+    parser = DateDataParser(
+        settings={"PARSERS": ["no-spaces-time"], "STRICT_PARSING": True}
+    )
+    assert parser.get_date_data(date_string)["date_obj"] is None
+
+
+def detect_languages(text: str, confidence_threshold: float) -> list[str]:
+    if confidence_threshold > 0.5:
+        return ["en"]
+    return ["fr"]
+
+
+def test_confidence_threshold_setting_is_applied() -> None:
+    ddp = DateDataParser(
+        detect_languages_function=detect_languages,
+        settings={"LANGUAGE_DETECTION_CONFIDENCE_THRESHOLD": 0.6},
+    )
+    assert ddp.get_date_data("21/06/2020").locale == "en"
+
+    ddp2 = DateDataParser(
+        detect_languages_function=detect_languages,
+        settings={"LANGUAGE_DETECTION_CONFIDENCE_THRESHOLD": 0.4},
+    )
+    assert ddp2.get_date_data("21/06/2020").locale == "fr"

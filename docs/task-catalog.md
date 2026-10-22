@@ -700,6 +700,41 @@ included). All 23 `validate-task` [ok] on developmenthost1. A naming convention 
 Calibration (plain, interview-catchall, interview-guide, superpowers, x3) picks 12-15 of them in three tiers: easy (plain
 passes about 30-80%), middle (plain fails, the catch-all passes), hard (the catch-all or guide sometimes misses).
 
+Calibration (2026-10-22, x3, runs 20261022-115440-c3a7 and 20261022-115504-db21; F62-F64 from the sixteenth-search pilot):
+
+| Task | Base | plain | catchall | guide | superpowers |
+|---|---|---|---|---|---|
+| F39 | F11 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F40 | F12 | 3/3 | 2/3 | 3/3 | 3/3 |
+| F41 | F13 | 2/3 | 3/3 | 3/3 | 2/3 |
+| F42 | F14 | 2/3 | 3/3 | 3/3 | 1/3 |
+| F43 | F15 | 3/3 | 3/3 | 3/3 | 1/3 |
+| F44 | F19 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F45 | F20 | 0/3 | 3/3 | 3/3 | 1/3 |
+| F46 | F23 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F47 | F24 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F48 | F25 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F49 | F26 | 3/3 | 1/3 | 3/3 | 3/3 |
+| F50 | F27 | 0/3 | 1/3 | 1/3 | 0/3 |
+| F51 | F28 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F52 | F29 | 2/3 | 1/3 | 3/3 | 2/3 |
+| F53 | F30 | 2/3 | 3/3 | 3/3 | 3/3 |
+| F54 | F31 | 2/3 | 2/3 | 3/3 | 2/3 |
+| F55 | F32 | 3/3 | 3/3 | 2/3 | 3/3 |
+| F56 | F33 | 2/3 | 3/3 | 3/3 | 1/3 |
+| F57 | F34 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F58 | F35 | 3/3 | 3/3 | 3/3 | 2/3 |
+| F59 | F36 | 2/3 | 3/3 | 3/3 | 3/3 |
+| F60 | F37 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F61 | F38 | 3/3 | 2/3 | 3/3 | 3/3 |
+| F62 | V1 | 3/3 | 3/3 | 3/3 | 2/3 |
+| F63 | V2 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F64 | V4 | 3/3 | 2/3 | 3/3 | 3/3 |
+| Total | | 65/78 | 68/78 | 75/78 | 62/78 |
+
+Under the strict + full stand-in plain is no longer near the floor: one tool menu with full answers settles most tasks.
+Only F45 (plain 0/3, catch-all and guide 3/3) and F50 (every arm 0-1/3) separate clearly at x3.
+
 ### Sixteenth search: follow-up-dependent interview tasks (2026-10-22)
 
 Goal: the hard end of `interview` v2. A two-sentence treatment that asks everything in one round plus "anything else?"

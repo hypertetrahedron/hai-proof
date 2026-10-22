@@ -1810,6 +1810,259 @@
      }
     }
    }
+  },
+  {
+   "model": "claude-sonnet-5-5",
+   "cli_version": "2.1.307",
+   "effort": "default",
+   "task_hash": "551a6fbd667d",
+   "samples": [
+    {
+     "run_id": "20261021-220947-b841",
+     "arm": "A",
+     "rep": 0,
+     "date": "2026-10-22",
+     "harness": "01a1cfc81071",
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "cost_usd": 0.6875683000000002,
+     "tokens_total": 1814642,
+     "tokens_output": 22581,
+     "wall_s": 970.7275719959289,
+     "turns": 33,
+     "tool_calls": 32,
+     "first_request_input_tokens": 16385,
+     "cache_read_share": 0.9476155627390968,
+     "cache_misses": 0,
+     "first_edit_s": 71.4,
+     "test_runs": 11,
+     "code_runs": 1,
+     "diff_files": 8,
+     "diff_lines": 396
+    },
+    {
+     "run_id": "20261021-220947-b841",
+     "arm": "A",
+     "rep": 1,
+     "date": "2026-10-22",
+     "harness": "01a1cfc81071",
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "cost_usd": 0.7805652000000001,
+     "tokens_total": 2070650,
+     "tokens_output": 25508,
+     "wall_s": 1195.871160948649,
+     "turns": 35,
+     "tool_calls": 34,
+     "first_request_input_tokens": 16385,
+     "cache_read_share": 0.9479207012290827,
+     "cache_misses": 0,
+     "first_edit_s": 109.7,
+     "test_runs": 12,
+     "code_runs": 1,
+     "diff_files": 8,
+     "diff_lines": 401
+    },
+    {
+     "run_id": "20261021-220947-b841",
+     "arm": "A",
+     "rep": 2,
+     "date": "2026-10-22",
+     "harness": "01a1cfc81071",
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "cost_usd": 0.5441317,
+     "tokens_total": 1422010,
+     "tokens_output": 17845,
+     "wall_s": 691.1850850600749,
+     "turns": 28,
+     "tool_calls": 27,
+     "first_request_input_tokens": 16387,
+     "cache_read_share": 0.9468126103191961,
+     "cache_misses": 0,
+     "first_edit_s": 70.5,
+     "test_runs": 9,
+     "code_runs": 0,
+     "diff_files": 7,
+     "diff_lines": 375
+    }
+   ],
+   "summary": {
+    "trials": 3,
+    "passes": 3,
+    "pass_rate": 1.0,
+    "pass_rate_wilson95": [
+     0.43850296436068037,
+     1.0
+    ],
+    "timeouts": 0,
+    "end_reasons": {
+     "completed": 3
+    },
+    "harness_versions": [
+     "01a1cfc81071"
+    ],
+    "excluded": 0,
+    "first_date": "2026-10-22",
+    "last_date": "2026-10-22",
+    "runs": [
+     {
+      "run_id": "20261021-220947-b841",
+      "date": "2026-10-22",
+      "trials": 3,
+      "passes": 3,
+      "excluded": 0
+     }
+    ],
+    "metrics": {
+     "cost_usd": {
+      "n": 3,
+      "mean": 0.6707550666666667,
+      "var": 0.014187213591903346,
+      "sd": 0.11911009021868528,
+      "cv": 0.17757613194128477,
+      "min": 0.5441317,
+      "median": 0.6875683000000002,
+      "max": 0.7805652000000001
+     },
+     "tokens_total": {
+      "n": 3,
+      "mean": 1769100.6666666667,
+      "var": 106738972181.33333,
+      "sd": 326709.3083787686,
+      "cv": 0.18467536332703618,
+      "min": 1422010.0,
+      "median": 1814642.0,
+      "max": 2070650.0
+     },
+     "tokens_output": {
+      "n": 3,
+      "mean": 21978.0,
+      "var": 14953099.0,
+      "sd": 3866.9237127204874,
+      "cv": 0.17594520487398704,
+      "min": 17845.0,
+      "median": 22581.0,
+      "max": 25508.0
+     },
+     "wall_s": {
+      "n": 3,
+      "mean": 952.5946060015509,
+      "var": 63923.61214076685,
+      "sd": 252.83119297421916,
+      "cv": 0.26541321080481484,
+      "min": 691.1850850600749,
+      "median": 970.7275719959289,
+      "max": 1195.871160948649
+     },
+     "turns": {
+      "n": 3,
+      "mean": 32.0,
+      "var": 13.0,
+      "sd": 3.605551275463989,
+      "cv": 0.11267347735824966,
+      "min": 28.0,
+      "median": 33.0,
+      "max": 35.0
+     },
+     "tool_calls": {
+      "n": 3,
+      "mean": 31.0,
+      "var": 13.0,
+      "sd": 3.605551275463989,
+      "cv": 0.11630810566012868,
+      "min": 27.0,
+      "median": 32.0,
+      "max": 34.0
+     },
+     "first_request_input_tokens": {
+      "n": 3,
+      "mean": 16385.666666666668,
+      "var": 1.3333333333333333,
+      "sd": 1.1547005383792515,
+      "cv": 7.047015918664186e-05,
+      "min": 16385.0,
+      "median": 16385.0,
+      "max": 16387.0
+     },
+     "cache_read_share": {
+      "n": 3,
+      "mean": 0.9474496247624584,
+      "var": 3.2761792521143637e-07,
+      "sd": 0.0005723791795754248,
+      "cv": 0.0006041262401881576,
+      "min": 0.9468126103191961,
+      "median": 0.9476155627390968,
+      "max": 0.9479207012290827
+     },
+     "cache_misses": {
+      "n": 3,
+      "mean": 0.0,
+      "var": 0.0,
+      "sd": 0.0,
+      "cv": null,
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+     },
+     "first_edit_s": {
+      "n": 3,
+      "mean": 83.86666666666667,
+      "var": 500.72333333333336,
+      "sd": 22.376848154584536,
+      "cv": 0.26681456464131004,
+      "min": 70.5,
+      "median": 71.4,
+      "max": 109.7
+     },
+     "test_runs": {
+      "n": 3,
+      "mean": 10.666666666666666,
+      "var": 2.3333333333333335,
+      "sd": 1.5275252316519468,
+      "cv": 0.14320549046737002,
+      "min": 9.0,
+      "median": 11.0,
+      "max": 12.0
+     },
+     "code_runs": {
+      "n": 3,
+      "mean": 0.6666666666666666,
+      "var": 0.3333333333333333,
+      "sd": 0.5773502691896257,
+      "cv": 0.8660254037844386,
+      "min": 0.0,
+      "median": 1.0,
+      "max": 1.0
+     },
+     "diff_files": {
+      "n": 3,
+      "mean": 7.666666666666667,
+      "var": 0.3333333333333333,
+      "sd": 0.5773502691896257,
+      "cv": 0.07530655685082074,
+      "min": 7.0,
+      "median": 8.0,
+      "max": 8.0
+     },
+     "diff_lines": {
+      "n": 3,
+      "mean": 390.6666666666667,
+      "var": 190.33333333333334,
+      "sd": 13.796134724383252,
+      "cv": 0.03531433803169774,
+      "min": 375.0,
+      "median": 396.0,
+      "max": 401.0
+     }
+    }
+   }
   }
  ],
  "task": "B5",

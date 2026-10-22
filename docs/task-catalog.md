@@ -321,6 +321,8 @@ the mean bootstrap rank (2,000 resamples) agree; F14/F31 (2.5 vs 2.9) and F26/F1
 | 22 | F30 | low | 13.1k | $0.39 | 3.7 min | 4/10 |
 | 23 | F27 | low | 13.7k | $0.41 | 5.2 min | 0/10 |
 
+On Opus 5.5 (20261021-165649-b0c9, x3, same setup) plain passed 13/30 and interview-guide 26/30 (15 vs 2 differing pairs, sign p=0.0023): per task plain/guide F13 2/3, F14 0/3, F15 2/3, F20 0/3, F26 1/3, F27 0/1, F29 1/3, F30 3/1, F31 1/3, F33 3/3 (counts out of 3). Agent cost $27.91 plain, $32.37 guide.
+
 Tasks outside `standard` have no tier and are listed after the tiers, by id. Pass counts are from the
 `baseline.json` backfill (below), which leaves out these runs, each made before a later change to the task:
 B2, B3 and F3 before 20261007-211025 (final versions); B4 20261009-161628 (limits); B6 20261009-192311 (two

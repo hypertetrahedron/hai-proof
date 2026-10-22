@@ -1,0 +1,233 @@
+diff --git a/dateparser/conf.py b/dateparser/conf.py
+index 0ce0ab1..07e6eb5 100644
+--- a/dateparser/conf.py
++++ b/dateparser/conf.py
+@@ -1,6 +1,6 @@
+ import hashlib
+ from collections.abc import Callable, Iterable, Mapping
+-from datetime import datetime
++from datetime import datetime, timedelta
+ from functools import wraps
+ from types import MappingProxyType
+ from typing import Any, Literal, ParamSpec, TypeVar
+@@ -9,6 +9,7 @@ from dateparser._parts_of_day import PartsOfDay
+ from dateparser.data.languages_info import language_order
+ 
+ from .parser import date_order_chart
++from .timezone_parser import _tz_regexes
+ from .utils import registry
+ 
+ _P = ParamSpec("_P")
+@@ -26,6 +27,7 @@ class Settings:
+     * `TIMEZONE`
+     * `TO_TIMEZONE`
+     * `RETURN_AS_TIMEZONE_AWARE`
++    * `TIMEZONE_ABBREVIATIONS`
+     * `PREFER_MONTH_OF_YEAR`
+     * `PREFER_DAY_OF_MONTH`
+     * `PREFER_DATES_FROM`
+@@ -58,6 +60,7 @@ class Settings:
+     TIMEZONE: str
+     TO_TIMEZONE: str | Literal[False]
+     RETURN_AS_TIMEZONE_AWARE: bool | Literal["default"]
++    TIMEZONE_ABBREVIATIONS: Mapping[str, timedelta]
+     PREFER_MONTH_OF_YEAR: str
+     PREFER_DAY_OF_MONTH: str
+     PREFER_DATES_FROM: str
+@@ -200,6 +203,24 @@ def _check_default_languages(setting_name: str, setting_value: list[str]) -> Non
+     _check_repeated_values(setting_name, setting_value)
+ 
+ 
++def _check_timezone_abbreviations(
++    setting_name: str, setting_value: Mapping[str, Any]
++) -> None:
++    known = {name for _, timezones in _tz_regexes().families for name, _ in timezones}
++    unknown = set(setting_value) - known
++    if unknown:
++        raise SettingValidationError(
++            f'Found unknown timezone abbreviations in the "{setting_name}" '
++            f"setting: {', '.join(map(repr, sorted(unknown)))}"
++        )
++    for abbreviation, offset in setting_value.items():
++        if not isinstance(offset, timedelta):
++            raise SettingValidationError(
++                f'The offset of {abbreviation!r} in the "{setting_name}" setting '
++                f"must be a timedelta, not {offset!r}."
++            )
++
++
+ def _check_between_0_and_1(setting_name: str, setting_value: float) -> None:
+     is_valid = 0 <= setting_value <= 1
+     if not is_valid:
+@@ -232,6 +253,10 @@ def check_settings(settings: Settings) -> None:
+             # It defaults to 'default', but it's not allowed to use it directly
+             "type": bool
+         },
++        "TIMEZONE_ABBREVIATIONS": {
++            "type": Mapping,
++            "extra_check": _check_timezone_abbreviations,
++        },
+         "PREFER_MONTH_OF_YEAR": {"values": ("current", "first", "last"), "type": str},
+         "PREFER_DAY_OF_MONTH": {"values": ("current", "first", "last"), "type": str},
+         "PREFER_DATES_FROM": {
+diff --git a/dateparser/date.py b/dateparser/date.py
+index f68aded..3e30043 100644
+--- a/dateparser/date.py
++++ b/dateparser/date.py
+@@ -1032,7 +1032,7 @@ class DateDataParser:
+             yield date_string
+             if not pop_tz_cache:
+                 stripped_date_string, _ = pop_tz_offset_from_string(
+-                    date_string, as_offset=False
++                    date_string, as_offset=False, settings=self._settings
+                 )
+                 if stripped_date_string == date_string:
+                     stripped_date_string = None
+diff --git a/dateparser/date_parser.py b/dateparser/date_parser.py
+index 47490ed..314e881 100644
+--- a/dateparser/date_parser.py
++++ b/dateparser/date_parser.py
+@@ -23,7 +23,7 @@ class DateParser:
+             raise ValueError("Empty string")
+ 
+         date_string = strip_braces(date_string)
+-        date_string, ptz = pop_tz_offset_from_string(date_string)
++        date_string, ptz = pop_tz_offset_from_string(date_string, settings=settings)
+ 
+         date_obj, period, parts = parse_method(
+             date_string, settings=settings, tz=ptz, date_order=date_order
+diff --git a/dateparser/freshness_date_parser.py b/dateparser/freshness_date_parser.py
+index f7da3ed..e0740d4 100644
+--- a/dateparser/freshness_date_parser.py
++++ b/dateparser/freshness_date_parser.py
+@@ -62,7 +62,7 @@ class FreshnessDateDataParser:
+         self, date_string: str, settings: "Settings"
+     ) -> tuple[datetime | None, str | None, tuple[str, ...]]:
+         date_string = strip_braces(date_string)
+-        date_string, ptz = pop_tz_offset_from_string(date_string)
++        date_string, ptz = pop_tz_offset_from_string(date_string, settings=settings)
+         day = None
+         if match := _DAY_OF_MONTH.match(date_string):
+             day = int(match[1])
+diff --git a/dateparser/languages/locale.py b/dateparser/languages/locale.py
+index d21e2f7..7c47729 100644
+--- a/dateparser/languages/locale.py
++++ b/dateparser/languages/locale.py
+@@ -123,7 +123,9 @@ class Locale:
+         :return: boolean value representing if the locale is applicable for the date string or not.
+         """
+         if strip_timezone:
+-            date_string, _ = pop_tz_offset_from_string(date_string, as_offset=False)
++            date_string, _ = pop_tz_offset_from_string(
++                date_string, as_offset=False, settings=settings
++            )
+ 
+         date_string = self._translate_numerals(date_string)
+         assert settings is not None
+@@ -143,7 +145,9 @@ class Locale:
+         settings: "Settings | None" = None,
+     ) -> list[int]:
+         if strip_timezone:
+-            text, _ = pop_tz_offset_from_string(text, as_offset=False)
++            text, _ = pop_tz_offset_from_string(
++                text, as_offset=False, settings=settings
++            )
+ 
+         text = self._simplify(text, settings=settings)
+         sentences = self._sentence_split(text, settings=settings)
+diff --git a/dateparser/timezone_parser.py b/dateparser/timezone_parser.py
+index 973d726..7eaeee8 100644
+--- a/dateparser/timezone_parser.py
++++ b/dateparser/timezone_parser.py
+@@ -12,6 +12,8 @@ from .timezones import timezone_info_list
+ if TYPE_CHECKING:
+     from collections.abc import Iterable, Iterator
+ 
++    from .conf import Settings
++
+ 
+ class _TzOffsetInfo(TypedDict):
+     regex: regex.Pattern[str]
+@@ -64,24 +66,30 @@ def _search_and_pop_tz(date_string: str) -> tuple[str, str, timedelta] | None:
+ 
+ @overload
+ def pop_tz_offset_from_string(
+-    date_string: str, as_offset: Literal[True] = True
++    date_string: str,
++    as_offset: Literal[True] = True,
++    settings: "Settings | None" = None,
+ ) -> tuple[str, StaticTzInfo | None]: ...
+ 
+ 
+ @overload
+ def pop_tz_offset_from_string(
+-    date_string: str, as_offset: Literal[False]
++    date_string: str,
++    as_offset: Literal[False],
++    settings: "Settings | None" = None,
+ ) -> tuple[str, str | None]: ...
+ 
+ 
+ def pop_tz_offset_from_string(
+-    date_string: str, as_offset: bool = True
++    date_string: str, as_offset: bool = True, settings: "Settings | None" = None
+ ) -> tuple[str, StaticTzInfo | str | None]:
++    overrides = settings.TIMEZONE_ABBREVIATIONS if settings else {}
+     match = _search_and_pop_tz(date_string)
+     if match is None:
+         return date_string, None
+ 
+     date_string, name, offset = match
++    offset = overrides.get(name, offset)
+     result = StaticTzInfo(name, offset) if as_offset else name
+ 
+     # A date string may carry both a numeric UTC offset and a redundant,
+@@ -93,7 +101,7 @@ def pop_tz_offset_from_string(
+     # are anchored at the end of the string.
+     while True:
+         extra = _search_and_pop_tz(date_string.rstrip())
+-        if extra is None or extra[2] != offset:
++        if extra is None or overrides.get(extra[1], extra[2]) != offset:
+             break
+         date_string = extra[0]
+ 
+diff --git a/dateparser_data/settings.py b/dateparser_data/settings.py
+index bc24802..2d5a6fe 100644
+--- a/dateparser_data/settings.py
++++ b/dateparser_data/settings.py
+@@ -16,6 +16,7 @@ settings = {
+     "TIMEZONE": "local",
+     "TO_TIMEZONE": False,
+     "RETURN_AS_TIMEZONE_AWARE": "default",
++    "TIMEZONE_ABBREVIATIONS": {},
+     # Incomplete dates
+     "PREFER_DAY_OF_MONTH": "current",
+     "PREFER_MONTH_OF_YEAR": "current",
+diff --git a/docs/settings.rst b/docs/settings.rst
+index 166db09..b46975d 100644
+--- a/docs/settings.rst
++++ b/docs/settings.rst
+@@ -68,6 +68,23 @@ Timezone Related Configurations
+     >>> parse('January 12, 2012 10:00 PM', settings=settings)
+     datetime.datetime(2012, 1, 12, 17, 0)
+ 
++``TIMEZONE_ABBREVIATIONS``: maps timezone abbreviations found in date strings
++to the UTC offset to use for them, as a :class:`~datetime.timedelta`. Use it
++for abbreviations with several meanings, e.g. ``IST`` means Israel Standard
++Time by default. Keys are case-sensitive and must be abbreviations that
++dateparser supports, e.g. ``ChST``. ``TIMEZONE`` and ``TO_TIMEZONE`` keep the
++default offsets.
++
++.. versionadded:: VERSION
++
++>>> from datetime import timedelta
++>>> settings = {
++...     'TIMEZONE_ABBREVIATIONS': {'IST': timedelta(hours=5, minutes=30)},
++...     'TO_TIMEZONE': 'UTC',
++... }
++>>> parse('12 Feb 2015 10:56 PM IST', settings=settings)
++datetime.datetime(2015, 2, 12, 17, 26, tzinfo=<StaticTzInfo 'UTC'>)
++
+ ``RETURN_AS_TIMEZONE_AWARE``: if ``True`` returns tz aware datetime objects in case timezone is detected in the date string.
+ 
+     >>> parse('30 mins ago', settings={'RETURN_AS_TIMEZONE_AWARE': True})

@@ -1,0 +1,43 @@
+id = "F54"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F31 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+cost_tier = "low"
+report_order = 16
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, fourteenth search T1). Upstream:
+# scrapy/scrapy PR #8225 "Add Request.id and Request.parent_id" (squash-merged 2026-10-04 as 223065c, after the
+# model cutoff). The prompt asks for a way to tell which request led to which (an id on each request plus a link
+# to its origin) and leaves the behaviour to the conversation; user.md holds the decisions: read-only int id,
+# unique per request, parent_id as a constructor argument and plain attribute, copy()/replace() give a new id and
+# point parent_id at the original unless told otherwise (including None), Response.follow/follow_all use the
+# response's request id (None without one), the scraper fills parent_id for requests a callback or errback
+# yields (sync and async generators) but never overwrites an explicit value, to_dict/request_from_dict
+# round-trip both ids and a dict without an id gets a fresh one.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . attrs pexpect psutil pyftpdlib pygments pytest pytest-asyncio pytest-timeout pytest-twisted testfixtures pyopenssl sybil"
+# Hidden tests are the fix's versions (tests/test_request_dict.py, tests/test_request_lineage.py and the shared
+# base classes tests/utils/bases/http_request.py and http_response.py, which tests/test_http_request.py and
+# tests/test_http_response.py run). No hand edits: there are no message pins and no private-attribute tests.
+# The id format is free (the tests need only unique ints). test_lineage runs against the local mockserver
+# (localhost only, so it works offline in the container); see the build notes in the report.
+# The upstream docs changes (docs/_ext/scrapyfixautodoc.py, docs/topics/request-response.rst) are excluded.
+acceptance = ["tests/test_request_dict.py", "tests/test_request_lineage.py", "tests/test_http_request.py", "tests/test_http_response.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests/test_http_headers.py tests/test_http_cookies.py tests/test_utils_request.py tests/test_spider.py tests/test_downloadermiddleware_retry.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/scrapy/scrapy.git"
+# parent of the squash commit
+base = "b87415d8c9f3aaa80f5539d3f19350d74969fe72"
+# PR #8225
+fix  = "223065c5ea03578722356cd8369084f18597c70d"
+exclude = ["docs/_ext/scrapyfixautodoc.py", "docs/topics/request-response.rst"]

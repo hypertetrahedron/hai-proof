@@ -1,0 +1,38 @@
+id = "F56"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F33 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+cost_tier = "low"
+report_order = 18
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, fourteenth search T3). Upstream:
+# rthalley/dnspython PR #1363 "follow BIND substitution rules in $GENERATE" (merged 2026-10-18 as 9b82172, after
+# the model cutoff). The prompt states the motivation (dnspython's $GENERATE output differs from BIND's for the
+# same zone file) and leaves the rules to the conversation; user.md holds the decisions: nibble formats n/N write
+# every nibble of the value and the width only pads with zero nibbles (it counts dots), width 0 is allowed,
+# "$$" is a literal "$", "\$" stays "\$", every "$" in a template is substituted, a malformed modifier or a
+# negative value in nibble mode raises dns.exception.SyntaxError. Contamination note: someone who knows BIND's
+# genname() needs fewer questions.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest idna"
+# No hand edits: the hidden tests check the exception type (dns.exception.SyntaxError), not message text.
+# Grading is a few seconds (the regression covers the zone, tokenizer, name and rdata tests, not the network ones).
+acceptance = ["tests/test_generate.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests/test_zone.py tests/test_btreezone.py tests/test_tokenizer.py tests/test_name.py tests/test_rdata.py tests/test_grange.py tests/test_rrset_reader.py tests/test_transaction.py tests/test_bugs.py tests/test_edns.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/rthalley/dnspython.git"
+# first parent of the merge commit
+base = "0ccb9cf06a0e7bf3a77e70c4cc6539a25fc4ef30"
+# PR #1363
+fix  = "9b8217291f075caa0ef94045fcfe9b87c2d8b5ed"
+exclude = ["doc/whatsnew.rst"]

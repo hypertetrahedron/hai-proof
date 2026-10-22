@@ -1,0 +1,45 @@
+id = "F48"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F25 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, twelfth search D1). Upstream:
+# collective/icalendar PR #1852 "vRecur.count accessor" for issue #1851 (merged 2026-09-30 as 53fe55f, after the
+# model cutoff). The prompt asks for a `count` property on vRecur (name and get/set/delete shape given) and
+# leaves the semantics to the conversation; user.md holds the decisions: 0 is valid and stored, the first of
+# several values is returned, an empty list or absent COUNT reads None, setting None deletes, deleting when unset
+# is a no-op, bool and non-int raise TypeError, a negative value raises InvalidCalendar, a stored value that
+# cannot be read as an int raises InvalidCalendar on read. Contamination: issue #1851 (post-cutoff) spells out
+# many of the decisions; the PR body said "ValueError if <1" while the code (and user.md) allow 0 and raise
+# InvalidCalendar for negatives.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "git init -q && git -c user.email=a@b.c -c user.name=x commit -q --allow-empty -m x && uv pip install --python /opt/venv/bin/python pip pytest hypothesis pytz && SETUPTOOLS_SCM_PRETEND_VERSION=7.0.0 /opt/venv/bin/python -m pip install -q -e .; rc=$?; rm -rf .git; exit $rc"
+# (uv rejects this repo's `[tool.uv.sources] workspace + editable` pyproject, so the project is installed with pip;
+# hatch-vcs's metadata hook runs `git rev-parse HEAD`, so the build needs a throwaway repo, removed afterwards.)
+# Hidden src/icalendar/tests/prop/recur/test_count.py is the fix's version with two hand edits (re-apply after
+# `build-task --force`):
+#  1. test_directly_assigned_unreadable_count_raises_invalid_calendar matched "COUNT must be an int"; the match
+#     is dropped, so any InvalidCalendar message passes.
+#  2. test_non_numeric_count_cannot_be_parsed_at_all is removed: it asserts the existing parser's message
+#     ("Expected int, got: abc"), which already passes at the base and says nothing about the feature.
+acceptance = ["src/icalendar/tests/prop/recur/test_count.py"]
+# Only the prop tests: the full suite has Windows-only failures and is slow. The grader appends --ignore for the
+# acceptance file.
+regression = "python -m pytest -q -p no:cacheprovider src/icalendar/tests/prop"
+
+[source]
+kind = "git"
+url  = "https://github.com/collective/icalendar.git"
+# first parent of the merge commit
+base = "8e803045066b721501dbac4d316f88b5eb7ee091"
+# PR #1852
+fix  = "53fe55fdbe2a82ffc7a15b92f0bac2e86c021245"
+exclude = ["news/1851.feature"]

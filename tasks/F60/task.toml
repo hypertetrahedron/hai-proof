@@ -1,0 +1,41 @@
+id = "F60"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F37 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+cost_tier = "low"
+# Decision-dense feature with a user in the loop (fifteenth search). Upstream: falconry/falcon PR #2731
+# "feat(request): add arg allow_multiple to get_param & friends" (merged 2026-09-28 as 2a47a7f, after the
+# model cutoff). The prompt asks for a way to refuse a repeated query parameter instead of silently picking
+# one and leaves the behaviour to the conversation; user.md holds the decisions: a keyword allow_multiple
+# (default True) on all ten get_param* helpers including date, datetime, json and media, False raises
+# HTTPInvalidParam, identical repeated values still count as multiple, with auto_parse_qs_csv a
+# comma-separated single occurrence counts as multiple, an absent param is unaffected (None, the default, or
+# HTTPMissingParam when required), store is not populated on error, get_param_as_dict raises on a repeated
+# key in the deep-object form and ignores the keyword for the pairs form, WSGI and ASGI behave the same.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "FALCON_DISABLE_CYTHON=1 uv pip install --python /opt/venv/bin/python -e . pytest pyyaml requests"
+# Hidden tests/test_query_params.py is the fix's version with hand edits (re-apply after `build-task --force`):
+#  1. test_allow_multiple_error_response: the pin on the exact error description is dropped (status 400 and
+#     the 'Invalid parameter' title stay), so any message passes.
+#  2. test_deep_object_allow_multiple: the pin on the exact description ('The "user[name]" key may not have
+#     multiple values.') is dropped; only the exception type and title are checked.
+acceptance = ["tests/test_query_params.py"]
+# The regression list leaves out tests/test_query_params.py: it holds the hidden tests, so including it would fail at the start state.
+regression = "python -m pytest -q -p no:cacheprovider tests/test_request_attrs.py tests/test_httperror.py tests/test_media_urlencoded.py tests/test_request_query_string_media.py tests/test_request_media.py tests/test_before_hooks.py tests/test_hello.py tests/asgi/test_request_asgi.py tests/asgi/test_hello_asgi.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/falconry/falcon.git"
+# first parent of the merge commit
+base = "3fa42c1dabb555189369e11c817d2e30ac8b7947"
+# PR #2731
+fix  = "2a47a7f3b01a301a6cad76cf24afdd9e7cb8e496"

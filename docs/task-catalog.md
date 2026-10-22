@@ -679,3 +679,23 @@ Pilot (run 20261021-224113-db09, reticent user, x3): plain 3/9 (1/3 on each), in
 Rejected after reading: urllib3 #5055 (few decisions, dummyserver), pyjwt #1216 (RFC 4648 precedent, private-method tests),
 cattrs #737 (internal refactor), face #27 (loose tests, private pins), pytest-order #246 (message pins), falcon #2715
 (guessable), pydash #328 (concurrency fix), readme_renderer #365 (HTML fixtures).
+
+### Interview v2 candidates: the same features under the strict + full stand-in (2026-10-22)
+
+A task's stand-in is part of the task, so these are new tasks: copies of the candidates with `user = "reticent"`,
+`ask_tool = "on"`, `reticence = "strict"` (the filter rule as revised 2026-10-22) and `tool_answers = "full"` in
+task.toml, suite `interview-v2-candidates`. Prompt, brief, reference and hidden tests are the base task's (hand edits
+included). All 23 `validate-task` [ok] on developmenthost1. A naming convention such as `F13-strict` is deferred
+(ROADMAP).
+
+| New | Base | New | Base | New | Base | New | Base |
+|---|---|---|---|---|---|---|---|
+| F39 | F11 | F45 | F20 | F51 | F28 | F57 | F34 |
+| F40 | F12 | F46 | F23 | F52 | F29 | F58 | F35 |
+| F41 | F13 | F47 | F24 | F53 | F30 | F59 | F36 |
+| F42 | F14 | F48 | F25 | F54 | F31 | F60 | F37 |
+| F43 | F15 | F49 | F26 | F55 | F32 | F61 | F38 |
+| F44 | F19 | F50 | F27 | F56 | F33 | | |
+
+Calibration (plain, interview-catchall, interview-guide, superpowers, x3) picks 12-15 of them in three tiers: easy (plain
+passes about 30-80%), middle (plain fails, the catch-all passes), hard (the catch-all or guide sometimes misses).

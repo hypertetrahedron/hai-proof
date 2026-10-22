@@ -1,0 +1,38 @@
+id = "F44"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F19 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, twelfth search D5). Upstream:
+# jab/bidict PR #393, "Raise RuntimeError when an ordered bidict is mutated during iteration" (merged
+# 2026-08-23, after the model cutoff; no prior issue or discussion). The prompt says mutating an OrderedBidict
+# while iterating over it goes wrong in different ways and should fail loudly, as it does for built-in mappings,
+# and leaves the rest to the conversation; user.md holds the design: RuntimeError, both directions, which
+# mutations count (including move_to_end, a collapsing forceput and writes through .inverse), a mutation made
+# on the last item still raising (unlike OrderedDict), value-only updates allowed, an iterator that was created
+# but not yet advanced also raising, and unrelated bidicts not interfering.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest hypothesis pytest-xdist sortedcollections sortedcontainers typing_extensions"
+# Hidden tests/test_bidict.py is the fix's version, unedited. It replaces the upstream file of the same name
+# (so the suite's other tests are graded through it); the regression command below covers the doctests in the
+# package and docs instead (with the default hypothesis profile, since the repo's less-examples profile is
+# registered only in tests/conftest.py), because the grader appends --ignore for the acceptance file.
+acceptance = ["tests/test_bidict.py"]
+regression = "python -m pytest -q -p no:cacheprovider --hypothesis-profile=default bidict docs"
+
+[source]
+kind = "git"
+url  = "https://github.com/jab/bidict.git"
+# parent of the fix commit
+base = "77ade420ab2274b11e75d68fd45ec789b6ca0bc6"
+# PR #393
+fix  = "9218ee3ec78baa35fd001cb457e64f56dbc327b3"
+exclude = ["CHANGELOG.rst"]

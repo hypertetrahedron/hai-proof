@@ -1,0 +1,39 @@
+id = "F46"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F23 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, twelfth search D4). Upstream:
+# python-attrs/attrs PR #1592 "Make on_setattr hooks accept generators" (merged 2026-08-01 as 4b5b295, after the
+# model cutoff). The prompt gives the goal (run code before and after an attribute is set, from one hook) and
+# leaves the semantics to the conversation; user.md holds the decisions: the yielded value is what gets set,
+# hooks are not run in __init__, an exception before the yield keeps the old value and one after it keeps the new
+# one, a second yield is a RuntimeError with the generator closed, generators are not supported in
+# setters.pipe. Issue #1437 (2025) discusses the headline idea, so the shape is guessable but not the details.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=26.2.0 uv pip install --python /opt/venv/bin/python -e . pytest hypothesis pympler cloudpickle"
+# Hidden tests/test_setattr.py is the fix's version with one hand edit (re-apply after `build-task --force`):
+#  1. test_generator_yields_multiple_times matched "Generator on_setattr hook yielded more than once"; it now
+#     asserts only the exception type (RuntimeError), so any message passes.
+# The fix's tests/test_compat.py additions (TestLazyIsGenerator, which import the private
+# `_IS_GENERATOR_RESULTS` / `_lazy_is_generator`) are dropped through `exclude` below.
+acceptance = ["tests/test_setattr.py"]
+# Whole tests directory except the acceptance file (the grader appends --ignore for it).
+regression = "python -m pytest -q -p no:cacheprovider -p no:xdist tests"
+
+[source]
+kind = "git"
+url  = "https://github.com/python-attrs/attrs.git"
+# first parent of the merge commit
+base = "d3a98cf05ab15769003dcca3eae91cdd6504b83b"
+# PR #1592
+fix  = "4b5b295bb815bf845fa3570bf63781a88212db40"
+exclude = ["changelog.d/1592.change.md", "docs/examples.md", "docs/init.md", "typing-examples/baseline.py", "tests/test_compat.py"]

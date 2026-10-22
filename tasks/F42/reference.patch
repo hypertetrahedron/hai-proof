@@ -1,0 +1,260 @@
+diff --git a/reactivex/__init__.py b/reactivex/__init__.py
+index fbd1317..661af5c 100644
+--- a/reactivex/__init__.py
++++ b/reactivex/__init__.py
+@@ -231,6 +231,39 @@ def combine_latest(*__sources: Observable[Any]) -> Observable[Any]:
+     return combine_latest_(*__sources)
+ 
+ 
++def zip_latest(*sources: Observable[Any]) -> Observable[tuple[Any, ...]]:
++    """Zip the latest pending value from each source.
++
++    Emit a tuple after every source has emitted a new value since the previous
++    tuple. Faster sources replace their pending values rather than queueing them.
++    If a source completes with a pending value, that value can form one final
++    tuple; otherwise the result completes immediately. Errors propagate at once.
++
++    .. marble::
++        :alt: zip_latest
++
++        --1---2-3--------4---|
++        -a-------b--c-d------|
++        [   zip_latest()   ]
++        --1,a----3,b-----4,d-|
++
++    Example:
++        >>> result = reactivex.zip_latest(obs1, obs2)
++
++    Args:
++        sources: Observable sources to combine.
++
++    Returns:
++        An observable sequence of tuples containing the latest pending values.
++
++    Raises:
++        ValueError: If no observable sources are given.
++    """
++    from .observable.ziplatest import zip_latest_
++
++    return zip_latest_(*sources)
++
++
+ def concat(*sources: Observable[_T]) -> Observable[_T]:
+     """Concatenates all of the specified observable sequences.
+ 
+@@ -1336,5 +1369,6 @@ __all__ = [
+     "using",
+     "with_latest_from",
+     "zip",
++    "zip_latest",
+     "__version__",
+ ]
+diff --git a/reactivex/observable/mixins/combination.py b/reactivex/observable/mixins/combination.py
+index f8d8903..f05f5a0 100644
+--- a/reactivex/observable/mixins/combination.py
++++ b/reactivex/observable/mixins/combination.py
+@@ -131,6 +131,35 @@ class CombinationMixin(Generic[_T]):
+ 
+         return self._as_observable().pipe(ops.zip(*sources))
+ 
++    def zip_latest(self, *sources: Observable[Any]) -> Observable[tuple[Any, ...]]:
++        """Pair the latest pending value from every source in each round.
++
++        Faster sources replace pending values until each source has emitted
++        since the previous tuple.
++
++        Examples:
++            Fluent style:
++            >>> result = source.zip_latest(other)
++
++            Equivalent pipe style:
++            >>> from reactivex import operators as ops
++            >>> result = source.pipe(ops.zip_latest(other))
++
++        Args:
++            *sources: Observable sequences to combine with the source.
++
++        Returns:
++            An observable sequence of tuples containing the latest pending values.
++
++        See Also:
++            - :func:`zip_latest <reactivex.operators.zip_latest>`
++            - :meth:`zip`
++            - :meth:`combine_latest`
++        """
++        from reactivex import operators as ops
++
++        return self._as_observable().pipe(ops.zip_latest(*sources))
++
+     def combine_latest(self, *sources: Observable[Any]) -> Observable[Any]:
+         """Combine latest values from observables.
+ 
+diff --git a/reactivex/observable/ziplatest.py b/reactivex/observable/ziplatest.py
+new file mode 100644
+index 0000000..7526f46
+--- /dev/null
++++ b/reactivex/observable/ziplatest.py
+@@ -0,0 +1,91 @@
++from collections.abc import Callable
++from threading import RLock
++from typing import Any
++
++from reactivex import Observable, abc, from_future
++from reactivex.disposable import CompositeDisposable, SingleAssignmentDisposable
++from reactivex.internal import is_future
++
++
++def zip_latest_(*sources: Observable[Any]) -> Observable[tuple[Any, ...]]:
++    """Pair the latest pending value from every source in each round.
++
++    A faster source replaces its pending value instead of building a queue.
++    A completed source may contribute its final pending value to one last tuple.
++    """
++    if not sources:
++        raise ValueError("zip_latest() requires at least one source.")
++
++    def subscribe(
++        observer: abc.ObserverBase[tuple[Any, ...]],
++        scheduler: abc.SchedulerBase | None = None,
++    ) -> CompositeDisposable:
++        lock = RLock()
++        values: list[Any] = [None] * len(sources)
++        completed = [False] * len(sources)
++        pending = 0
++        full_mask = (1 << len(sources)) - 1
++        stopped = False
++        subscriptions = [SingleAssignmentDisposable() for _ in sources]
++        group = CompositeDisposable(subscriptions)
++
++        def complete() -> None:
++            nonlocal stopped
++            stopped = True
++            group.dispose()
++            observer.on_completed()
++
++        def on_error(error: Exception) -> None:
++            nonlocal stopped
++            with lock:
++                if stopped:
++                    return
++                stopped = True
++                group.dispose()
++                observer.on_error(error)
++
++        def create_on_next(index: int) -> Callable[[Any], None]:
++            def on_next(value: Any) -> None:
++                nonlocal pending
++                with lock:
++                    if stopped:
++                        return
++                    values[index] = value
++                    pending |= 1 << index
++                    if pending == full_mask:
++                        pending = 0
++                        observer.on_next(tuple(values))
++                        if not stopped and any(completed):
++                            complete()
++
++            return on_next
++
++        def create_on_completed(index: int) -> Callable[[], None]:
++            def on_completed() -> None:
++                with lock:
++                    if stopped:
++                        return
++                    completed[index] = True
++                    if not pending & (1 << index):
++                        complete()
++
++            return on_completed
++
++        for index, source in enumerate(sources):
++            if stopped:
++                break
++            if is_future(source):
++                source = from_future(source)
++            subscriptions[index].disposable = source.subscribe(
++                create_on_next(index),
++                on_error,
++                create_on_completed(index),
++                scheduler=scheduler,
++            )
++
++        return group
++
++    return Observable(subscribe)
++
++
++__all__ = ["zip_latest_"]
+diff --git a/reactivex/operators/__init__.py b/reactivex/operators/__init__.py
+index f7dd70a..6c43b22 100644
+--- a/reactivex/operators/__init__.py
++++ b/reactivex/operators/__init__.py
+@@ -421,6 +421,36 @@ def combine_latest(
+     return combine_latest_(*others)
+ 
+ 
++def zip_latest(
++    *others: Observable[Any],
++) -> Callable[[Observable[Any]], Observable[tuple[Any, ...]]]:
++    """Zip the latest pending value from the source and each other observable.
++
++    Emit after every observable has produced a new value since the previous
++    tuple. Faster observables replace pending values rather than queueing them.
++
++    .. marble::
++        :alt: zip_latest
++
++        --1---2-3--------4---|
++        -a-------b--c-d------|
++        [   zip_latest()   ]
++        --1,a----3,b-----4,d-|
++
++    Example:
++        >>> result = obs1.pipe(zip_latest(obs2))
++
++    Args:
++        others: Observable sources to combine with the source.
++
++    Returns:
++        An operator that emits tuples of the latest pending values.
++    """
++    from ._ziplatest import zip_latest_
++
++    return zip_latest_(*others)
++
++
+ def concat(*sources: Observable[_T]) -> Callable[[Observable[_T]], Observable[_T]]:
+     """Concatenates all the observable sequences.
+ 
+@@ -4460,6 +4490,7 @@ __all__ = [
+     "window_with_time_or_count",
+     "with_latest_from",
+     "zip",
++    "zip_latest",
+     "zip_with_list",
+     "zip_with_iterable",
+     "zip_with_list",
+diff --git a/reactivex/operators/_ziplatest.py b/reactivex/operators/_ziplatest.py
+new file mode 100644
+index 0000000..7cd6aa9
+--- /dev/null
++++ b/reactivex/operators/_ziplatest.py
+@@ -0,0 +1,17 @@
++from collections.abc import Callable
++from typing import Any
++
++import reactivex
++from reactivex import Observable
++
++
++def zip_latest_(
++    *others: Observable[Any],
++) -> Callable[[Observable[Any]], Observable[tuple[Any, ...]]]:
++    def _zip_latest(source: Observable[Any]) -> Observable[tuple[Any, ...]]:
++        return reactivex.zip_latest(source, *others)
++
++    return _zip_latest
++
++
++__all__ = ["zip_latest_"]

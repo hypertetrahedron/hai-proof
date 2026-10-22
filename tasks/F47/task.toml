@@ -1,0 +1,40 @@
+id = "F47"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F24 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+# Decision-dense change with a user in the loop (docs/task-catalog.md, twelfth search D9). Upstream:
+# pallets/click PR #3677 "style() colour validation" (merged 2026-07-08 as 8a4ce84, after the model cutoff).
+# The prompt says `style()`/`secho()` handle colour arguments inconsistently (a colour index of 0 is dropped,
+# some bad values raise TypeError, some are silently ignored) and asks for them to be made consistent, leaving
+# the rules to the conversation; user.md holds the decisions: `fg=0`/`bg=0` honoured, every invalid value
+# raises ValueError (not TypeError), bool rejected, palette index 0..255, names case-sensitive, RGB exactly
+# three ints 0..255 as tuple or list, None still means no colour. Risk (catalog): the invalid-value rule can be
+# stated in one line, so the interview may add little.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest"
+# Hidden tests/test_utils/test_style.py is the fix's version with one hand edit (re-apply after
+# `build-task --force`):
+#  1. test_styling_invalid_color matched "Unknown color" in the ValueError; the match is dropped, so any
+#     ValueError message passes.
+acceptance = ["tests/test_utils/test_style.py"]
+# Whole suite; the grader appends --ignore for the acceptance file. test_echo_via_pager is ignored: it needs
+# `less` and a pager environment the container lacks (24 failures at base too).
+regression = "python -m pytest -q -p no:cacheprovider tests --ignore=tests/test_utils/test_echo_via_pager.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/pallets/click.git"
+# first parent of the merge commit
+base = "8dd4d60eb5ad4532abdd9b2809a7d9e2aa679b87"
+# PR #3677
+fix  = "8a4ce842564ae94ab050062db8525196ad476c19"
+exclude = ["CHANGES.md"]

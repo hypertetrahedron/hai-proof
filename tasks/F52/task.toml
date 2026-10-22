@@ -1,0 +1,43 @@
+id = "F52"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F29 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+cost_tier = "low"
+report_order = 14
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, thirteenth search S5). Upstream:
+# stefankoegl/python-json-pointer PR #84 "Add create parameter to set_pointer" (merged 2026-10-19 as 677fb60,
+# after the model cutoff; requested upstream in 2013 as #41 but never built). The prompt asks for an option to
+# set a value below members that do not exist yet and leaves the behaviour to the conversation; user.md holds
+# the decisions: intermediates are created as dicts (even for index-looking parts), a list grows only at its
+# end (`-` or an index equal to its length), anything else raises JsonPointerException, a failed call leaves
+# the document untouched, strings and tuples raise, inplace=False works on a copy, default is off.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest"
+# Hidden tests.py is the fix's version, unedited, but placed by hand (re-apply after `build-task --force`):
+#  1. build-task does not recognise a top-level tests.py as a test file, so it is listed in `exclude` (keeping
+#     it out of reference.patch) and hidden_tests/tests.py is copied from the fix commit:
+#     git show 677fb606ecb989a16f710c8d03ce854114cd71ab:tests.py > hidden_tests/tests.py
+# tests.py is the repo's only test file (plus doctests loaded by
+# its load_tests, which pytest ignores), and it is also the acceptance file, so the grader's appended
+# --ignore would leave a pytest regression nothing to collect. Regression therefore runs the module's doctests
+# (non-pytest; the tutorial's doctests fail at base on dict order).
+acceptance = ["tests.py"]
+regression = "python -m doctest jsonpointer.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/stefankoegl/python-json-pointer.git"
+# first parent of the merge commit
+base = "57a8e8def30ef1f33f7c76f8062a850f1e400492"
+# PR #84
+fix  = "677fb606ecb989a16f710c8d03ce854114cd71ab"
+exclude = ["doc/tutorial.rst", "tests.py"]

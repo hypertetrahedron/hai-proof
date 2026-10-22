@@ -1,0 +1,42 @@
+id = "F50"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F27 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+cost_tier = "low"
+report_order = 23
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, thirteenth search S2). Upstream:
+# BrianPugh/cyclopts PR #1004 (merged 2026-10-12 as 7063e4f, after the model cutoff). The prompt describes the
+# basic request (check a config null against the parameter's type); user.md holds the rules: which types
+# allow None, Any and unannotated parameters, a None default as the one exception, default-typed
+# parameters, non-nullable and optional classes, keyed nulls in optional dicts, validators.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=5.0.0 uv pip install --python /opt/venv/bin/python -e . pytest pytest-mock pytest-timeout pydantic==2.13.5 syrupy toml trio pyyaml pexpect"
+# Pydantic is pinned to the version in uv.lock: 2.14 breaks test_pydantic_validate_by_alias_false (upstream PR #1010).
+# Hidden tests/test_pydantic.py is the fix's version with a hand edit (re-apply after `build-task --force`):
+#  1. test_pydantic_config_null_non_nullable_model matched 'unable to convert "null"'; the match is dropped so
+#     any CoercionError passes (user.md still states the wording).
+# Hidden tests/config/test_dict.py is the fix's version with a hand edit (re-apply after `build-task --force`):
+#  2. test_config_dict_null_optional_class keeps only its two dict-value rows; the four top-level rows
+#     (`x: Cls | None` etc. with config null) are removed (2026-10-21). They failed in 23 of 25 trials across
+#     runs e4ed and 9066, every arm, including agents that had the rule from the user: top-level dataclass
+#     parameters are flattened into their fields, so it is a cyclopts-internals problem rather than a design
+#     point an interview settles, and it decided every outcome. Those runs are graded on the earlier task hash.
+acceptance = ["tests/config/test_dict.py", "tests/test_pydantic.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests/config tests/test_bind_none.py tests/test_bind_dict.py tests/test_bind_dataclasses.py tests/test_coercion.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/BrianPugh/cyclopts.git"
+# first parent of the merge commit
+base = "6feee65cc6f2b60418e4358d53d957e3dedc11ee"
+# PR #1004 "fix: reject a config `null` for a type that does not allow None"
+fix  = "7063e4f0445ba4177c1183461b7f4cfaf6aca8a4"

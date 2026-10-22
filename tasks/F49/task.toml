@@ -1,0 +1,44 @@
+id = "F49"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F26 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+cost_tier = "low"
+report_order = 19
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, thirteenth search S1). Upstream:
+# pytest-dev/pytest PR #14751 (merged 2026-07-24 as 344c237, after the model cutoff). The prompt describes the
+# basic request (addini type= takes Python type expressions: plain types, unions, Literal of strings); user.md
+# holds the decisions: unions keep native TOML types but coerce ini strings to the first accepting member, no
+# implicit default for unions/Literal (ValueError at addini), mismatches raise TypeError (ValueError for a bad
+# Literal choice) at getini, Literal choices must be str, invalid types raise ValueError at addini.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=9.2.0.dev1 uv pip install --python /opt/venv/bin/python -e . argcomplete attrs hypothesis mock pexpect pyyaml requests setuptools xmlschema"
+# Hidden testing/test_config.py is the fix's version with hand edits (re-apply after `build-task --force`):
+#  1. The 8 `match=` message pins in the new addini tests are removed (the exception type stays), so any
+#     wording passes: test_addini_union_type_invalid_value, test_addini_invalid_type,
+#     test_addini_union_type_requires_default, test_addini_literal_type_invalid_value (the `match` parameter
+#     and its parametrize column), test_addini_union_with_literal_invalid_value,
+#     test_addini_union_with_literal_non_str_choice, test_addini_literal_type_requires_default,
+#     test_addini_literal_type_non_str_choice.
+#  2. hidden_tests/testing/test_helpconfig.py is deleted: its only change is test_help_ini_union_and_literal_types,
+#     which pins the exact --help rendering (`int | string`), a format an agent cannot be expected to guess.
+#     (user.md still states the format.)
+acceptance = ["testing/test_config.py"]
+regression = "python -m pytest -q -p no:cacheprovider testing/test_parseopt.py testing/test_findpaths.py testing/test_helpconfig.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/pytest-dev/pytest.git"
+# first parent of the merge commit
+base = "ef052d0bc481af97afb3fbd2aae24d8abce08604"
+# PR #14751 "Accept type expressions in Parser.addini(type=...)"
+fix  = "344c23787cdb3431dcc441b8b63ee9950f04b921"
+exclude = ["changelog/14751.improvement.rst", "doc/en/conf.py"]

@@ -1,0 +1,42 @@
+id = "F59"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F36 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, fifteenth search). Upstream:
+# scrapinghub/dateparser PR #1415 "Add TIMEZONE_ABBREVIATIONS setting to override abbreviation offsets"
+# (merged 2026-10-21 as bd73ab7, after the model cutoff; resolves issue #683, fixes #580). The issue lists
+# several designs (change the default for ambiguous abbreviations, warn, locale-specific defaults, a user
+# mapping); the prompt only reports that `IST` parses as Israel time and leaves the design to the conversation.
+# user.md holds the decisions: a setting named `TIMEZONE_ABBREVIATIONS` mapping abbreviation to `timedelta`
+# (default `{}`), an unknown abbreviation or a non-timedelta offset raises SettingValidationError at settings
+# time, keys are case-sensitive, the override applies to absolute dates, freshness strings and strings that
+# also carry a numeric offset, other abbreviations keep their offsets, TIMEZONE and TO_TIMEZONE do not use
+# the overrides, and the override also applies when the language is detected from the string.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=1.4.0 uv pip install --python /opt/venv/bin/python -e . pytest parameterized"
+# Hidden tests are the fix's versions with these hand edits (re-apply after `build-task --force`):
+#  1. tests/test_settings.py: test_check_settings_extra_check_timezone_abbreviations matched the two exact
+#     messages; both are relaxed to `assertRaises(SettingValidationError)`, so any wording passes.
+#  2. tests/hai_proof/test_f36.py is added by hand (not from the fix): the PR's own tests do not pin
+#     case-sensitive keys, TIMEZONE/TO_TIMEZONE ignoring the overrides, detected-language parsing or
+#     non-timedelta values other than a string; it covers those decisions through the public API.
+# Install sets SETUPTOOLS_SCM_PRETEND_VERSION because the build strips .git.
+acceptance = ["tests/hai_proof/test_f36.py", "tests/test_settings.py", "tests/test_timezone_parser.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests/test_date_parser.py tests/test_freshness_date_parser.py tests/test_date.py tests/test_search.py tests/test_languages.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/scrapinghub/dateparser.git"
+# first parent of the merge commit
+base = "dda8b21e4153e781573835d2e2327d26bbceea65"
+# PR #1415
+fix  = "bd73ab796de0e59a33f53647dd43e428c8a7e08c"

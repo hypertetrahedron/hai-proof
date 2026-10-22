@@ -1,0 +1,52 @@
+id = "F53"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F30 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+cost_tier = "low"
+report_order = 22
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, thirteenth search S4). Upstream:
+# tox-dev/filelock PR #625 "add on_acquired post-acquisition hook" (merged 2026-07-13 as ec3abb5, after the
+# model cutoff; fixes issue #607). The prompt asks for a way to run caller code once the lock is held and
+# leaves the behaviour to the conversation; user.md holds the decisions: the hook receives the lock file
+# descriptor, runs once per physical acquire (not on recursive acquires or failed contenders), after the
+# file's truncation and mode setup, a raising hook releases the lock and the same exception propagates,
+# SoftFileLock rejects it with ValueError, singletons compare the hook by identity, the async lock runs the
+# same synchronous callable off the event-loop thread.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=3.27.0 uv pip install --python /opt/venv/bin/python -e . pytest pytest-asyncio pytest-mock pytest-timeout virtualenv"
+# Hidden tests are the fix's versions with these hand edits (re-apply after `build-task --force`):
+#  1. tests/test_filelock.py: test_on_acquired_and_release_failure_group (patches the private
+#     `filelock._unix._unlock_fd`) and test_on_acquired_fails_closed_on_enosys (patches
+#     `filelock._unix.fcntl.flock`) are removed: they pin private internals an agent can't be expected to match.
+#  2. `match="on_acquired"` is dropped from the three pytest.raises(ValueError, ...) checks (soft lock rejects
+#     the hook, singleton rejects a different hook, async soft lock rejects the hook), so any message passes
+#     as long as the type is ValueError. The `match="hook failed"` checks are the hook's own message and stay.
+#  3. tests/test_filelock.py gains an autouse fixture that runs gc.collect() after each test (2026-10-21). The
+#     test_context_* tests mock `release` to fail and leave their lock held; it was collected later, during
+#     tests/test_async_filelock.py, and its release log lines broke test_acquire / test_simple's caplog check
+#     in 7 of 58 F30 trials across all arms (runs 74e8, 9066, 5a75, 027d, b0c9).
+# Install sets SETUPTOOLS_SCM_PRETEND_VERSION because the build strips .git (hatch-vcs needs a version).
+# Grading speed: on the execution host the whole suite takes about 85 s (threaded tests in test_filelock.py,
+# test_read_write.py, soft_rw/). acceptance_args deselects the "threaded" tests (pre-existing, unrelated to the
+# feature) and regression skips the slow directories/files, bringing grading under 60 s.
+# No ContextErrorPolicy import edit was needed: the base already imports it. Grading is about 17 s.
+acceptance_args = ["-k", "not threaded"]
+acceptance = ["tests/test_filelock.py", "tests/test_async_filelock.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests --ignore=tests/test_virtualenv.py --ignore=tests/test_read_write.py --ignore=tests/soft_rw"
+
+[source]
+kind = "git"
+url  = "https://github.com/tox-dev/filelock.git"
+# first parent of the merge commit
+base = "0b9adaa738b72760ba311f066bfbbaeccaec37b0"
+# PR #625
+fix  = "ec3abb591925acd6db84f32995284129fe57aa9e"

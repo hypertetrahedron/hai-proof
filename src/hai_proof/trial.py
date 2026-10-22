@@ -274,14 +274,16 @@ def _run_turns(ctx: TrialContext, container: str, arm: ArmSpec, task: TaskSpec, 
                                   end=end)
 
     stand_in = None
+    tool_answers, reticence = run.stand_in_settings(task)
     if arm.user != "conventional":
         stand_in = userloop.ContainerStandIn(
             ex, image=ctx.stand_in_image, model=run.stand_in_model, run_id=run.run_id, name=stand_in_name,
             auth_env=ctx.auth_env, network=ctx.arm_networks.get(arm.label), proxy=ctx.arm_proxies.get(arm.label),
             task_prompt=task_prompt, brief=task.user_brief, reticent=arm.user == "reticent",
-            tool_answers=run.tool_answers, reticence=run.reticence)
+            tool_answers=tool_answers, reticence=reticence)
     answerer = userloop.ToolAnswerer(arm.user, stand_in, run.max_user_replies) if arm.sdk_input else None
-    log = userloop.LoopLog(mode=arm.user)
+    log = userloop.LoopLog(mode=arm.user, **({"tool_answers": tool_answers, "reticence": reticence}
+                                             if arm.user == "reticent" else {}))
     timeout_s, max_turns, budget_usd = run.task_limits(task)
     try:
         userloop.run_loop(mode=arm.user, turns=arm.treatment.turns(task_prompt), agent=agent, stand_in=stand_in,

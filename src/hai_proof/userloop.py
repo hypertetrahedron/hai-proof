@@ -234,6 +234,8 @@ class LoopLog:
     turns: list[LoopTurn] = field(default_factory=list)
     stop_reason: str = ""
     reply_cap_hits: int = 0  # times the agent was waiting but the reply limit was reached
+    tool_answers: str = ""  # reticent stand-in settings this trial ran with (task's own or the run's); "" otherwise
+    reticence: str = ""
 
     def summary(self) -> dict:
         calls = [c for t in self.turns for c in t.stand_in]
@@ -256,7 +258,8 @@ class LoopLog:
         }
 
     def to_json(self) -> dict:
-        return {"mode": self.mode, "stop_reason": self.stop_reason, "summary": self.summary(),
+        stand_in = {k: v for k, v in (("tool_answers", self.tool_answers), ("reticence", self.reticence)) if v}
+        return {"mode": self.mode, **stand_in, "stop_reason": self.stop_reason, "summary": self.summary(),
                 "turns": [asdict(t) for t in self.turns]}
 
 

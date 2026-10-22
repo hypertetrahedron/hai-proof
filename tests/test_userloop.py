@@ -13,7 +13,7 @@ from hai_proof.models import PLAIN, ArmSpec, TreatmentSpec
 from hai_proof.tasks import load_task
 from hai_proof.treatments import load_treatment
 from hai_proof.userloop import (CLASSIFIER_SYSTEM, NO_INFO_REPLY, RESPONDER_SYSTEM, RETICENT_RESPONDER_SYSTEM,
-                                RETICENT_RESPONDER_SYSTEM_STRICT, STRICT_FILTER_SYSTEM, UNINFORMATIVE_REPLY, AgentTurn, ContainerStandIn, StandInCall, ToolAnswerer,
+                                RETICENT_RESPONDER_SYSTEM_STRICT, STRICT_FILTER_SYSTEM, UNINFORMATIVE_REPLY, AgentTurn, ContainerStandIn, LoopLog, StandInCall, ToolAnswerer,
                                 classifier_prompt, parse_decision, parse_tool_answers, responder_prompt, run_loop,
                                 tool_responder_prompt)
 
@@ -371,3 +371,24 @@ def test_cli_ask_tool(tmp_path, capsys):
     assert cli.main(base + ["--ask-tool-a", "hidden", "--ask-tool-b", "on"]) == 0
     out = capsys.readouterr().out
     assert "A=plain (ask tool hidden)" in out and "B=plain (ask tool)" in out
+
+
+def test_cli_task_stand_in(tmp_path, capsys):
+    d = _task_copy(tmp_path)
+    (d / "user.md").write_text("I want totals in cents.\n")
+    toml = (d / "task.toml").read_text()
+    (d / "task.toml").write_text(toml.replace('kind = "bug"', 'kind = "bug"\nuser = "reticent"\nask_tool = "on"\n'
+                                                               'reticence = "strict"\ntool_answers = "full"', 1))
+    (tmp_path / "hai-proof.toml").write_text('model = "claude-test-model"\n')
+    base = ["--root", str(tmp_path), "run", "--reps", "1", "--dry-run", "--arm-a", "plain", "--arm-b", "plain",
+            "--ask-tool", "on", "--user", "reticent"]
+    assert cli.main(base) == 0
+    assert "stand-in set by the task: EX1 = full tool answers, strict reticence" in capsys.readouterr().out
+    assert cli.main(base + ["--reticence", "standard"]) != 0
+    assert "define their stand-in with strict" in capsys.readouterr().err
+
+
+def test_loop_log_records_stand_in():
+    assert "reticence" not in LoopLog(mode="informative").to_json()
+    j = LoopLog(mode="reticent", tool_answers="full", reticence="strict").to_json()
+    assert (j["tool_answers"], j["reticence"]) == ("full", "strict")

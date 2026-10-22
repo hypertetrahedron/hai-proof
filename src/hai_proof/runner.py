@@ -65,6 +65,13 @@ def make_plan(run: RunConfig) -> Plan:
                + (f", {run.tool_answers} tool answers" if run.tool_answers != "brief" else "")
                + (f", {run.reticence} reticence" if run.reticence != "standard" else "")
                + " (its cost is small and not in the ceiling)" if any(a.user != "conventional" for a in loop_arms) else ""))
+        own: dict[tuple[str, str], list[str]] = {}
+        for t in run.tasks:
+            if t.tool_answers or t.reticence:
+                own.setdefault(run.stand_in_settings(t), []).append(t.id)
+        if own and any(a.user == "reticent" for a in loop_arms):
+            lines.append("stand-in set by the task: " + "; ".join(
+                f"{', '.join(ids)} = {ta} tool answers, {rt} reticence" for (ta, rt), ids in own.items()))
     return Plan(agent_runs, probe_runs, warmup, sessions, ceiling, lines)
 
 

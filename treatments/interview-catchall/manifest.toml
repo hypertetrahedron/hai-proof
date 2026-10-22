@@ -1,0 +1,16 @@
+# Ablation of interview-guide (2026-10-21): only the two parts the transcript read of runs d6d8, 027d and
+# b0c9 credited with the effect, asking in plain text rather than through the question tool, and the
+# closing "anything else about the behaviour?" question. No list of design areas, no one-at-a-time rule,
+# no summary. Task-agnostic. No plugins, skills, hooks or MCP.
+name = "interview-catchall"
+prompt_prefix = ""
+
+[env]
+
+[network]
+allow = []
+
+[expect]
+plugins = []
+mcp_servers = []
+skills = []

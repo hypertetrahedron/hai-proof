@@ -1,0 +1,45 @@
+id = "F35"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+user = "reticent"
+ask_tool = "on"
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+# Decision-dense feature with a user in the loop (fifteenth search). Upstream: python-cmd2/cmd2 PR #1694
+# "feat(annotated): allow honoring Enum _missing_ and support Enum | Enum" (merged 2026-06-16 as 49a176a,
+# after the model cutoff). The prompt asks for a way to let an Enum parameter's `_missing_` hook resolve
+# command-line tokens, plus a union of Enums, and leaves the behaviour to the conversation; user.md holds the
+# decisions: the opt-in flag `allow_unknown_entry` (default off, on Argument and Option), `_missing_` never
+# consulted without it and only a fallback after value and name lookup with it (IntEnum string bridge intact),
+# the flag reaching list elements and every union member, a lone raising `_missing_` propagating, a raising
+# member only declining inside a union, the merged "invalid choice" when every member declines, a union
+# resolving in order with the first accepting member winning, Literal or non-Enum members (also with
+# `| None`) still a TypeError, merged choices deduped keeping each member's display_meta, and the
+# `A | B | None` positional / `= None` option shapes.
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=4.0.0 uv pip install --python /opt/venv/bin/python -e . pytest pytest-cov pytest-mock"
+# Hidden tests/test_annotated.py is the fix's version with these hand edits (re-apply after `build-task --force`):
+#  1. test_make_enum_type_flag_directly is removed: it imports the private `_make_enum_type`, and
+#     test_missing_not_consulted_without_flag and test_flag_consults_missing already cover it publicly.
+#  2. test_missing_exception_propagates_not_swallowed takes the converter from the parser's action
+#     (`_get_param_action(...).type`) instead of calling `_make_enum_type`, still expecting the ValueError.
+#  3. `match="ambiguous"` is dropped from test_out_of_scope_union_rejected and `match="invalid choice"` from
+#     test_all_members_declining_reports_invalid_choice_not_member_error; the latter instead asserts the error is
+#     an argparse.ArgumentTypeError (not the member's own ValueError), so any message passes.
+# (_get_param_action is a helper defined in the test file itself, built on the parser, so it needs no edit.)
+
+# Install adds pytest-cov because the repo's addopts pass --cov flags; build strips .git, so a version is pretended.
+# regression deselects the two new test classes (TestAllowUnknownEntry, TestEnumUnion) so the hidden file's
+# pre-existing tests guard against regressions while the start state still passes; grading is about 17 s.
+# Scope: the full PR is covered (no subset); all 11 decisions in user.md are pinned by the hidden tests.
+acceptance = ["tests/test_annotated.py"]
+regression = "python -m pytest -q -p no:cacheprovider tests/test_annotated.py tests/test_argparse_utils.py -k \"not TestAllowUnknownEntry and not TestEnumUnion\""
+
+[source]
+kind = "git"
+url  = "https://github.com/python-cmd2/cmd2.git"
+# first parent of the merge commit
+base = "ec22b82ac9ca1b81ec9441e9f77ac8c6f15dab2d"
+# PR #1694
+fix  = "49a176a8c5a4967c683c4ea13c3bed7e37c634ac"

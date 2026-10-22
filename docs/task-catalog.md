@@ -650,3 +650,30 @@ Rejected: icecream #238 `ic.timer` (tests are loose regexes, the unit thresholds
 (Windows-only tests that patch internals), sqlite-utils #832 (pragma SQL pinned verbatim), pathspec #128/#139/#152/#163
 (git-ignore precedent), pint #2382 and #2355 (below the size floor, glyph pins), yarl #1930-#1971 (WHATWG/RFC precedent),
 sqlfluff dialect PRs (SQL grammar precedent), jsonschema #1300 (13 source lines), cattrs #775 (small).
+
+### Fifteenth search: many-decision interview tasks (2026-10-21)
+
+Goal: headroom above the `interview` suite, where interview-guide passes 47/50 and only F27 still separates strong
+treatments. Criterion: a feature with many independent decisions the tests pin (ideally 5+), several second-order, so
+even a good interviewer can miss one. About 445 repos swept for PRs merged on or after 2026-06-02, about 30 read, 10
+vetted locally (Windows, Python 3.12, one venv each, offline; the PR's tests fail at base and pass at the merge).
+"Decisions (2nd)" counts the pinned decisions and, in brackets, the second-order ones.
+
+| # | Upstream, merge | Merged | Decisions (2nd) | Fails at base | Grading | Notes |
+|---|---|---|---|---|---|---|
+| T1 | cmd2 #1694 `allow_unknown_entry` + Enum unions, `49a176a` | 2026-06-16 | 13 (10) | 27 of 552 | 5.6 s | Two features bundled; most rules live in their interaction: `_missing_` only as a fallback after value and name lookup and only with the flag, the flag reaches list elements and union members, a raising `_missing_` propagates alone but counts as declining inside a union, all-decline gives the merged "invalid choice", unions resolve in order, a Literal or non-Enum member is a `TypeError`, merged choices deduped keeping `display_meta`, `A \| B \| None` is `nargs='?'` without a default and `--flag` with `= None`. Drop tests on private internals; relax message pins. Large (~420 lines incl. docs) |
+| T2 | cmd2 #1693 titled mutex groups + eager validation, `ec22b82` | 2026-06-14 | 9 (8) | collection error | 5.6 s | Nearly every rule is which `ValueError` fires when (partial or spanning mutex, title on an already grouped mutex, repeated parameter, `required=True` in plain groups), all at decoration time, by parameter name so forward references decorate. Tests import `_validate_group_specs`; keep the decoration-time ones. Not with T1 |
+| T3 | dateparser #1415 `TIMEZONE_ABBREVIATIONS`, `bd73ab7` | 2026-10-21 | 8 (6) | 5 of 171 | 4.4 s | Mapping to `timedelta`, default `{}`; unknown abbreviation and non-`timedelta` offset are `SettingValidationError`; case-sensitive; applies to absolute, freshness ("in 1 hour IST") and "+05:30 IST" strings and through locale detection; `TIMEZONE` / `TO_TIMEZONE` ignore it. Relax two message regexes |
+| T4 | falcon #2731 `allow_multiple=` on `get_param*`, `2a47a7f` | 2026-09-28 | 8 (6) | 47 of 397 | 0.8 s | Default True on all ten helpers; False raises `HTTPInvalidParam`; identical repeats still count; with `auto_parse_qs_csv` a comma list counts as multiple; absent param unaffected; `store` not populated on error; a repeated deep-object key raises in `get_param_as_dict`, the pairs form does not; WSGI and ASGI alike. Relax the message pin |
+| T5 | poetry-core #945 `Marker.apply(environment)`, `60516b6` | 2026-06-06 | 7 (5) | 34 of 550 | ~30 s (use `-k test_apply`) | Returns a marker, not a bool; absent variables are kept (unlike `validate`); empty environment returns `self`; `extra` evaluated against a tuple, empty meaning `extra == 'a'` is Empty and `!=` is Any |
+| T6 | pdm #3865 `pdm run --env/--env-file/--working-dir`, `50ca509` | 2026-08-28 | 7 (5) | 8 of 100 | 32 s | Flags override the script's options, reach every task of a composite, work with no script, must precede the script name; a malformed `--env` is a usage error, exit 1; script paths resolve against `--working-dir`. Same repo as F17 |
+| T7 | idna #253 `decode(display=True)`, `1a5bf80` | 2026-06-02 | 6 (4) | 1 test, 7 asserts | 0.1 s | Fallback |
+| T8 | dj-database-url #324 string options, int round-trip, `62c1231` | 2026-09-27 | 5 (4) | 4 of 64 | 0.2 s | Fallback |
+| T9 | tox #4167 `substitute = true` for TOML posargs, `ba393c1` | 2026-10-17 | 5 (3) | 3 of 146 | 9 s | Fallback; one test fails at both ends on Windows |
+| T10 | inflect #275 `defnoun(case="preserve")`, `af75127` | 2026-10-20 | 4 (3) | 3 of 188 | 1.5 s | Fallback; few decisions |
+
+Build: T1, T3, T4 (2026-10-21, as F35-F37). T2 and T5 next if those leave headroom; T1 or T2, not both.
+
+Rejected after reading: urllib3 #5055 (few decisions, dummyserver), pyjwt #1216 (RFC 4648 precedent, private-method tests),
+cattrs #737 (internal refactor), face #27 (loose tests, private pins), pytest-order #246 (message pins), falcon #2715
+(guessable), pydash #328 (concurrency fix), readme_renderer #365 (HTML fixtures).

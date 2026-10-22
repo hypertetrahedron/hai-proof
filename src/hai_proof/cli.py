@@ -118,6 +118,9 @@ def _run_args(sp: argparse.ArgumentParser) -> None:
     ul.add_argument("--tool-answers", choices=["brief", "full"], default="brief",
                     help="the reticent stand-in's answers to ask-tool questions: brief = the option plus one sentence "
                          "(default); full = as much of the brief on that point as a plain-text reply would give")
+    ul.add_argument("--reticence", choices=["standard", "strict"], default="standard",
+                    help="the reticent stand-in: standard (default), or strict = a tighter plan-approval rule and a "
+                         "second pass that deletes reply points the agent's message did not raise")
     ul.add_argument("--max-user-replies", type=int, default=5, metavar="N",
                     help="stand-in replies per trial (default 5); then the script moves on or the trial ends")
     sp.add_argument("--mode", choices=["lightning", "quick", "full"], default="full")
@@ -449,7 +452,7 @@ def _build_run_config(args: argparse.Namespace, cfg, root: Path):
         results_dir=results_dir, harness=harness_info(root), max_spend_usd=args.max_spend,
         resume=bool(getattr(args, "resume", None)),
         stand_in_model=args.stand_in_model or cfg.stand_in_model, max_user_replies=args.max_user_replies,
-        tool_answers=args.tool_answers, limit_scale=args.limit_scale,
+        tool_answers=args.tool_answers, reticence=args.reticence, limit_scale=args.limit_scale,
     )
 
 

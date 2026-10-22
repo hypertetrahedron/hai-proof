@@ -1,0 +1,81 @@
+diff --git a/changelog.rst b/changelog.rst
+index 9b19bcf..0806456 100644
+--- a/changelog.rst
++++ b/changelog.rst
+@@ -53,6 +53,7 @@ Changelog
+ - [core] Add ``win_arm64`` to the list of platform-specific wheels published to PyPI. (`#1137 <https://github.com/gorakhargosh/watchdog/issues/1137>`__)
+ - [watchmedo] The ``AutoRestartTrick`` stop signal is now actually delivered on Windows. The subprocess is started in its own process group and signalled with ``CTRL_BREAK_EVENT``, so it can run cleanup handlers and its descendants are no longer orphaned on every restart. (`#1221 <https://github.com/gorakhargosh/watchdog/issues/1221>`__)
+ - [watchmedo] ``AutoRestartTrick``'s ``--signal SIGBREAK`` now routes through ``CTRL_BREAK_EVENT`` on Windows too, instead of falling back to the hard kill that skips the child's cleanup handlers. (`#1221 <https://github.com/gorakhargosh/watchdog/issues/1221>`__)
++- [polling] A transient ``OSError`` while polling, such as a network share that is briefly unreachable, no longer emits a ``DirDeletedEvent`` for the watched directory and stops the emitter. The error is logged and the next poll tries again, so changes made in the meantime are still reported. Only ``FileNotFoundError`` and ``NotADirectoryError`` are still treated as a deletion. (`#1065 <https://github.com/gorakhargosh/watchdog/issues/1065>`__)
+ 
+ - Thanks to our beloved contributors: @BoboTiG, @tybug, @Corentin-pro, @kirkhansen, @JoachimCoenen, @blitztide, @Skeletor-Pirate, @prateek-dagar
+ 
+diff --git a/src/watchdog/observers/polling.py b/src/watchdog/observers/polling.py
+index fc143de..699c3d1 100644
+--- a/src/watchdog/observers/polling.py
++++ b/src/watchdog/observers/polling.py
+@@ -21,6 +21,7 @@
+ 
+ from __future__ import annotations
+ 
++import logging
+ import os
+ import threading
+ from functools import partial
+@@ -46,6 +47,8 @@
+     from watchdog.events import FileSystemEvent
+     from watchdog.observers.api import EventQueue, ObservedWatch
+ 
++logger = logging.getLogger(__name__)
++
+ 
+ class PollingEmitter(EventEmitter):
+     """Platform-independent emitter that polls a directory to detect file
+@@ -65,6 +68,7 @@ def __init__(
+         super().__init__(event_queue, watch, timeout=timeout, event_filter=event_filter)
+         self._snapshot: DirectorySnapshot = EmptyDirectorySnapshot()
+         self._lock = threading.Lock()
++        self._snapshot_failing = False
+         self._take_snapshot: Callable[[], DirectorySnapshot] = lambda: DirectorySnapshot(
+             self.watch.path,
+             recursive=self.watch.is_recursive,
+@@ -89,10 +93,23 @@ def queue_events(self, timeout: float) -> None:
+             # Update snapshot.
+             try:
+                 new_snapshot = self._take_snapshot()
+-            except OSError:
++            except (FileNotFoundError, NotADirectoryError):
+                 self.queue_event(DirDeletedEvent(self.watch.path))
+                 self.stop()
+                 return
++            except OSError as exc:
++                # Other errors (EIO, ESTALE, EHOSTDOWN, ...) are often temporary,
++                # e.g. a network share that is briefly unreachable. Keep the last
++                # snapshot and try again on the next poll, so that changes made
++                # in the meantime are still reported.
++                if not self._snapshot_failing:
++                    self._snapshot_failing = True
++                    logger.warning("Cannot take a snapshot of %r, will retry: %s", self.watch.path, exc)
++                return
++
++            if self._snapshot_failing:
++                self._snapshot_failing = False
++                logger.info("Snapshot of %r succeeded again, resuming", self.watch.path)
+ 
+             events = DirectorySnapshotDiff(self._snapshot, new_snapshot)
+             self._snapshot = new_snapshot
+@@ -121,6 +138,14 @@ def queue_events(self, timeout: float) -> None:
+ class PollingObserver(BaseObserver):
+     """Platform-independent observer that polls a directory to detect file
+     system changes.
++
++    If a poll fails because the watched directory no longer exists
++    (``FileNotFoundError`` or ``NotADirectoryError``), a
++    :class:`~watchdog.events.DirDeletedEvent` is emitted and watching stops.
++    Any other ``OSError``, for instance while a network share is briefly
++    unreachable, is logged once and the next poll tries again. Changes made
++    in the meantime are reported once the directory can be read again. An
++    outage that the OS reports as ``ENOENT`` still looks like a deletion.
+     """
+ 
+     def __init__(self, *, timeout: float = DEFAULT_OBSERVER_TIMEOUT) -> None:

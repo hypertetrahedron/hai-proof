@@ -1,0 +1,40 @@
+id = "F62"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+cost_tier = "low"
+suites = ["interview-v2-candidates"]
+# Follow-up-dependent task (sixteenth search, V1). Upstream: gorakhargosh/watchdog PR #1325 "fix(polling): retry
+# transient snapshot errors instead of stopping the emitter" (merged 2026-10-20 as 7d4d2b8, after the model
+# cutoff). The prompt is framed as a feature request ("keep going when a share drops") and leaves open whether
+# and how the observer survives; user.md holds the decisions, organised as one first-level choice with its
+# sub-decisions: the observer keeps watching through transient errors rather than stopping; only
+# FileNotFoundError and NotADirectoryError mean the directory is gone (DirDeletedEvent, then stop), any other
+# OSError (EACCES, EBUSY, EHOSTDOWN, ESTALE, EIO) is transient; on a transient error keep the last snapshot and
+# retry on the next poll; changes made during the outage are reported on recovery; exactly one warning log per
+# outage and an info line on resume; an error listing a subdirectory is handled the same way, with no
+# DirDeletedEvent for the root; retry forever (no give-up limit); an outage the OS reports as ENOENT still looks
+# like a deletion. "Retry forever" is a design answer the tests only imply (they never wait long); the rest are
+# each pinned by test_transient_error_on_watched_dir, test_transient_error_in_subdirectory or the existing
+# test_delete_watched_dir.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest flaky pytest-cov pytest-timeout"
+# Hidden tests/test_observers_polling.py is the fix's version, unedited. It carries upstream's
+# @pytest.mark.flaky(max_runs=3, min_passes=1) markers, so the `flaky` plugin is installed above.
+acceptance = ["tests/test_observers_polling.py"]
+# The regression list leaves out tests/test_observers_polling.py: it holds the hidden tests, so including it would fail at the start state.
+regression = "python -m pytest -q -p no:cacheprovider tests/test_snapshot_diff.py tests/test_observers_api.py tests/test_events.py tests/test_patterns.py tests/test_delayed_queue.py tests/test_skip_repeats_queue.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/gorakhargosh/watchdog.git"
+# first parent of the merge commit
+base = "c4a87440012848632cfc2f5ee09b337f8636ed61"
+# PR #1325
+fix  = "7d4d2b8bb4376ed519f718ef2d25460fcde72e85"

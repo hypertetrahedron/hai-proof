@@ -26,6 +26,10 @@ install = "SETUPTOOLS_SCM_PRETEND_VERSION=3.27.0 uv pip install --python /opt/ve
 #  2. `match="on_acquired"` is dropped from the three pytest.raises(ValueError, ...) checks (soft lock rejects
 #     the hook, singleton rejects a different hook, async soft lock rejects the hook), so any message passes
 #     as long as the type is ValueError. The `match="hook failed"` checks are the hook's own message and stay.
+#  3. tests/test_filelock.py gains an autouse fixture that runs gc.collect() after each test (2026-10-21). The
+#     test_context_* tests mock `release` to fail and leave their lock held; it was collected later, during
+#     tests/test_async_filelock.py, and its release log lines broke test_acquire / test_simple's caplog check
+#     in 7 of 58 F30 trials across all arms (runs 74e8, 9066, 5a75, 027d, b0c9).
 # Install sets SETUPTOOLS_SCM_PRETEND_VERSION because the build strips .git (hatch-vcs needs a version).
 # Grading speed: on the execution host the whole suite takes about 85 s (threaded tests in test_filelock.py,
 # test_read_write.py, soft_rw/). acceptance_args deselects the "threaded" tests (pre-existing, unrelated to the

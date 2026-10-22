@@ -1804,6 +1804,259 @@
      }
     }
    }
+  },
+  {
+   "model": "claude-sonnet-5-5",
+   "cli_version": "2.1.307",
+   "effort": "default",
+   "task_hash": "71f115f085f3",
+   "samples": [
+    {
+     "run_id": "20261021-220947-b841",
+     "arm": "A",
+     "rep": 0,
+     "date": "2026-10-22",
+     "harness": "01a1cfc81071",
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "cost_usd": 0.4166718999999999,
+     "tokens_total": 956632,
+     "tokens_output": 13181,
+     "wall_s": 213.2718981280923,
+     "turns": 22,
+     "tool_calls": 21,
+     "first_request_input_tokens": 16036,
+     "cache_read_share": 0.9351338863847332,
+     "cache_misses": 0,
+     "first_edit_s": 59.3,
+     "test_runs": 9,
+     "code_runs": 1,
+     "diff_files": 6,
+     "diff_lines": 157
+    },
+    {
+     "run_id": "20261021-220947-b841",
+     "arm": "A",
+     "rep": 1,
+     "date": "2026-10-22",
+     "harness": "01a1cfc81071",
+     "status": "ok",
+     "pass": false,
+     "timed_out": false,
+     "end_reason": "completed",
+     "cost_usd": 0.35229869999999996,
+     "tokens_total": 826281,
+     "tokens_output": 10006,
+     "wall_s": 169.17950556986034,
+     "turns": 22,
+     "tool_calls": 21,
+     "first_request_input_tokens": 16034,
+     "cache_read_share": 0.9349204447397435,
+     "cache_misses": 0,
+     "first_edit_s": 61.7,
+     "test_runs": 6,
+     "code_runs": 0,
+     "diff_files": 3,
+     "diff_lines": 164
+    },
+    {
+     "run_id": "20261021-220947-b841",
+     "arm": "A",
+     "rep": 2,
+     "date": "2026-10-22",
+     "harness": "01a1cfc81071",
+     "status": "ok",
+     "pass": false,
+     "timed_out": false,
+     "end_reason": "completed",
+     "cost_usd": 0.3093254,
+     "tokens_total": 640352,
+     "tokens_output": 10059,
+     "wall_s": 166.3080023471266,
+     "turns": 20,
+     "tool_calls": 19,
+     "first_request_input_tokens": 16033,
+     "cache_read_share": 0.9259188696217081,
+     "cache_misses": 0,
+     "first_edit_s": 78.3,
+     "test_runs": 5,
+     "code_runs": 2,
+     "diff_files": 5,
+     "diff_lines": 145
+    }
+   ],
+   "summary": {
+    "trials": 3,
+    "passes": 1,
+    "pass_rate": 0.3333333333333333,
+    "pass_rate_wilson95": [
+     0.06149194402093078,
+     0.7923404011921757
+    ],
+    "timeouts": 0,
+    "end_reasons": {
+     "completed": 3
+    },
+    "harness_versions": [
+     "01a1cfc81071"
+    ],
+    "excluded": 0,
+    "first_date": "2026-10-22",
+    "last_date": "2026-10-22",
+    "runs": [
+     {
+      "run_id": "20261021-220947-b841",
+      "date": "2026-10-22",
+      "trials": 3,
+      "passes": 1,
+      "excluded": 0
+     }
+    ],
+    "metrics": {
+     "cost_usd": {
+      "n": 3,
+      "mean": 0.359432,
+      "var": 0.0029189807422299943,
+      "sd": 0.05402759241563513,
+      "cv": 0.15031380738397007,
+      "min": 0.3093254,
+      "median": 0.35229869999999996,
+      "max": 0.4166718999999999
+     },
+     "tokens_total": {
+      "n": 3,
+      "mean": 807755.0,
+      "var": 25265669107.0,
+      "sd": 158951.78233351145,
+      "cv": 0.19678217074918936,
+      "min": 640352.0,
+      "median": 826281.0,
+      "max": 956632.0
+     },
+     "tokens_output": {
+      "n": 3,
+      "mean": 11082.0,
+      "var": 3305053.0,
+      "sd": 1817.9804729424352,
+      "cv": 0.1640480484517628,
+      "min": 10006.0,
+      "median": 10059.0,
+      "max": 13181.0
+     },
+     "wall_s": {
+      "n": 3,
+      "mean": 182.91980201502642,
+      "var": 692.9986865321341,
+      "sd": 26.32486821490535,
+      "cv": 0.14391480815588695,
+      "min": 166.3080023471266,
+      "median": 169.17950556986034,
+      "max": 213.2718981280923
+     },
+     "turns": {
+      "n": 3,
+      "mean": 21.333333333333332,
+      "var": 1.3333333333333333,
+      "sd": 1.1547005383792515,
+      "cv": 0.05412658773652741,
+      "min": 20.0,
+      "median": 22.0,
+      "max": 22.0
+     },
+     "tool_calls": {
+      "n": 3,
+      "mean": 20.333333333333332,
+      "var": 1.3333333333333333,
+      "sd": 1.1547005383792515,
+      "cv": 0.056788551067832045,
+      "min": 19.0,
+      "median": 21.0,
+      "max": 21.0
+     },
+     "first_request_input_tokens": {
+      "n": 3,
+      "mean": 16034.333333333334,
+      "var": 2.3333333333333335,
+      "sd": 1.5275252316519468,
+      "cv": 9.526590222971207e-05,
+      "min": 16033.0,
+      "median": 16034.0,
+      "max": 16036.0
+     },
+     "cache_read_share": {
+      "n": 3,
+      "mean": 0.9319910669153949,
+      "var": 2.7665074314046938e-05,
+      "sd": 0.005259759910304551,
+      "cv": 0.005643573309895282,
+      "min": 0.9259188696217081,
+      "median": 0.9349204447397435,
+      "max": 0.9351338863847332
+     },
+     "cache_misses": {
+      "n": 3,
+      "mean": 0.0,
+      "var": 0.0,
+      "sd": 0.0,
+      "cv": null,
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+     },
+     "first_edit_s": {
+      "n": 3,
+      "mean": 66.43333333333334,
+      "var": 107.05333333333331,
+      "sd": 10.346658075597807,
+      "cv": 0.15574497855892333,
+      "min": 59.3,
+      "median": 61.7,
+      "max": 78.3
+     },
+     "test_runs": {
+      "n": 3,
+      "mean": 6.666666666666667,
+      "var": 4.333333333333333,
+      "sd": 2.0816659994661326,
+      "cv": 0.31224989991991986,
+      "min": 5.0,
+      "median": 6.0,
+      "max": 9.0
+     },
+     "code_runs": {
+      "n": 3,
+      "mean": 1.0,
+      "var": 1.0,
+      "sd": 1.0,
+      "cv": 1.0,
+      "min": 0.0,
+      "median": 1.0,
+      "max": 2.0
+     },
+     "diff_files": {
+      "n": 3,
+      "mean": 4.666666666666667,
+      "var": 2.3333333333333335,
+      "sd": 1.5275252316519468,
+      "cv": 0.32732683535398854,
+      "min": 3.0,
+      "median": 5.0,
+      "max": 6.0
+     },
+     "diff_lines": {
+      "n": 3,
+      "mean": 155.33333333333334,
+      "var": 92.33333333333333,
+      "sd": 9.60902353693305,
+      "cv": 0.06186066654677928,
+      "min": 145.0,
+      "median": 157.0,
+      "max": 164.0
+     }
+    }
+   }
   }
  ],
  "task": "B21",

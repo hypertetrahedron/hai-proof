@@ -1805,6 +1805,260 @@
      }
     }
    }
+  },
+  {
+   "model": "claude-sonnet-5-5",
+   "cli_version": "2.1.307",
+   "effort": "default",
+   "task_hash": "4cc45b5b77c1",
+   "samples": [
+    {
+     "run_id": "20261021-220947-b841",
+     "arm": "A",
+     "rep": 0,
+     "date": "2026-10-22",
+     "harness": "01a1cfc81071",
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "cost_usd": 0.3597691,
+     "tokens_total": 1035003,
+     "tokens_output": 11733,
+     "wall_s": 162.17517919838428,
+     "turns": 32,
+     "tool_calls": 31,
+     "first_request_input_tokens": 15875,
+     "cache_read_share": 0.9539209065094497,
+     "cache_misses": 0,
+     "first_edit_s": 9.8,
+     "test_runs": 2,
+     "code_runs": 13,
+     "diff_files": 2,
+     "diff_lines": 32
+    },
+    {
+     "run_id": "20261021-220947-b841",
+     "arm": "A",
+     "rep": 1,
+     "date": "2026-10-22",
+     "harness": "01a1cfc81071",
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "completed",
+     "cost_usd": 0.2898777,
+     "tokens_total": 618301,
+     "tokens_output": 11136,
+     "wall_s": 146.5208875052631,
+     "turns": 22,
+     "tool_calls": 21,
+     "first_request_input_tokens": 15874,
+     "cache_read_share": 0.9331005448802444,
+     "cache_misses": 0,
+     "first_edit_s": 10.1,
+     "test_runs": 2,
+     "code_runs": 13,
+     "diff_files": 2,
+     "diff_lines": 34
+    },
+    {
+     "run_id": "20261021-220947-b841",
+     "arm": "A",
+     "rep": 2,
+     "date": "2026-10-22",
+     "harness": "01a1cfc81071",
+     "status": "ok",
+     "pass": true,
+     "timed_out": false,
+     "end_reason": "error_max_turns",
+     "cost_usd": 0.5314201,
+     "tokens_total": 1556390,
+     "tokens_output": 19465,
+     "wall_s": 355.39198795706034,
+     "turns": 41,
+     "tool_calls": 40,
+     "first_request_input_tokens": 15877,
+     "cache_read_share": 0.9573056881629926,
+     "cache_misses": 0,
+     "first_edit_s": 20.1,
+     "test_runs": 3,
+     "code_runs": 0,
+     "diff_files": 2,
+     "diff_lines": 31
+    }
+   ],
+   "summary": {
+    "trials": 3,
+    "passes": 3,
+    "pass_rate": 1.0,
+    "pass_rate_wilson95": [
+     0.43850296436068037,
+     1.0
+    ],
+    "timeouts": 0,
+    "end_reasons": {
+     "completed": 2,
+     "error_max_turns": 1
+    },
+    "harness_versions": [
+     "01a1cfc81071"
+    ],
+    "excluded": 0,
+    "first_date": "2026-10-22",
+    "last_date": "2026-10-22",
+    "runs": [
+     {
+      "run_id": "20261021-220947-b841",
+      "date": "2026-10-22",
+      "trials": 3,
+      "passes": 3,
+      "excluded": 0
+     }
+    ],
+    "metrics": {
+     "cost_usd": {
+      "n": 3,
+      "mean": 0.3936889666666667,
+      "var": 0.015448600765453324,
+      "sd": 0.12429240027231482,
+      "cv": 0.31571217584452194,
+      "min": 0.2898777,
+      "median": 0.3597691,
+      "max": 0.5314201
+     },
+     "tokens_total": {
+      "n": 3,
+      "mean": 1069898.0,
+      "var": 220915988749.0,
+      "sd": 470017.0089996744,
+      "cv": 0.4393101108700777,
+      "min": 618301.0,
+      "median": 1035003.0,
+      "max": 1556390.0
+     },
+     "tokens_output": {
+      "n": 3,
+      "mean": 14111.333333333334,
+      "var": 21585412.333333332,
+      "sd": 4646.010367329514,
+      "cv": 0.32923964430454344,
+      "min": 11136.0,
+      "median": 11733.0,
+      "max": 19465.0
+     },
+     "wall_s": {
+      "n": 3,
+      "mean": 221.36268488690257,
+      "var": 13534.154773207483,
+      "sd": 116.33638628222678,
+      "cv": 0.5255465090770143,
+      "min": 146.5208875052631,
+      "median": 162.17517919838428,
+      "max": 355.39198795706034
+     },
+     "turns": {
+      "n": 3,
+      "mean": 31.666666666666668,
+      "var": 90.33333333333333,
+      "sd": 9.504384952922168,
+      "cv": 0.30013847219754214,
+      "min": 22.0,
+      "median": 32.0,
+      "max": 41.0
+     },
+     "tool_calls": {
+      "n": 3,
+      "mean": 30.666666666666668,
+      "var": 90.33333333333333,
+      "sd": 9.504384952922168,
+      "cv": 0.30992559629094024,
+      "min": 21.0,
+      "median": 31.0,
+      "max": 40.0
+     },
+     "first_request_input_tokens": {
+      "n": 3,
+      "mean": 15875.333333333334,
+      "var": 2.3333333333333335,
+      "sd": 1.5275252316519468,
+      "cv": 9.62200414680183e-05,
+      "min": 15874.0,
+      "median": 15875.0,
+      "max": 15877.0
+     },
+     "cache_read_share": {
+      "n": 3,
+      "mean": 0.9481090465175622,
+      "var": 0.00017180552775856873,
+      "sd": 0.01310746076700475,
+      "cv": 0.013824845164328843,
+      "min": 0.9331005448802444,
+      "median": 0.9539209065094497,
+      "max": 0.9573056881629926
+     },
+     "cache_misses": {
+      "n": 3,
+      "mean": 0.0,
+      "var": 0.0,
+      "sd": 0.0,
+      "cv": null,
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+     },
+     "first_edit_s": {
+      "n": 3,
+      "mean": 13.333333333333334,
+      "var": 34.363333333333344,
+      "sd": 5.862024678669764,
+      "cv": 0.4396518509002323,
+      "min": 9.8,
+      "median": 10.1,
+      "max": 20.1
+     },
+     "test_runs": {
+      "n": 3,
+      "mean": 2.3333333333333335,
+      "var": 0.3333333333333333,
+      "sd": 0.5773502691896257,
+      "cv": 0.24743582965269673,
+      "min": 2.0,
+      "median": 2.0,
+      "max": 3.0
+     },
+     "code_runs": {
+      "n": 3,
+      "mean": 8.666666666666666,
+      "var": 56.333333333333336,
+      "sd": 7.505553499465135,
+      "cv": 0.8660254037844387,
+      "min": 0.0,
+      "median": 13.0,
+      "max": 13.0
+     },
+     "diff_files": {
+      "n": 3,
+      "mean": 2.0,
+      "var": 0.0,
+      "sd": 0.0,
+      "cv": 0.0,
+      "min": 2.0,
+      "median": 2.0,
+      "max": 2.0
+     },
+     "diff_lines": {
+      "n": 3,
+      "mean": 32.333333333333336,
+      "var": 2.3333333333333335,
+      "sd": 1.5275252316519468,
+      "cv": 0.0472430484016066,
+      "min": 31.0,
+      "median": 32.0,
+      "max": 34.0
+     }
+    }
+   }
   }
  ],
  "task": "B20",

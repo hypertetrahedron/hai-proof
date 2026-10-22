@@ -38,8 +38,17 @@ Common options:
 - **Limits:** `--limit-scale 3` for treatments that are slower than plain. The limits then only stop
   runaways and don't decide outcomes. It applies to both arms.
 - **Spend:** `--max-spend USD` is a hard stop; keep it on.
-- **User modes:** `--user uninformative|informative` for treatments whose workflow asks questions, applied to
-  both arms unless `--user-a`/`--user-b` say otherwise.
+- **User modes:** `--user uninformative|informative|reticent` puts a stand-in user in the loop (Sonnet, answering
+  from each task's `user.md`), applied to both arms unless `--user-a`/`--user-b` say otherwise. Without it nobody
+  answers, as in a headless run.
+- **Interview suite:** for treatments that ask the user before building (interviewing, brainstorming, spec-first),
+  `--suite interview` is the 10-task set whose prompts leave decisions open. Its tasks declare their setup, so pass
+  `--user reticent --ask-tool on --limit-scale 3 --max-user-replies 15`; the run refuses `--suite interview` with
+  nobody answering. Check the stand-in on the host first with `--suite interview-smoke --mode lightning` (one
+  task, cheap). One rep costs about $2.8 per arm on Sonnet and takes about 33 min serially. Plain Claude Code
+  passes about 26% here (Sonnet, 2026-10-21) and interview-guide about 94%, so it separates "interviews" from
+  "doesn't", but it is near ceiling for comparing two good interviewers. Also run the treatment on
+  `--suite standard` with no user, to check it doesn't stall or lose passes when nobody answers.
 - **Pin the CLI:** `--cli-version <x.y.z>` keeps the version fixed across runs you'll compare.
   `latest` drifts.
 

@@ -256,6 +256,7 @@ class RunConfig:
     resume: bool = False  # continue the run in results_dir/run_id: skip finished pairs (runner.Runner._resume)
     stand_in_model: str = "claude-sonnet-5-5"  # the user stand-in's model (DESIGN §3.8), same for both arms
     max_user_replies: int = 5  # stand-in replies per trial; after that the script moves on or the trial ends
+    tool_answers: str = "brief"  # reticent stand-in's ask-tool answers: brief (one sentence) or full (as in text)
     limit_scale: float = 1.0  # multiplies every task's time limit, turn limit and budget, for both arms
 
     def task_limits(self, task: TaskSpec) -> tuple[int, int, float]:
@@ -268,7 +269,10 @@ class RunConfig:
         """run.json record of the stand-in settings; None when no arm uses the turn loop."""
         if not any(a.multi_turn for a in self.arms):
             return None
-        return {"stand_in_model": self.stand_in_model, "max_user_replies": self.max_user_replies}
+        loop = {"stand_in_model": self.stand_in_model, "max_user_replies": self.max_user_replies}
+        if self.tool_answers != "brief":
+            loop["tool_answers"] = self.tool_answers
+        return loop
 
     @property
     def single_arm(self) -> bool:

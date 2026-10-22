@@ -21,6 +21,9 @@ TASK_PROMPT_SLOT = "{task_prompt}"
 # --ask-tool (DESIGN §3.8): off = plain `claude -p`; on = stream-json input with stdio permission prompts, which
 # offers AskUserQuestion; hidden = the same input mode with AskUserQuestion disallowed (the control for "on").
 ASK_TOOL_MODES = ("off", "on", "hidden")
+# The reticent stand-in (DESIGN §3.8): --tool-answers and --reticence, or a task's own `tool_answers` / `reticence`.
+TOOL_ANSWER_MODES = ("brief", "full")
+RETICENCE_LEVELS = ("standard", "strict")
 
 
 def ask_tool_mode(value: Any) -> str:
@@ -166,6 +169,10 @@ class TaskSpec:
     report_order: int | None = None  # fixed position in reports, by plain-arm output tokens
     user: str = ""  # USER_MODES: the user in the loop the task is meant for ("" = any); setup, not content
     ask_tool: str = ""  # ASK_TOOL_MODES: the ask-tool setting the task is meant for ("" = any)
+    # The reticent stand-in the task is defined with ("" = the run's --tool-answers / --reticence). Unlike `user`,
+    # these are part of the task: the same feature under another stand-in is another task (another id).
+    tool_answers: str = ""  # TOOL_ANSWER_MODES
+    reticence: str = ""  # RETICENCE_LEVELS
 
     def content_hash(self) -> str:
         """Short hash of everything that can change a trial's outcome.
@@ -173,12 +180,16 @@ class TaskSpec:
         Leaves out report and run-setup metadata (suites, cost_tier, report_order, user, ask_tool), the
         generated baseline.json,
         caches, and repo/ when it is generated from [source] (source.lock.json pins it instead). The user
-        brief (user.md) only reaches the stand-in, never a conventional trial, so it has its own hash.
+        brief (user.md) only reaches the stand-in, never a conventional trial, so it has its own hash. A
+        declared stand-in (`tool_answers`, `reticence`) counts; left unset it is omitted, so older hashes hold.
         """
         h = hashlib.sha256()
         d = asdict(self)
         for k in ("path", "suites", "cost_tier", "report_order", "user", "ask_tool", "user_brief"):
             d.pop(k)
+        for k in ("tool_answers", "reticence"):
+            if not d[k]:
+                d.pop(k)
         h.update(json.dumps(_jsonable(d), sort_keys=True).encode())
         skip_top = {"task.toml", "baseline.json", "user.md"} | ({"repo"} if self.source is not None else set())
         for f in sorted(p for p in self.path.rglob("*") if p.is_file()):
@@ -264,6 +275,10 @@ class RunConfig:
         """(timeout_s, max_turns, budget_usd) for a task's trials, after --limit-scale."""
         s = self.limit_scale
         return round(task.timeout_s * s), max(1, round(task.max_turns * s)), round(task.budget_usd * s, 2)
+
+    def stand_in_settings(self, task: TaskSpec) -> tuple[str, str]:
+        """(tool_answers, reticence) for a task's reticent stand-in: the task's own, else the run's."""
+        return task.tool_answers or self.tool_answers, task.reticence or self.reticence
 
     @property
     def user_loop(self) -> dict[str, Any] | None:

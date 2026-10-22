@@ -17,12 +17,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 from .config import ConfigError
-from .models import ASK_TOOL_MODES, USER_MODES, GitSource, TaskSpec
+from .models import ASK_TOOL_MODES, RETICENCE_LEVELS, TOOL_ANSWER_MODES, USER_MODES, GitSource, TaskSpec
 
 _TOP_KEYS = {
     "id", "kind", "level", "origin", "timeout_s", "budget_usd", "max_turns", "install",
     "acceptance", "acceptance_args", "acceptance_cmd", "regression", "source", "diff_categories",
-    "suites", "cost_tier", "report_order", "user", "ask_tool",
+    "suites", "cost_tier", "report_order", "user", "ask_tool", "tool_answers", "reticence",
 }
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _SLUG = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -150,6 +150,14 @@ def _parse(path: Path, *, check_dirs: bool) -> TaskSpec:
     ask_tool = d.get("ask_tool", "")
     if ask_tool and ask_tool not in ASK_TOOL_MODES:
         raise ConfigError(f"{tf}: ask_tool must be one of {', '.join(ASK_TOOL_MODES)}, got {ask_tool!r}")
+    tool_answers = d.get("tool_answers", "")
+    if tool_answers and tool_answers not in TOOL_ANSWER_MODES:
+        raise ConfigError(f"{tf}: tool_answers must be one of {', '.join(TOOL_ANSWER_MODES)}, got {tool_answers!r}")
+    reticence = d.get("reticence", "")
+    if reticence and reticence not in RETICENCE_LEVELS:
+        raise ConfigError(f"{tf}: reticence must be one of {', '.join(RETICENCE_LEVELS)}, got {reticence!r}")
+    if (tool_answers or reticence) and user != "reticent":
+        raise ConfigError(f"{tf}: tool_answers and reticence set up the reticent stand-in; they need user = \"reticent\"")
 
     source = _parse_source(d, tf)
 
@@ -213,17 +221,29 @@ def _parse(path: Path, *, check_dirs: bool) -> TaskSpec:
         report_order=report_order,
         user=user,
         ask_tool=ask_tool,
+        tool_answers=tool_answers,
+        reticence=reticence,
         dockerfile=dockerfile,
     )
 
 
-def check_user_setup(tasks: Sequence[TaskSpec], arms: Sequence[Any]) -> list[str]:
+def check_user_setup(tasks: Sequence[TaskSpec], arms: Sequence[Any], *, tool_answers: str | None = None,
+                     reticence: str | None = None) -> list[str]:
     """Check each arm's user and ask-tool settings against what the tasks declare (`user`, `ask_tool`).
 
     A task that declares a user mode only means something with someone answering, so running it with the
     conventional user (the default: nobody answers) is refused. Any other difference is deliberate (an
-    uninformative control, say) and comes back as a warning line.
+    uninformative control, say) and comes back as a warning line. A task's own stand-in (`tool_answers`,
+    `reticence`) is part of the task, so an explicit run flag (`tool_answers`, `reticence`: None = not given)
+    that contradicts it is refused.
     """
+    for key, val in (("tool_answers", tool_answers), ("reticence", reticence)):
+        off = [t.id for t in tasks if val and getattr(t, key) and getattr(t, key) != val]
+        if off:
+            flag = "--" + key.replace("_", "-")
+            raise ConfigError(f"{flag} {val}, but {', '.join(off)} define their stand-in with "
+                              f"{'/'.join(sorted({getattr(t, key) for t in tasks if t.id in off}))}; the task's own "
+                              f"setting is part of the task, so drop {flag} or run tasks that do not set it")
     warnings = []
     for arm in arms:
         conv = [t.id for t in tasks if t.user and arm.user == "conventional"]

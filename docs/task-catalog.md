@@ -719,3 +719,5 @@ tqdm #1576 and #1265 (thin wrappers), cibuildwheel #2928, progressbar #327, aiof
 big), Flask #6133, environs #481 and #487, boltons #453, python-jsonpath #133 (too small).
 
 Build: V1, V2, V4 as F62-F64, defined with the v2 stand-in (`reticence = "strict"`, `tool_answers = "full"`).
+
+Pilot (x3, runs 20261022-124945-f430 and 20261022-125008-4ccc): plain 9/9, interview-guide 9/9, interview-catchall 8/9, superpowers 8/9. The sub-decisions are what a careful implementer does by default (retry and report on recovery, leave the first chunk file, expand globs lazily) or what one round of questions reaches, so the criterion does not produce hard tasks. F62-F64 are easy-tier candidates.

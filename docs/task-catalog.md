@@ -777,3 +777,19 @@ Rejected: kombu #2705 (repo in catalog), BlackSheep #704 (Cython build), Radical
 tenacity #645, dateutil #1600, typer #1972, pymdown #2986, git-machete #1791, b2 #1157 (small or follows precedent).
 
 Build: X1, W1, S1, R1 as F65-F68 with the v2 stand-in.
+
+Pilot (x3, seed 361, runs 20261022-210849-933b plain vs guide and 20261022-210910-6133 catchall vs superpowers, no
+usage-limit stops):
+
+| Task | Base | plain | catchall | guide | superpowers |
+|---|---|---|---|---|---|
+| F65 | X1 | 0/3 | 3/3 | 2/3 | 0/3 |
+| F66 | W1 | 3/3 | 3/3 | 3/3 | 2/3 |
+| F67 | S1 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F68 | R1 | 3/3 | 3/3 | 3/3 | 3/3 |
+
+F65 separates: plain and superpowers miss the context rules (incoming telegrams ignore the receiving task's context,
+cover travel and debounced colour keep the right telegram), and the guide missed `test_telegram_context` once. It joins
+`interview-v2` (middle-to-hard tier). F66's miss is one caching case; F67 and F68 are saturated: their rules, though not
+defaults, come out when the agent asks about the named API's error cases, which every arm does. The criterion yields one
+hard task in four.

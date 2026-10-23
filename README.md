@@ -2,7 +2,7 @@
 
 **H**arness for **AI** **P**lugin **R**igorous **O**utcome and **O**verhead **F**ramework.
 
-A/B| `--suite standard | smoke | diagnosis | interview | all` |test for Claude Code harness modifications (skills, hooks, CLAUDE.md, MCP servers, plugins).
+A/B smoke test for Claude Code harness modifications (skills, hooks, CLAUDE.md, MCP servers, plugins).
 Runs plain Claude Code and a modified Claude Code through the same coding tasks in paired containers
 and reports success, wall-clock time, tokens and cost. Design: [DESIGN.md](DESIGN.md). Status: [ROADMAP.md](ROADMAP.md).
 
@@ -46,7 +46,7 @@ Open this repo in Claude Code and ask in plain words. The project skills in `.cl
 | Ask for | Skill | What it does |
 |---|---|---|
 | "make a task from our repo / from this bug-fix commit" | `hai-proof-task` | builds a task from any git repo you can clone, including private ones, into `private/tasks/<ID>/`, then builds and validates it on the execution host with no API spend, and pilots it if you agree |
-| "package my Claude Code setup / this plugin as a treatment" | `hai-proof-treatment` | turns the parts of your setup you name into a treatment in `private/treatments/<name>/`: CLAUDE.md, skills, agents, commands, hooks, plugins (vendored and pinned), MCP servers, CLI tools. It leaves out history, memory and credentials, and checks the result with a| `--suite standard | smoke | diagnosis | interview | all` |run |
+| "package my Claude Code setup / this plugin as a treatment" | `hai-proof-treatment` | turns the parts of your setup you name into a treatment in `private/treatments/<name>/`: CLAUDE.md, skills, agents, commands, hooks, plugins (vendored and pinned), MCP servers, CLI tools. It leaves out history, memory and credentials, and checks the result with a smoke run |
 | "evaluate X against plain Claude Code" / "is this result significant?" | `hai-proof-evaluate` | plans the run, dry-runs it, confirms spend with you, launches it and reads `summary.json` against the A/A noise floor |
 
 `private/` is gitignored and searched automatically (`extra_tasks_dirs` / `extra_treatments_dirs` in

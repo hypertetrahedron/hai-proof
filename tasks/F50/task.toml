@@ -8,7 +8,7 @@ user = "reticent"
 ask_tool = "on"
 reticence = "strict"
 tool_answers = "full"
-suites = ["interview-v2-candidates", "interview-v2"]
+suites = ["interview-v2-candidates", "interview-v2", "interview"]
 cost_tier = "low"
 report_order = 23
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, thirteenth search S2). Upstream:

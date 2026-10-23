@@ -7,7 +7,7 @@ ask_tool = "on"
 reticence = "strict"
 tool_answers = "full"
 cost_tier = "low"
-suites = ["interview-v2-candidates"]
+suites = ["interview-v2-candidates", "interview-v2"]
 # Hard-tier task (seventeenth search, X1): several non-default rules, each in its own case. Upstream:
 # XKNX/xknx PR #1952 "feat: tell the cause of device updates in Device.last_update" (merged 2026-10-13 as
 # ec1b737, after the model cutoff). The prompt names the interface (DeviceUpdate, telegram_context,

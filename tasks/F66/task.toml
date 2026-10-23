@@ -1,0 +1,50 @@
+id = "F66"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+cost_tier = "low"
+suites = ["interview-v2-candidates"]
+# Hard-tier task for interview-v2 (seventeenth search, W1). Upstream: pallets-eco/wtforms PR #939 "Resolve
+# choices callables lazily" (merged 2026-10-22 as 61a7614e, after the model cutoff). The prompt asks for lazy
+# `choices` callables and leaves every rule to the conversation; user.md holds them. The tests pin several
+# independent rules a competent implementer gets wrong by default, each in its own case:
+#  - the callable runs on the first read of `choices` (or first datalist render), never in post_process, and
+#    the result is cached until the next post_process;
+#  - validating a SelectMultipleField with no data does not call it;
+#  - a callable that reads its own `field.choices` gets the previous value (no recursion);
+#  - assigning a list replaces the constructor callable and survives a post_process rerun; assigning None
+#    drops it; assigning a callable is lazy and cached;
+#  - rerunning post_process on the root form refreshes nested FormField / FieldList entries;
+#  - a subclass __init__ that extends the callable's choices keeps working;
+#  - DataList follows the same rule, including zero-argument callables (resolved at render, cached).
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest babel email_validator"
+# Hidden tests are the PR's seven changed test files in full (derived by build-task from the merge), so they
+# also replace the existing tests the PR rewrote (e.g. tests/fields/test_form.py, whose "runs once" test
+# asserted eager evaluation). Hand edit, lost on `build-task --force` (redo it):
+#  1. tests/fields/test_select.py: test_choices_from_input_callable_is_deprecated is dropped. It asserts a
+#     DeprecationWarning from the private _choices_from_input API.
+acceptance = [
+  "tests/fields/test_form.py",
+  "tests/fields/test_list.py",
+  "tests/fields/test_radio.py",
+  "tests/fields/test_select.py",
+  "tests/fields/test_selectmultiple.py",
+  "tests/test_datalist.py",
+  "tests/test_form.py",
+]
+regression = "python -m pytest -q -p no:cacheprovider tests"
+
+[source]
+kind = "git"
+url  = "https://github.com/pallets-eco/wtforms.git"
+# first parent of the merge commit
+base = "996ae17f46db6a342bf43b2990f72200f3e2d594"
+# PR #939
+fix  = "61a7614e9f0abd1ed1a1110ec9fcdbf8a9784452"

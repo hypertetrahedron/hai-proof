@@ -149,11 +149,12 @@ Claude Code) trial of the task. Do not edit it by hand; commit it with the task.
 
 - `hai-proof run` folds the run's plain-arm trials in when it finishes. `hai-proof baseline update [results-dirs]`
   does it for existing runs (default: all of them); re-running is safe, as samples are keyed by run id and rep.
-  `hai-proof baseline show` prints the entries for the current task content.
+  `hai-proof baseline show` prints the entries for the current task content. Runs that finish at the same time
+  take turns through `tasks/<ID>/.hai-proof.lock`, so no samples are lost; `build-task` holds the same lock.
 - One entry per **model / CLI version / effort / task hash**. The task hash (`TaskSpec.content_hash`, also recorded
   in `run.json`) covers everything that can change a trial: the manifest's limits, install, acceptance and
   regression, the prompts, `inject.patch`, `reference.patch`, `hidden_tests/`, `grade.sh`, `source.lock.json`, and
-  `repo/` for tasks without `[source]`. It leaves out `suites`, `cost_tier`, `report_order`, `user`, `ask_tool` and `baseline.json`; `reticence` and
+  `repo/` for tasks without `[source]`. It leaves out `suites`, `cost_tier`, `report_order`, `user`, `ask_tool`, `baseline.json` and lock or temporary files (`.hai-proof*`); `reticence` and
   `tool_answers` count when set. The same feature under another stand-in is another task with its own id
   (2026-10-22: new ids such as F39; a naming convention like `F13-strict` is deferred, see ROADMAP).
   Changing a task therefore starts a new entry instead of mixing versions.

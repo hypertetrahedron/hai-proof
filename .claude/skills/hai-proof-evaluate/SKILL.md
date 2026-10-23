@@ -67,10 +67,15 @@ Show the user the plan:
 
 Then launch it without `--dry-run`, with `-y`, in the background, and redirect output to a log under
 `results/`. The log fills in late because output is buffered. Watch `results/<run-id>/trials.jsonl` instead.
-- **One host:** run one evaluation per host at a time. Runs on the same host disturb each other's timing.
+- **One host:** prefer one evaluation per host at a time. Several runs at once are safe (separate ids,
+  containers, networks; lock files keep controllers apart), but they share the host's CPU, so wall times
+  slow down and aren't comparable with runs on an idle host. About 15 proxied runs fit one host. See
+  README "Several runs at once".
 - **Subscription tokens:** these share the 5-hour usage window. The runner waits out
   `usage_limit_reached` by itself; a long run may pause.
-- **Interrupted runs:** `run --resume results/<run-id>` with the original arguments continues one.
+- **Interrupted runs:** `run --resume results/<run-id>` with the original arguments continues one. It is
+  refused while the first controller is still alive (`controller.lock`); delete the lock only if that
+  process is really gone, e.g. on another machine.
 
 ## 3. Read the result
 

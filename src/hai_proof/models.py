@@ -179,7 +179,7 @@ class TaskSpec:
 
         Leaves out report and run-setup metadata (suites, cost_tier, report_order, user, ask_tool), the
         generated baseline.json,
-        caches, and repo/ when it is generated from [source] (source.lock.json pins it instead). The user
+        caches, lock and temporary files (.hai-proof*), and repo/ when it is generated from [source] (source.lock.json pins it instead). The user
         brief (user.md) only reaches the stand-in, never a conventional trial, so it has its own hash. A
         declared stand-in (`tool_answers`, `reticence`) counts; left unset it is omitted, so older hashes hold.
         """
@@ -194,7 +194,7 @@ class TaskSpec:
         skip_top = {"task.toml", "baseline.json", "user.md"} | ({"repo"} if self.source is not None else set())
         for f in sorted(p for p in self.path.rglob("*") if p.is_file()):
             parts = f.relative_to(self.path).parts
-            if parts[0] in skip_top or any(x in ("__pycache__", ".pytest_cache", ".git") for x in parts)                     or f.suffix == ".pyc":
+            if parts[0] in skip_top or parts[0].startswith(".hai-proof") or any(x in ("__pycache__", ".pytest_cache", ".git") for x in parts)                     or f.suffix == ".pyc":
                 continue
             h.update("/".join(parts).encode())
             h.update(f.read_bytes())

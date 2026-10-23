@@ -342,12 +342,13 @@ def _dispatch(args: argparse.Namespace) -> int:
             return 2
         if input("proceed? [y/N] ").strip().lower() not in {"y", "yes"}:
             return 1
+    from .locks import LockHeld
     from .resources import ResourceError
     from .runner import AuthError, ResumeMismatch
 
     try:
         out = Runner(run, ex, auth).execute()
-    except (AuthError, ResourceError, ResumeMismatch) as e:
+    except (AuthError, ResourceError, ResumeMismatch, LockHeld) as e:
         print(f"error: {e}", file=sys.stderr)
         return 3
     print(f"results: {out}")

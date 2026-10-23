@@ -354,8 +354,18 @@ def _git(git: str, cwd: Path, *args: str, check: bool = True) -> subprocess.Comp
 
 
 def build_task(task_dir: Path, *, git: str = "git", force: bool = False) -> None:
-    """Materialise an open-repo task: repo/ at `base`, plus hidden_tests/ and reference.patch from `fix`."""
+    """Materialise an open-repo task: repo/ at `base`, plus hidden_tests/ and reference.patch from `fix`.
+
+    Holds the task's lock, so a concurrent build or a run packing repo/ into an image never sees it half
+    written."""
+    from . import locks
+
     task_dir = Path(task_dir)
+    with locks.held(task_dir / locks.TASK_LOCK, what=f"{task_dir.name} build"):
+        _build_task(task_dir, git=git, force=force)
+
+
+def _build_task(task_dir: Path, *, git: str, force: bool) -> None:
     task = _parse(task_dir, check_dirs=False)
     src = task.source
     if src is None:

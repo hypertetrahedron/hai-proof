@@ -15,6 +15,7 @@ import statistics
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
+from . import locks
 from .models import TaskSpec, ask_tool_mode
 
 FILE = "baseline.json"
@@ -242,11 +243,13 @@ def update(tasks: Sequence[TaskSpec], runs: Iterable[tuple], *, legacy: bool = F
     added: dict[str, int] = {}
     for tid, items in sorted(pending.items()):
         task = by_id[tid]
-        doc = load(task.path)
-        before = json.dumps(doc, sort_keys=True)
-        n = merge(doc, task, items)
-        if json.dumps(doc, sort_keys=True) != before:
-            (task.path / FILE).write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8", newline="\n")
+        # Runs finishing at the same time update the same file: read-merge-write under the task's lock.
+        with locks.held(task.path / locks.TASK_LOCK, timeout_s=120, what=f"{tid} baseline"):
+            doc = load(task.path)
+            before = json.dumps(doc, sort_keys=True)
+            n = merge(doc, task, items)
+            if json.dumps(doc, sort_keys=True) != before:
+                locks.write_atomic(task.path / FILE, json.dumps(doc, indent=1) + "\n")
         added[tid] = n
     return added, notes
 

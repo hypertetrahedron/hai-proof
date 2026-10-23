@@ -82,6 +82,22 @@ Before every pair the runner checks resources and logs a snapshot to `resources.
 While memory is short it waits, polling for up to 15 minutes, and then stops the run cleanly with teardown and
 a report. A final snapshot after teardown shows anything still left behind.
 
+### Several runs at once
+
+Several people or agents can drive hai-proof at the same time, from one checkout or several, against one
+execution host. Each run has its own id, results directory, containers and networks; images are tagged by
+content, so two runs building the same image get the same result and nothing deletes images. Lock files
+(`results/<run-id>/controller.lock`, `tasks/<ID>/.hai-proof.lock`) keep two controllers off the same run and
+serialise `build-task` and `baseline.json` updates. A lock whose process has died on the same machine is taken
+over; one held from another machine has to be deleted by hand. Things that remain shared:
+- **CPU on the host:** runs on one host compete for it. Both arms of a pair still start together, so the
+  A/B comparison stays fair, but wall times are slower than on an idle host and are not comparable with them.
+  `--limit-scale` helps if trials hit their time limits.
+- **The account usage limit:** runs on one subscription use up the same 5-hour window, and `--max-spend` is
+  per run.
+- **Docker networks:** with `egress = "proxy"` each run creates two networks. Docker's default address pools
+  hold about 30, so plan for about 15 runs at once per host.
+
 ## Commands
 
 | Command | Purpose |

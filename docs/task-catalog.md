@@ -793,3 +793,28 @@ cover travel and debounced colour keep the right telegram), and the guide missed
 `interview-v2` (middle-to-hard tier). F66's miss is one caching case; F67 and F68 are saturated: their rules, though not
 defaults, come out when the agent asks about the named API's error cases, which every arm does. The criterion yields one
 hard task in four.
+
+Confirmation of the 12 provisional tasks (x5, seed 351, runs 20261022-200817-6b1c plain vs guide and
+20261022-200842-3078 catchall vs superpowers, no usage-limit stops), with a proposed tier:
+
+| Task | Base | plain | catchall | guide | superpowers | Tier |
+|---|---|---|---|---|---|---|
+| F41 | F13 | 4/5 | 5/5 | 5/5 | 4/5 | easy |
+| F42 | F14 | 3/5 | 4/5 | 5/5 | 5/5 | easy |
+| F43 | F15 | 2/5 | 5/5 | 4/5 | 1/5 | easy-middle |
+| F45 | F20 | 1/5 | 5/5 | 4/5 | 1/5 | middle |
+| F49 | F26 | 5/5 | 5/5 | 4/5 | 3/5 | floor check |
+| F50 | F27 | 1/5 | 1/5 | 4/5 | 0/5 | hard |
+| F52 | F29 | 3/5 | 5/5 | 5/5 | 4/5 | easy |
+| F53 | F30 | 4/5 | 5/5 | 5/5 | 5/5 | easy |
+| F54 | F31 | 5/5 | 5/5 | 5/5 | 3/5 | floor check |
+| F56 | F33 | 1/5 | 5/5 | 5/5 | 5/5 | middle |
+| F58 | F35 | 5/5 | 5/5 | 3/5 | 3/5 | floor check |
+| F59 | F36 | 2/5 | 5/5 | 5/5 | 5/5 | easy-middle |
+| Total | | 36/60 | 55/60 | 54/60 | 39/60 | |
+
+Plain vs guide 22 vs 4 differing pairs (sign p=0.0005); catchall vs superpowers 17 vs 1 (p=0.0001). The four arms keep the
+calibration's order (catchall and guide level, superpowers near plain). Floor-check tasks are ones plain passes and an arm
+can still lose (superpowers' plan turn or the guide's extra questions talking it into a wrong rule); they detect harm,
+not gain. F50 is the only task that separates the guide from the catch-all (4/5 vs 1/5); with F65 (catchall 3/3, guide
+2/3 at x3) the hard tier is two tasks, which is the suite's weak end.

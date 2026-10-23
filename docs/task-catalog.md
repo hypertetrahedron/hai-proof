@@ -756,3 +756,24 @@ big), Flask #6133, environs #481 and #487, boltons #453, python-jsonpath #133 (t
 Build: V1, V2, V4 as F62-F64, defined with the v2 stand-in (`reticence = "strict"`, `tool_answers = "full"`).
 
 Pilot (x3, runs 20261022-124945-f430 and 20261022-125008-4ccc): plain 9/9, interview-guide 9/9, interview-catchall 8/9, superpowers 8/9. The sub-decisions are what a careful implementer does by default (retry and report on recovery, leave the first chunk file, expand globs lazily) or what one round of questions reaches, so the criterion does not produce hard tasks. F62-F64 are easy-tier candidates.
+
+### Seventeenth search: several non-default rules in distinct cases (2026-10-22)
+
+Goal: the hard end of `interview-v2`. Under the fair stand-in only F45 (F20) and F50 (F27) separate strong treatments;
+the sixteenth search showed branching alone does not make a task hard. Criterion: the tests pin several independent rules
+that a competent implementer would get wrong by default, each in its own case, so each is learned only by asking about that
+case. About 5,500 repos swept plus about 200 curated libraries, about 30 PRs read, 6 vetted in `python:3.12` containers.
+
+| # | Upstream, merge | Merged | Decisions (non-default) | Fails at base | Grading | Notes |
+|---|---|---|---|---|---|---|
+| X1 | xknx #1952 `Device.last_update` cause tracking, `ec1b7378` | 2026-10-13 | 9 (7) | 3 files at collection | 0.6 s | Incoming telegrams ignore the receiving task's context; the cause is cleared while callbacks run; cover travel keeps the starting telegram; debounced light colour takes the last telegram; callback signature unchanged. Brief names `DeviceUpdate`, `telegram_context`, `Device.last_update`, `Telegram.context` |
+| W1 | wtforms #939 lazy `choices` callables, `61a7614e` | 2026-10-22 | 10 (7) | 9 of 263 | 0.6 s | Called on first read, cached until `post_process`; not called when validating with no data; a callable reading its own choices sees the previous value; assignment replaces it and survives reprocessing; nested entries refresh; subclass `__init__` extending choices keeps working. Drop the private deprecation test |
+| S1 | subliminal #1362 `--name` as sed substitution, `30fad08a` | 2026-07-15 | 8 (5) | collection error | 3.8 s | `&` literal (unlike sed); `s.w.a.t.2017...` stays a static name; non-matching files scanned with `name=None`; flags other than g/i exit 2; any non-alphanumeric delimiter with `\` escapes. Tests import helper names; relax the message pin |
+| R1 | rtree #424 `Property.to_json/from_json`, `f7c9ebd4` | 2026-09-24 | 8 (6) | 11 of 52 | 0.4 s | Callback keys omitted; unknown keys (incl. `handle`) `ValueError`, non-object `TypeError`; 1024 limit in UTF-8 bytes, checked before parsing on bytes and str, exactly 1024 allowed, `to_json` enforces it too. Needs libspatialindex; relax two pins |
+| F1 | PySceneDetect #570 writers take a path or handle, `56ab41b8` | 2026-09-12 | 7 (3) | 10 of 44 | 0.6 s | Fallback |
+| E1 | wtforms #926 `enum_choices`, `21a1fefc` | 2026-06-12 | 8 (3) | 3 files at collection | 0.6 s | Fallback; precedent in `SelectChoice.from_enum`; one wtforms task only |
+
+Rejected: kombu #2705 (repo in catalog), BlackSheep #704 (Cython build), Radicale #2281 (protocol harness), mistune #499,
+tenacity #645, dateutil #1600, typer #1972, pymdown #2986, git-machete #1791, b2 #1157 (small or follows precedent).
+
+Build: X1, W1, S1, R1 as F65-F68 with the v2 stand-in.

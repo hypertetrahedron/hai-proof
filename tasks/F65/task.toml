@@ -1,0 +1,50 @@
+id = "F65"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+cost_tier = "low"
+suites = ["interview-v2-candidates"]
+# Hard-tier task (seventeenth search, X1): several non-default rules, each in its own case. Upstream:
+# XKNX/xknx PR #1952 "feat: tell the cause of device updates in Device.last_update" (merged 2026-10-13 as
+# ec1b737, after the model cutoff). The prompt names the interface (DeviceUpdate, telegram_context,
+# Device.last_update, Telegram.context, the telegram/context fields) and leaves every behavioural rule to the
+# conversation. user.md holds the rules, each pinned by one hidden test: incoming telegrams never pick up
+# the receiving task's telegram_context; the cause is cleared while device-updated callbacks run, so work
+# scheduled from a callback gets its own context; cover travel updates and the auto-stop keep the telegram
+# (or context) that started the travel; debounced light colour updates are attributed to the last telegram;
+# a binary sensor's counter update after context_timeout is attributed to the counted telegram; an update
+# without a telegram uses the active telegram_context, default DeviceUpdate(); Telegram.context is excluded
+# from equality and repr; last_update is set before callbacks run and persists; the callback signature stays
+# callback(device).
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest pytest-asyncio pytest-socket pytest-timeout pytest-mock freezegun"
+# Hidden tests/hai_proof is test/hai_proof/test_f65.py, written by hand from the PR's three test files, because
+# build-task's derived copies are whole upstream files (test/cemi_tests/cemi_handler_test.py,
+# test/telegram_tests/telegram_test.py) that would overwrite existing tests (delete the derived
+# hidden_tests/test/cemi_tests, telegram_tests and devices_tests after `build-task --force`, and restore
+# hidden_tests/test/hai_proof from git). Edits:
+#  1. All new tests of the three files are gathered in one module with the same bodies; the
+#     ..conftest import still works because test/hai_proof/ is a package.
+#  2. test_telegram_context_not_compared: the PR's one-line addition to the existing test_telegram_equal
+#     (`telegram_1.context = object()` then equality) is rewritten as a standalone test; test_telegram_context
+#     is the PR's unchanged (repr assertion included).
+#  3. test_incoming_cemi_ignores_telegram_context is the PR's unchanged (it goes through
+#     CEMIHandler.handle_cemi_frame, so the CEMILData.telegram(direction) signature is not pinned).
+#  4. No other assertions were dropped; the PR's tests pin no messages or private attributes.
+acceptance = ["test/hai_proof/test_f65.py"]
+# Existing device, telegram, cemi and remote-value tests (the hidden module is separate).
+regression = "python -m pytest -q -p no:cacheprovider test/devices_tests test/telegram_tests test/cemi_tests test/remote_value_tests"
+
+[source]
+kind = "git"
+url  = "https://github.com/XKNX/xknx.git"
+# first parent of the merge commit
+base = "b549ef868ed83db4974120f03f0b64d23491c9ed"
+# PR #1952
+fix  = "ec1b7378d44d654cca023ea94eadcada2ee32a10"

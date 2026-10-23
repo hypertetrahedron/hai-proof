@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import images
+from . import images, locks
 from .analyses import run_arm_analyses
 from .executor import Executor
 from .models import AnalysisResult, ArmSpec, RunConfig, TaskSpec, TrialResult, ask_tool_mode, to_json
@@ -124,8 +124,23 @@ class Runner:
     # ------------------------------------------------------------------ public
 
     def execute(self) -> Path:
-        run = self.run
+        """Run under the run dir's controller.lock: a second controller on the same run (a resume while the
+        first is alive, or a new run that drew the same id) is refused before it touches anything."""
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        lock = self.run_dir / "controller.lock"
+        holder = locks.try_acquire(lock)
+        if holder is not None:
+            raise locks.LockHeld(f"run {self.run.run_id} is in use by {locks.describe(holder)}; "
+                                 f"if that controller is gone, delete {lock}")
+        try:
+            if not self.run.resume and (self.run_dir / "run.json").exists():
+                raise locks.LockHeld(f"{self.run_dir} already holds a run; use --resume to continue it")
+            return self._execute()
+        finally:
+            locks.release(lock)
+
+    def _execute(self) -> Path:
+        run = self.run
         self.meta = self._initial_meta()
         if run.resume:
             self._resume()

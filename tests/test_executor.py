@@ -96,7 +96,9 @@ def test_tar_and_build(rec):
 
 def test_tar_directory_has_no_leading_pax_header(tmp_path):
     """`docker build -` sniffs only the first 1 KiB; a PAX header there hides the archive."""
-    import io, os, tarfile
+    import io
+    import os
+    import tarfile
     from hai_proof.tarutil import tar_directory
 
     f = tmp_path / "Dockerfile"

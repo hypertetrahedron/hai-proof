@@ -9,6 +9,7 @@ import tarfile
 from pathlib import Path
 from typing import Any
 
+from . import locks
 from .models import TaskSpec, TreatmentSpec
 from .tarutil import tar_directory, tar_files
 
@@ -151,9 +152,12 @@ def build_treatment(ex: Any, base: str, t: TreatmentSpec, *, force: bool = False
 def build_trial(ex: Any, arm_image: str, task: TaskSpec, *, force: bool = False) -> str:
     executor = _api(ex)
 
-    tag = trial_tag(arm_image, task)
-    if force or not executor.image_exists(tag):
-        ctx = _trial_context(arm_image, task)
+    # Hash and pack repo/ under the task's lock: a concurrent `build-task --force` would otherwise let a
+    # half-written repo/ into an image whose tag (and so every later run) takes it for the real one.
+    with locks.held(task.path / locks.TASK_LOCK, what=f"{task.id} repo"):
+        tag = trial_tag(arm_image, task)
+        ctx = _trial_context(arm_image, task) if force or not executor.image_exists(tag) else None
+    if ctx is not None:
         executor.build_image(tag, ctx)
     return tag
 

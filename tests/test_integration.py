@@ -755,3 +755,34 @@ def test_ask_tool_hidden_uses_the_same_input_mode_without_the_tool(tmp_path):
     from hai_proof.models import ask_tool_mode
 
     assert [ask_tool_mode(v) for v in (True, False, None, "hidden")] == ["on", "off", "off", "hidden"]
+
+
+def test_second_controller_on_a_live_run_is_refused(tmp_path):
+    """A resume while the first controller is alive must not touch the run (its leftover cleanup would
+    remove the live run's containers)."""
+    import dataclasses
+
+    from hai_proof import locks
+
+    run = _run_config(tmp_path, [ArmSpec("A", PLAIN), ArmSpec("B", _treatment(tmp_path))], reps=1, analyses=False)
+    run_dir = run.results_dir / run.run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "controller.lock").write_text(json.dumps({"pid": 1, "host": "other-machine", "since": 0}))
+    fake = FakeDocker()
+    with pytest.raises(locks.LockHeld, match="in use by pid"):
+        Runner(dataclasses.replace(run, resume=True), fake, {"ANTHROPIC_API_KEY": SECRET}, log=lambda s: None).execute()
+    assert fake.calls == [] and not (run_dir / "run.json").exists()
+    assert (run_dir / "controller.lock").exists()  # someone else's lock is left alone
+
+
+def test_new_run_never_reuses_a_run_dir(tmp_path):
+    from hai_proof import locks
+
+    run = _run_config(tmp_path, [ArmSpec("A", PLAIN), ArmSpec("B", _treatment(tmp_path))], reps=1, analyses=False)
+    run_dir = Runner(run, FakeDocker(), {"ANTHROPIC_API_KEY": SECRET}, log=lambda s: None).execute()
+    assert not (run_dir / "controller.lock").exists()  # released at the end
+    before = (run_dir / "run.json").read_text()
+    fake = FakeDocker()
+    with pytest.raises(locks.LockHeld, match="already holds a run"):
+        Runner(run, fake, {"ANTHROPIC_API_KEY": SECRET}, log=lambda s: None).execute()
+    assert fake.calls == [] and (run_dir / "run.json").read_text() == before

@@ -8,7 +8,7 @@ user = "reticent"
 ask_tool = "on"
 reticence = "strict"
 tool_answers = "full"
-suites = ["interview-v2-candidates"]
+suites = ["interview-v2-candidates", "interview-v2"]
 # Decision-dense feature with a user in the loop (docs/task-catalog.md, fifteenth search). Upstream:
 # scrapinghub/dateparser PR #1415 "Add TIMEZONE_ABBREVIATIONS setting to override abbreviation offsets"
 # (merged 2026-10-21 as bd73ab7, after the model cutoff; resolves issue #683, fixes #580). The issue lists

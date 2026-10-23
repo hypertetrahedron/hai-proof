@@ -42,12 +42,14 @@ Common options:
   from each task's `user.md`), applied to both arms unless `--user-a`/`--user-b` say otherwise. Without it nobody
   answers, as in a headless run.
 - **Interview suite:** for treatments that ask the user before building (interviewing, brainstorming, spec-first),
-  `--suite interview` is the 10-task set whose prompts leave decisions open. Its tasks declare their setup, so pass
+  `--suite interview` is the 13-task set whose prompts leave decisions open (frozen 2026-10-23; the earlier 10-task
+  set is `interview-v1`). Its tasks declare their setup, including a strict stand-in with full tool answers, so pass
   `--user reticent --ask-tool on --limit-scale 3 --max-user-replies 15`; the run refuses `--suite interview` with
   nobody answering. Check the stand-in on the host first with `--suite interview-smoke --mode lightning` (one
-  task, cheap). One rep costs about $2.8 per arm on Sonnet and takes about 33 min serially. Plain Claude Code
-  passes about 26% here (Sonnet, 2026-10-21) and interview-guide about 94%, so it separates "interviews" from
-  "doesn't", but it is near ceiling for comparing two good interviewers. Also run the treatment on
+  task, cheap). One rep costs about $4.3 per arm for plain on Sonnet ($5.5 for interview-guide). Tasks run from
+  easy to hard (tiers in docs/task-catalog.md). Sonnet pass rates at x5 (2026-10-23): plain 57%, superpowers 62%,
+  interview-catchall 92%, interview-guide 91%. It separates "interviews" from "doesn't" with large margins, but only
+  F50 separates two good interviewers, so expect a tie between strong treatments. Also run the treatment on
   `--suite standard` with no user, to check it doesn't stall or lose passes when nobody answers.
 - **Pin the CLI:** `--cli-version <x.y.z>` keeps the version fixed across runs you'll compare.
   `latest` drifts.

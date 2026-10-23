@@ -818,3 +818,8 @@ calibration's order (catchall and guide level, superpowers near plain). Floor-ch
 can still lose (superpowers' plan turn or the guide's extra questions talking it into a wrong rule); they detect harm,
 not gain. F50 is the only task that separates the guide from the catch-all (4/5 vs 1/5); with F65 (catchall 3/3, guide
 2/3 at x3) the hard tier is two tasks, which is the suite's weak end.
+
+F65 at x5 (seed 371, runs 20261023-031340-db2d and 20261023-031402-b303, no usage-limit stops): plain 1/5, catchall
+5/5, guide 5/5, superpowers 1/5. With the x3 pilot (8/8 for the catch-all, 7/8 for the guide) it is a middle-tier task,
+not hard. `interview-v2` stands at 13 tasks: easy F41, F42, F52, F53; easy-middle F43, F59; middle F45, F56, F65; hard
+F50; floor checks F49, F54, F58. Over the 13 at x5: plain 37/65, catchall 60/65, guide 59/65, superpowers 40/65.

@@ -1,0 +1,55 @@
+id = "F67"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+cost_tier = "low"
+suites = ["interview-v2-candidates"]
+# Hard-tier task (seventeenth search, S1): several independent non-default rules, each learned by asking about
+# its own case. Upstream: Diaoul/subliminal PR #1362 "Cli: parameterize --name with sed-like substitution"
+# (merged 2026-07-15 as 30fad08, after the model cutoff). The prompt asks for `--name` to take a sed-like
+# `s/pattern/replacement/flags` expression applied per file and leaves the rules to the conversation. user.md
+# holds them: `&` in the replacement is a literal character, unlike sed; a name such as
+# `s.w.a.t.2017.s01e01.mkv` (starts with `s`, delimiter would be `.`, but it is not a well-formed expression)
+# stays a static name; a file the expression does not match is scanned as-is (name=None); flags other than g
+# and i, and invalid regexes, are errors (exit code 2); any non-alphanumeric character can be the delimiter,
+# and `\<delim>` escapes it; the substitution applies to the whole path and keeps the unmatched part;
+# a replacement that fails at call time (missing group) also leaves the file as-is.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=2.6.0 uv pip install --python /opt/venv/bin/python -e .[tests]"
+# install adds the project's tests extra (vcrpy, rarfile, ...); the pretend version is needed because the snapshot has no .git.
+# Hidden tests/hai_proof/test_f67.py is written by hand, because build-task's derived copies are whole upstream
+# files (tests/test_utils.py, tests/cli/test_download.py) that would overwrite the existing tests (delete the
+# derived hidden_tests/tests/test_utils.py and hidden_tests/tests/cli/ after `build-task --force`, and restore
+# test_f67.py from git). Edits against the PR's tests, so the agent is not forced into private helper names:
+#  1. All helper-level tests are dropped (test_unescape_delimiter, test_split_esc, test_parse_sed_expression,
+#     the test_name_resolver_* tests): they import NameResolver, parse_sed_expression, split_esc and
+#     unescape_delimiter from subliminal.utils.
+#  2. The six CLI tests from tests/cli/test_download.py are kept with the same spy on download_best.scan_path
+#     (shared in _spy/_download helpers; the spy records the full path, compared by basename). The
+#     "Invalid value for --name" message pin in test_cli_download_name_invalid_expression is dropped; only exit
+#     code 2 is required.
+#  3. Added CLI-level versions of rules the PR pins only at helper level: the g and i flags and the default of
+#     replacing the first match only (test_cli_download_name_flags), alternative delimiters and escaped
+#     delimiters in pattern and replacement (test_cli_download_name_delimiters), `&` not being the whole match
+#     (test_cli_download_name_ampersand_is_not_whole_match), a missing group in the replacement leaving the file
+#     as-is (test_cli_download_name_bad_group_reference_falls_back), unsupported flags exiting 2
+#     (test_cli_download_name_unsupported_flag), and the whole path being substituted with the unmatched part
+#     kept (test_cli_download_name_applies_to_whole_path; the helper test matched a parent directory).
+#  4. Dropped: the `\&` stays `\&` assertion and the mode property checks (private to NameResolver).
+acceptance = ["tests/hai_proof/test_f67.py"]
+# The existing CLI and utils tests; the hidden file is not listed, so the start state passes.
+regression = "python -m pytest -q -p no:cacheprovider tests/cli tests/test_utils.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/Diaoul/subliminal.git"
+# first parent of the merge commit
+base = "e87e0ce5bbaa6a1f387febbbfe11248945770454"
+# PR #1362
+fix  = "30fad08aa34a541588dbf28259e5fab132839b7d"

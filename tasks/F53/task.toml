@@ -22,7 +22,8 @@ report_order = 22
 timeout_s = 2400
 budget_usd = 5.0
 max_turns = 60
-install = "SETUPTOOLS_SCM_PRETEND_VERSION=3.27.0 uv pip install --python /opt/venv/bin/python -e . pytest pytest-asyncio pytest-mock pytest-timeout virtualenv"
+# Versions pinned 2026-11-16 to the set the task was validated with: newer releases make the reference patch fail regression tests.
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=3.27.0 uv pip install --python /opt/venv/bin/python -e . pytest==9.1.1 pytest-asyncio==1.4.0 pytest-mock pytest-timeout virtualenv==21.14.12 python-discovery==1.6.4 platformdirs==4.13.5"
 # Hidden tests are the fix's versions with these hand edits (re-apply after `build-task --force`):
 #  1. tests/test_filelock.py: test_on_acquired_and_release_failure_group (patches the private
 #     `filelock._unix._unlock_fd`) and test_on_acquired_fails_closed_on_enosys (patches

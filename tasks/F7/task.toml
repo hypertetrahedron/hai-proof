@@ -13,7 +13,8 @@ origin = "upstream-fix"
 timeout_s = 3600
 budget_usd = 40.0
 max_turns = 300
-install = "SETUPTOOLS_SCM_PRETEND_VERSION=30.0.0 uv pip install --python /opt/venv/bin/python -e . duckdb pandas numpy python-dateutil pytz pytest"
+# Versions pinned 2026-11-16 to the set the task was validated with: newer releases make the reference patch fail regression tests.
+install = "SETUPTOOLS_SCM_PRETEND_VERSION=30.0.0 uv pip install --python /opt/venv/bin/python -e . duckdb==1.5.6 pandas==3.0.6 numpy python-dateutil==2.9.0.post0 pytz==2026.5 pytest==9.1.1 pluggy==1.6.0"
 acceptance = ["tests/test_executor.py"]
 # The project's own runner (Makefile `test`: python -m unittest). The `unit` target sets
 # SKIP_INTEGRATION=1, which skips every executor test.

@@ -19,7 +19,9 @@ report_order = 16
 timeout_s = 2400
 budget_usd = 5.0
 max_turns = 60
-install = "uv pip install --python /opt/venv/bin/python -e . attrs pexpect psutil pyftpdlib pygments pytest pytest-asyncio pytest-timeout pytest-twisted testfixtures pyopenssl sybil"
+# Versions pinned 2026-11-16 to the set the task was validated with (2026-10-22): pytest-asyncio 1.5.0 makes
+# pytest abort at startup under this repo's filterwarnings=error, and twisted 26.10 / w3lib 2.6 break regression tests.
+install = "uv pip install --python /opt/venv/bin/python -e . attrs pexpect psutil pyftpdlib pygments pytest==9.1.1 pytest-asyncio==1.4.0 pytest-timeout pytest-twisted testfixtures pyopenssl sybil twisted==26.4.0 w3lib==2.5.0 itemadapter==0.13.1 multidict==7.1.0"
 # Hidden tests are the fix's versions (tests/test_request_dict.py, tests/test_request_lineage.py and the shared
 # base classes tests/utils/bases/http_request.py and http_response.py, which tests/test_http_request.py and
 # tests/test_http_response.py run). No hand edits: there are no message pins and no private-attribute tests.

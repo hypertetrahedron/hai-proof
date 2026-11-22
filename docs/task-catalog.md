@@ -2,7 +2,8 @@
 
 A record of every task that has been built or piloted, every candidate still being looked at, and
 the ideas that were rejected. Use it to see what has been tried before authoring something new.
-How to write a task is in [task-authoring.md](task-authoring.md).
+How to write a task is in [task-authoring.md](task-authoring.md); what each task in the `standard` and
+`interview` suites asks and checks is in [suites.md](suites.md).
 
 Target (2026-10-08): one rep of the whole suite should take about **1 hour per arm**, so treatments
 have room to make a difference. Level-3 tasks are aimed at **about 30 min** of agent time each.

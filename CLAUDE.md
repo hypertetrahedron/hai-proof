@@ -26,6 +26,10 @@ uv run hai-proof run ... --dry-run                 # always dry-run first; real 
 - `image/proxy/` — egress allowlist sidecar.
 - `tasks/<ID>/` — published suite. `repo/` and `source.lock.json` are generated and gitignored: never
   edit them; change `inject.patch` / `reference.patch` / `hidden_tests/` and rebuild. See docs/task-authoring.md.
+- `docs/` — reference docs plus the GitHub Pages site (plain HTML, `.nojekyll`): `index.html`, `design.html`,
+  `pipeline.html`, `library.html`, `skills.html`, `assets/style.css`. Diagrams are `docs/diagrams/*.drawio` with
+  SVG exports (`draw.io -x -f svg --embed-svg-fonts false`); re-export after editing one. Keep the pages in step
+  with DESIGN.md, README.md and docs/suites.md when behaviour or the suites change.
 - `examples/` — example task and treatment; `analyses/` — post-run analysis definitions.
 
 ## Rules

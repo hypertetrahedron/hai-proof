@@ -118,6 +118,12 @@ with `status = "error"`, and the container is always removed.
      records monotonic start/end times next to the process, stops it at the time limit, and writes
      `transcript.jsonl`, `stderr.log`, `timing.json` and a `done` marker to `/out/agent`. Timing is taken inside the
      container, so SSH latency never touches it.
+   - The wrapper also decides when a call is over (DESIGN §3.8, "Background work"). It tracks background tasks from
+     the stream's system events and ends the call at the first result event after which no background subagent is
+     running; while one is, the CLI wakes the agent for another turn when it finishes. Claude Code's own print-mode
+     ceiling (10 minutes, then it kills background tasks) is off, so the call's time limit bounds the wait. A result
+     with only background shells left (a dev server) keeps the call open for at most 10 minutes. `timing.json`
+     records `results`, `bg_agent_waits`, `bg_wait_s` and `shell_wait_cut`.
    - The controller polls for `done` every 5 s (surviving up to 12 failed polls). If the wrapper hasn't finished
      180 s past the time limit, the controller kills it and `claude`, writes a timed-out `timing.json`, and the trial
      is graded as a timed-out failure. It isn't retried.

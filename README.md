@@ -5,6 +5,8 @@
 A/B smoke test for Claude Code harness modifications (skills, hooks, CLAUDE.md, MCP servers, plugins).
 Runs plain Claude Code and a modified Claude Code through the same coding tasks in paired containers
 and reports success, wall-clock time, tokens and cost. Design: [DESIGN.md](DESIGN.md). Status: [ROADMAP.md](ROADMAP.md).
+An illustrated overview (design, the pipeline of a run, the task library, the skills) is in `docs/` as a GitHub
+Pages site; open [docs/index.html](docs/index.html).
 
 ## Requirements
 
@@ -122,8 +124,9 @@ tasks/                task library (B* bugs, B-DP-* degraded-prompt bugs, F* fea
                       cost tiers; baseline.json holds plain-arm aggregates; repo/ snapshots are generated, not committed
 examples/             example task and treatment (openspec-beads) to copy from
 analyses/             post-run analysis definitions
-docs/                 suites.md (the standard and interview tasks), how-arms-run.md (a run step by step),
-                      task-authoring guide, task catalog and calibration notes
+docs/                 the GitHub Pages site (index.html, design, pipeline, library, skills; diagrams/ holds the
+                      draw.io sources and their SVGs), suites.md (the standard and interview tasks),
+                      how-arms-run.md (a run step by step), task-authoring guide, task catalog and calibration notes
 tests/                pytest suite (stream-json fixtures under tests/fixtures/)
 ```
 
@@ -132,15 +135,16 @@ generated task snapshots.
 
 ## Status
 
-Runner, SSH execution hosts, the 6-task suite, the context-tax probe and the HTML report are verified on
-real runs. Treatment dependencies, post-run analyses and quick/full modes are implemented and unit-tested
-but not yet exercised end-to-end with a real treatment. See [ROADMAP.md](ROADMAP.md).
+The runner, SSH execution hosts, the `standard` and `interview` suites, user-in-the-loop modes, the ask tool,
+the context-tax probe and the HTML report are verified on real runs, with treatments ranging from a single
+CLAUDE.md to large plugins and CLI-driven workflows. The LLM post-run analyses are implemented and unit-tested
+but deferred (the deterministic `diff_breakdown` runs in every trial). See [ROADMAP.md](ROADMAP.md).
 
 ## Development
 
 ```sh
 uv sync
-uv run pytest -q          # 235 tests; no Docker or API access needed
+uv run pytest -q          # 330+ tests; no Docker or API access needed
 ```
 
 ## License

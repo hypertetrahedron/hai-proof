@@ -1,0 +1,47 @@
+id = "F68"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+cost_tier = "low"
+suites = ["interview-v2-candidates"]
+# Hard-tier task (seventeenth search, R1). Upstream: Toblerity/rtree PR #424 "Property.to_json / from_json"
+# (merged 2026-09-24 as f7c9ebd4, after the model cutoff). The prompt asks to serialise an index's Property
+# to JSON and back and leaves the rules to the conversation. user.md holds them; each is pinned by its own
+# test and none is the default a competent implementer would pick:
+#  - to_json omits the two callback keys (custom_storage_callbacks, custom_storage_callbacks_size), which are
+#    process-local pointers;
+#  - from_json rejects unknown keys with ValueError, and `handle` counts as unknown;
+#  - non-object JSON (a list) raises TypeError;
+#  - the existing INDEX_JSON_SERIALIZATION_LIMIT_SIZE (1024) is counted in UTF-8 bytes, not characters;
+#  - it is checked before parsing, on both bytes and str input, exactly 1024 is allowed, and to_json
+#    enforces it too (ValueError);
+#  - from_json accepts bytes;
+#  - a round trip gives a fresh handle, with equal as_dict().
+# libspatialindex comes from the apt package in task.Dockerfile.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest numpy"
+# Hidden tests/hai_proof/test_f68.py is written by hand from the PR's TestPropertyJSON class in
+# tests/test_index.py, because build-task's derived copy is the whole upstream tests/test_index.py, which would
+# overwrite the existing tests (delete the derived hidden_tests/tests/test_index.py after `build-task --force`,
+# and restore test_f68.py from git). Edits:
+#  1. test_from_json_rejects_unknown_keys: match="handle" is dropped; only ValueError is required.
+#  2. The three match="serialization limit" pins (to_json oversized, from_json oversized, UTF-8 bytes) are
+#     dropped; only ValueError is required.
+# The other tests are the PR's unchanged (the module imports `rtree` directly, with pytest and unittest).
+acceptance = ["tests/hai_proof/test_f68.py"]
+# The existing index tests; they read boxes_15x15.data from the tests directory.
+regression = "python -m pytest -q -p no:cacheprovider tests/test_index.py tests/test_tpr.py tests/test_finder.py"
+
+[source]
+kind = "git"
+url  = "https://github.com/Toblerity/rtree.git"
+# first parent of the merge commit
+base = "6641371362e5f49df8b4f8aaa655788fad7d7ec1"
+# PR #424
+fix  = "f7c9ebd43714c1bbe819f554de72c38751f2ad9e"

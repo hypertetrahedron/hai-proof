@@ -1,0 +1,38 @@
+id = "F40"
+kind = "feature"
+level = 1
+origin = "upstream-fix"
+# F12 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+# Underspecified feature with a user in the loop (docs/task-catalog.md, tenth search U3). Upstream:
+# twisted/towncrier issue #464 "Wrap output changelog at specified line width"; PR #740 (squash-merged
+# 2026-08-15 as ce469dd, after the model cutoff). The prompt asks for a configurable width without naming
+# the setting; user.md holds the decisive design: `wrap` itself accepts an integer (the maintainer asked for
+# one option, not a second one), `true` stays 79, and an integer <= 0 falls back to 79 rather than turning
+# wrapping off. Caveat: a 2024 issue comment already suggested "accept an integer", so the one-option design
+# may be recalled; the <= 0 rule is post-cutoff.
+timeout_s = 1200
+budget_usd = 3.0
+max_turns = 40
+install = "uv pip install --python /opt/venv/bin/python -e . twisted"
+# test_format.py is the fix's version (render_fragments with wrap=119 and wrap=0).
+# test_hai_proof_wrap.py is hand-written: the same rules end to end through `towncrier build --draft` with
+# `wrap` set in pyproject.toml. It is not part of the fix, so re-copy it after `build-task --force`.
+acceptance = ["src/towncrier/test/test_format.py", "src/towncrier/test/test_hai_proof_wrap.py"]
+# towncrier's own runner (noxfile `tests`: twisted.trial over the package) for both steps.
+acceptance_cmd = "python -m twisted.trial towncrier.test.test_format towncrier.test.test_hai_proof_wrap"
+regression = "python -m twisted.trial towncrier"
+
+[source]
+kind = "git"
+url  = "https://github.com/twisted/towncrier.git"
+# parent of the squash-merge commit
+base = "b3a363e514ba0e886f316e6d7a46352a2ca5c3b3"
+# PR #740 "Allow specifying line length other than 79 when wrapping is enabled"
+fix  = "ce469dd5c6534000f52e6c3d0b5753720793e842"
+exclude = ["docs/configuration.rst", "src/towncrier/newsfragments/464.feature.rst"]

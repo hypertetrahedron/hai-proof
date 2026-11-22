@@ -2,7 +2,8 @@
 
 A record of every task that has been built or piloted, every candidate still being looked at, and
 the ideas that were rejected. Use it to see what has been tried before authoring something new.
-How to write a task is in [task-authoring.md](task-authoring.md).
+How to write a task is in [task-authoring.md](task-authoring.md); what each task in the `standard` and
+`interview` suites asks and checks is in [suites.md](suites.md).
 
 Target (2026-10-08): one rep of the whole suite should take about **1 hour per arm**, so treatments
 have room to make a difference. Level-3 tasks are aimed at **about 30 min** of agent time each.
@@ -56,6 +57,30 @@ wall-clock per agent run. The run ID is the `results/<run>` directory, which is 
 | F8 | feature · L3 | tornado @ 9598807 (upstream PR #3762) | Opt-in `cross_origin_protection` via `Sec-Fetch-Site`/`Origin`, `trusted_origins`, `check_origin` moved to `RequestHandler` | Active (pilot 2026-10-10) | 3/3 | 130 s (105–149) | 0.32M | $0.17–0.22 | 20261010-194554-c904 |
 | F9 | feature · L2 | python-tabulate @ 83fd4fb (upstream PR #221, issue #59) | User-in-the-loop, deliberately ambiguous: header alignment independent of column alignment, a global column alignment, over-long lists, a warning for a bare string (the prompt asks for each behaviour since 2026-10-14; before that it asked only for headers and the hidden tests checked more, 0/6 in run 20261014-215059-aef8). `user.md` holds the API (`headersglobalalign`, `headersalign`, `colglobalalign`, "same"/"global"), over-long lists ignored, the "As a string" `UserWarning` and the signature order | Piloting (2026-10-14): the agent never asks | 0/14 informative | 31–66 s | — | $0.10–0.22 | 20261014-215059-aef8, 20261014-224001-e71f |
 | F10 | feature · L2 | tomlkit @ 5f0e954 (upstream PR #296, issue #288) | User-in-the-loop, deliberately ambiguous: a way to serialize unsupported types (Decimal). `user.md` fixes the design: global `register_encoder`/`unregister_encoder`, encoders decline with `TypeError`, `item()` raises an error that is both `TypeError` and `ValueError`. The prompt invites design questions | Piloting (2026-10-14); contaminated (2026-10-15): the agent knows the upstream design and says so in 4/10 trials | 14/14 informative; 4/5 informative, 4/5 uninformative (ask tool on) | 56–95 s | — | $0.13–0.21 | 20261014-215059-aef8, 20261014-224001-e71f, 20261015-074833-5aee |
+| F11 | feature · L2 | copier @ 38f9bb0 (upstream PR #2849, issue #2763; both after the model cutoff) | User-in-the-loop, deliberately ambiguous: advanced questions hidden by default. `user.md` fixes the design: a templatable `ask` key separate from `when`; `ask: false` records the `--data`/previous/default value without prompting, even without `--defaults`, and keeps the previous answer on update; `--ask` globs override it; `when: false` wins and discards. Hidden tests: the upstream 30-row pexpect truth table plus hand-written API tests | Validated 2026-10-19 (`[ok]`, grading 57 s with 4 xdist workers). Pilot 8fcc (plain, ask tool on, x3): uninformative 0/3, informative 3/3, 4 questions per trial; uninformative runs chose an `advanced` key (8/36 acceptance tests fail) | ~10 min, ~$0.30
+| F12 | feature · L1 | towncrier @ b3a363e (upstream PR #740, merged 2026-08-15) | User-in-the-loop, deliberately ambiguous: configurable changelog wrap width. `user.md` fixes the design: `wrap` itself takes an integer (no second key), `true` stays 79, an integer <= 0 falls back to 79 rather than disabling. Hidden tests: upstream `render_fragments` cases plus hand-written `towncrier build --draft` tests. A 2024 issue comment suggested "accept an integer", so that half may be recalled | Validated 2026-10-19 (`[ok]`, grading 4 s). Pilot 8fcc (plain, ask tool on, x3): uninformative 0/3, informative 3/3, 2-3 questions per trial; uninformative runs added a separate `wrap_width` key, so the 2024 suggestion was not recalled | ~1 min, ~$0.13
+| F13 | feature · L2 | platformdirs @ 46843f1 (upstream PR #585, merged 2026-09-26) | User-in-the-loop, decision-dense: `place_*_file` methods. `user.md`: six methods; every directory created gets 0o700 level by level; existing ones untouched; independent of `ensure_exists`; bad names raise `ValueError` and create nothing; unknown home raises `RuntimeError`. Hidden tests are upstream's; the empty-name message is relaxed to "mentions the name" (hand edit) | Validated 2026-10-20. Pilot cc5a: uninformative 0/5 (no `place_*` names), informative 2/5 (all 3 failures were message wording, then relaxed). The escape message is still pinned (reuse of the existing check). Run 5f90 (reticent, Sonnet 5.5, x5): plain 2/5, guide 5/5; plain misses are escape/no-side-effect and path-like rules |
+| F14 | feature · L2 | RxPY @ b5dc66c (upstream PR #711, final design 2026-10-16) | User-in-the-loop, decision-dense: `zip_latest`. `user.md`: three entry points; a pending value from a completed source forms one final tuple; complete as soon as no further tuple is possible; an empty source skips later subscriptions; zero sources raise `ValueError`; `None` is a value; futures accepted | Validated 2026-10-20. Pilot cc5a: uninformative 0/5, informative 5/5. Misses are real design points (subscription skipping, zero sources). Run 5f90 (reticent, Sonnet 5.5, x5): plain 0/5, guide 5/5; every plain failure is the empty-source subscription skip. Head-to-head 9066 (x5): superpowers 2/5, guide 5/5 (superpowers misses the subscription skip) |
+| F15 | feature · L2 | werkzeug @ ef518e4 (upstream PR #3243, issue #3242, merged 2026-08-19) | User-in-the-loop, decision-dense: tighten the `int`/`float` URL converters. `user.md`: ASCII digits only; sign not counted by `fixed_digits`; build validates; overflow rejected, underflow allowed; `str()` float formatting without exponents. Hidden test hand-fixed: upstream's failing-match rows called `match()` without the path (vacuous), plus an overflow row with a fraction | Validated 2026-10-20. Run 5f90 (reticent, Sonnet 5.5, x5): plain 2/5, guide 5/5; plain failures in `test_converter` |
+| F16 | feature · L2 | platformdirs @ ba1cc1e (upstream PR #586, merged 2026-09-26) | User-in-the-loop, decision-dense: a `find_<kind>_file(s)` pair. `user.md`: every kind with `iter_*_paths`; user directory first, then site; regular files only; de-duplicated; never creates directories even under `ensure_exists`, and leaves the instance flag alone; existing escape check | Validated 2026-10-20. Run 9189 (reticent, plain vs superpowers, x5): 5/5 both, so no headroom. F13's `place_*` code in this base already shows the copy-with-`ensure_exists`-off pattern |
+| F17 | feature · L2 | pdm @ 4abfe39 (upstream PR #3875, issue #3809, merged 2026-09-03) | User-in-the-loop, decision-dense: `exclude-newer-override`. `user.md`: table and CLI forms; `false` not `0` (the issue proposed 0); normalised names; CLI over pyproject per package; overrides alone force `--update-all`; uv `--exclude-newer-package`. Hand edits: message assertions relaxed; the uv argv test (internal state attribute) excluded | Validated 2026-10-20 (13 s grading). Run bfdc (reticent, x5): plain 2/5, superpowers 3/5; superpowers trials cost about 2x |
+| F18 | feature · L2 | pytest-rerunfailures @ 78561a5 (upstream PR #365, merged 2026-09-09) | User-in-the-loop, decision-dense: rerun conditions with error inspection (catalog H5). Pins `pytest>=9.1,<9.2`. Hand edits: the private-attribute test removed, a warning pattern's " as a callable" suffix dropped. The hidden tests are the project's own test file, so `regression` names it explicitly (the grader's `--ignore` otherwise left nothing to collect) and equals acceptance | Validated 2026-10-20 (16.5 s grading). Runs 1dca (interview-guide) and 91ef (superpowers), reticent x5: 0/5 every arm, because `test_condition_uses_one_decision_for_call_and_teardown_failures` fails for all 20 trials (the first attempt's teardown error stays reported, exit 1): a pytest report-protocol detail, not a design point. Without it: plain 3/5 and 3/5, guide 5/5, superpowers 5/5. 2026-10-20: that test removed from the hidden tests (note 3 in `task.toml`), revalidated [ok] (15.6 s); 1dca/91ef stay pilot data on the old hash |
+| F19 | feature · L2 | bidict @ 77ade42 (upstream PR #393, merged 2026-08-23) | User-in-the-loop, decision-dense: `RuntimeError` when an `OrderedBidict` is mutated during iteration (catalog D5). `user.md`: forward and reverse; insert, delete, `clear`, `move_to_end`, collapsing `forceput` and mutation via `.inverse` all count; the last item raises (unlike `OrderedDict`); value-only update allowed; an unadvanced iterator raises. Regression needs `--hypothesis-profile=default` | Validated 2026-10-20 (29 s grading). Pilot 7c93 (reticent, Sonnet 5.5, x3): plain 3/3, guide 3/3: no headroom |
+| F20 | feature · L2 | packaging @ 7464e38 (upstream PR #1377, merged 2026-10-20) | User-in-the-loop, decision-dense: `Requirement.__replace__` (D2). `user.md`: keyword-only fields; no-op returns an equal distinct copy; re-parse validation (`InvalidRequirement` for `name="foo[bar]"`, `extras={"a,b"}`); marker extras normalised; specifiers deep-copied with `prereleases` kept; subclasses preserved; unknown keyword `TypeError`. `copy.replace` test skips on 3.12 | Validated 2026-10-20 (11 s grading). Pilot 7c93 (reticent, Sonnet 5.5, x3): plain 0/3, guide 1/3; nearly every failure is the subclass-with-`__init__`-state case (in `user.md`, never asked for). Run 5f90 (x5): plain 1/5, guide 5/5; plain misses are again the subclass case. Superpowers c1e8 (x5): plain 0/5, superpowers 4/5. Informative 5a75 (x3): plain 1/3, guide 3/3 |
+| F21 | feature · L2 | jsonpath-ng @ ccb9533 (upstream PR #289, merged 2026-10-16) | User-in-the-loop, decision-dense: RFC 9535 slices and `[*]` on non-arrays (D10). `user.md`: coercion dropped; `[*]` on objects gives member values with field paths, on scalars nothing; parameterised slices only on lists; `..[*]` without phantom nodes; `update`/`filter` follow `find`; both parsers. Guessable direction from the RFC | Validated 2026-10-20 (4.6 s grading). Pilot 7c93 (reticent, Sonnet 5.5, x3): plain 3/3, guide 1/3; the guide's two failures made `[*]` parse to a `Wildcard` instead of the exported `Slice`, breaking an existing visible test (the hidden copy restores it; regression ignores acceptance files, so it did not show there) |
+| F22 | feature · L2 | packaging @ 189a76d (upstream PR #1313, merged 2026-07-21) | User-in-the-loop, decision-dense: `SpecifierSet.is_subset/is_superset/is_disjoint` (D6). `user.md`: plain bools; unsatisfiable set subset of and disjoint from everything; `""` accepts everything; differing `prereleases` `ValueError`; `===` `ValueError`; non-`SpecifierSet` `TypeError`. Hand edit: three `match=` strings dropped | Validated 2026-10-20 (15 s grading). Pilot 7c93 (reticent, Sonnet 5.5, x3): plain 2/3, guide 3/3; plain missed the `===` rejection. Run 5f90 (x5): plain 4/5, guide 5/5. Superpowers c1e8 (x5): plain 4/5, superpowers 5/5 |
+| F23 | feature · L2 | attrs @ d3a98cf (upstream PR #1592, merged 2026-08-01) | User-in-the-loop, decision-dense: Generator `on_setattr` hooks (D4). `user.md`: yielded value is set; post-yield code sees the new value; not in `__init__`; exception before yield keeps the old value, after keeps the new; second yield `RuntimeError` with the generator closed. Hand edits: private `test_compat` tests excluded, yield-twice message unpinned. Issue #1437 (2025) settles the headline | Validated 2026-10-20 (16 s grading). Pilot 7c93 (reticent, Sonnet 5.5, x3): plain 3/3, guide 3/3: no headroom |
+| F24 | feature · L2 | click @ 8dd4d60 (upstream PR #3677, merged 2026-07-08) | User-in-the-loop, decision-dense: `style()` colour validation (D9). `user.md`: index 0 honoured; names case-sensitive; 0..255; RGB exactly three ints, list accepted; bools rejected; every invalid value `ValueError`. Hand edit: `match="Unknown color"` dropped; pager tests ignored in regression (no `less`). Risk: the rule fits in one sentence | Validated 2026-10-20 (7.7 s grading). Pilot 7c93 (reticent, Sonnet 5.5, x3): plain 3/3, guide 3/3: no headroom |
+| F25 | feature · L2 | icalendar @ 8e80304 (upstream PR #1852, merged 2026-09-30) | User-in-the-loop, decision-dense: `vRecur.count` (D1). `user.md`: int reads; absent or empty list `None`; 0 valid; first of several; `None`/`del` remove, `del` unset no-op; non-int and bool `TypeError`; negative `InvalidCalendar`; unreadable stored value `InvalidCalendar` on read. Hand edits: message unpinned, a parser-text test removed. Installed with pip and a throwaway git repo (uv workspace source, hatch-vcs) | Validated 2026-10-20 (4.1 s grading). Pilot 7c93 (reticent, Sonnet 5.5, x3): plain 2/3, guide 3/3; plain missed the unreadable-stored-value rule. Run 5f90 (x5): plain 5/5, guide 5/5 |
+| F26 | feature · L2 | pytest @ ef052d0 (upstream PR #14751, merged 2026-07-24) | User-in-the-loop, decision-dense: `addini(type=...)` type expressions (S1). Hand edits: 8 message pins dropped; the `--help` format test removed | Validated 2026-10-20 (12 s grading). Pilot e4ed (reticent, Sonnet 5.5, x3): plain 2/3, guide 3/3; plain missed an invalid literal inside a union. Superpowers 74e8 (x5): plain 2/5, superpowers 5/5 |
+| F27 | feature · L2 | cyclopts @ 6feee65 (upstream PR #1004, merged 2026-10-12) | User-in-the-loop, decision-dense: config `null` checked against the type (S2). Hand edit: one message pin dropped; `pydantic==2.13.5` pinned so an unrelated test passes | Validated 2026-10-20 (5.9 s grading). Pilot e4ed (reticent, Sonnet 5.5, x3): plain 0/3, guide 1/3; hardest task so far: plain misses the nullable/optional-class and `None`-default rules wholesale, the guide only the `Cls | None` class case. Head-to-head 9066 (x5): superpowers 0/5, guide 0/5 as graded. Four top-level rows of `test_config_dict_null_optional_class` removed 2026-10-21 (failed 23 of 25 trials in every arm, a cyclopts-internals problem); without them e4ed is plain 0/3, guide 3/3 and 9066 superpowers 2/5, guide 4/5. Superpowers 74e8 (x5): plain 0/5, superpowers 0/5 as graded, 3/5 without the removed rows. Informative 5a75 (x3, new hash): plain 0/3, guide 0/3 |
+| F28 | feature · L2 | httpx2 @ b36e77b (upstream PR #1071, merged 2026-08-05) | User-in-the-loop, decision-dense: `sse(max_event_size=...)` (S3). Hand edits: 9 message pins dropped; a private-attribute async test removed; `chardet` pinned | Validated 2026-10-20 (7.2 s grading). Pilot e4ed (reticent, Sonnet 5.5, x3): plain 2/3, guide 3/3; plain counted the buffered partial line against the limit across events. Superpowers 74e8 (x5): plain 5/5, superpowers 5/5 |
+| F29 | feature · L2 | python-json-pointer @ 57a8e8d (upstream PR #84, merged 2026-10-19) | User-in-the-loop, decision-dense: `set_pointer(create=...)` (S5). Top-level `tests.py` is not detected as a test file, so it is excluded from the fix and copied into `hidden_tests/` by hand; regression is the module doctests | Validated 2026-10-20 (2.6 s grading). Pilot e4ed (reticent, Sonnet 5.5, x3): plain 1/3, guide 3/3; plain misses the immutable-sequence rule. Superpowers 74e8 (x5): plain 2/5, superpowers 4/5. Informative 5a75 (x3): 3/3 both |
+| F30 | feature · L2 | filelock @ 0b9adaa (upstream PR #625, merged 2026-07-13) | User-in-the-loop, decision-dense: `on_acquired` hook (S4). Hand edits: 2 private-patching tests removed, 3 message pins dropped; threaded tests deselected (`-k "not threaded"`) to keep grading short | Validated 2026-10-20 (21 s grading). Pilot e4ed (reticent, Sonnet 5.5, x3): plain 1/3, guide 3/3; plain misses the backend-executor and soft-lock rejection rules. Superpowers 74e8 (x5): plain 2/5, superpowers 5/5. Informative 5a75 (x3): plain 2/3, guide 3/3 |
+| F31 | feature · L2 | scrapy @ b87415d (upstream PR #8225, merged 2026-10-04) | User-in-the-loop, decision-dense: `Request.id` / `Request.parent_id` (T1). `user.md`: read-only unique int id; `copy()`/`replace()` give a new id and point `parent_id` at the original; explicit `parent_id` (even `None`) wins; `Response.follow` uses the response's request id; the scraper fills `parent_id` on yielded requests (sync/async generators, lists) without overwriting; dict round-trip. Names given in the prompt. No hand edits | Validated 2026-10-21 (9.9 s grading). Pilot 1150 (reticent, Sonnet 5.5, x3): plain 1/3, guide 3/3; plain misses the `follow` parent id and id read-only rules. Informative 5a75 (x3): 3/3 both. Superpowers 33d8 (x5): plain 3/5, superpowers 3/5 (both miss the `follow` parent id) |
+| F32 | feature · L2 | w3lib @ 73bfc87 (upstream PR #336, merged 2026-09-22) | User-in-the-loop, decision-dense: `max_scan=` on `get_base_url` / `get_meta_refresh` (T2). `user.md`: keyword-only; characters for `str`, bytes for `bytes`; `0` sees nothing, negative `ValueError`; a tag starting inside the limit is read to its end; a stray `<` doesn't extend the scan; reading on stops at the next `<`; bytes cut decodes with replacement. Hand edits: `match="max_scan"` relaxed; the Hypothesis test dropped | Validated 2026-10-21 (24.5 s grading). Pilot 1150 (reticent, Sonnet 5.5, x3): plain 3/3, guide 3/3: no headroom |
+| F33 | feature · L2 | dnspython @ 0ccb9cf (upstream PR #1363, merged 2026-10-18) | User-in-the-loop, decision-dense: `$GENERATE` substitution follows BIND (T3). `user.md`: every `$` substituted; `$$` literal, `\$` kept; nibble bases write every nibble and the width pads and counts dots; width 0 no empty label; malformed modifiers and negative nibble values `SyntaxError`. No hand edits. Risk: BIND's `genname()` is precedent | Validated 2026-10-21 (3.9 s grading). Pilot 1150 (reticent, Sonnet 5.5, x3): plain 1/3, guide 3/3; plain failures are the width-0 nibble case (empty label). Informative 5a75 (x3): plain 0/3, guide 3/3. Superpowers 33d8 (x5): plain 0/5, superpowers 5/5 |
+| F34 | feature · L2 | flask-caching @ 2f993e7 (upstream PR #675, merged 2026-08-22) | User-in-the-loop, decision-dense: `is_stale=` on `cached` and `memoize` (T4). `user.md`: hit-only, not after `forced_update`; cached value first, call args only if the callable takes more than one positional; only `True` counts; a stale hit signals a miss, not a hit. Hand edits: unrelated `test_init.py` removed; `test_cache_unlink` (live redis) excluded; a memcached regression test deselected | Validated 2026-10-21 (3.5 s grading). Pilot 1150 (reticent, Sonnet 5.5, x3): plain 3/3, guide 3/3: no headroom |
 
 Notes:
 
@@ -240,7 +265,7 @@ Notes:
 
 ## Suites
 
-Decided 2026-10-10. The goal is a sample of bugs and features that shows **large** effects between arms; the
+Decided 2026-10-10; `userloop` (F9–F34) replaced by the curated `interview` suite 2026-10-21, itself replaced by the v2 set on 2026-10-23 (the first set is now `interview-v1`). The other F9–F34 tasks (saturated, noisy, duplicate projects or early pilots) are kept with no suite and can still be run with `--tasks`. The goal is a sample of bugs and features that shows **large** effects between arms; the
 generated per-task data (time, tokens, cost, transcripts) matters more than the headline results. Levels set limits
 (time / budget / turns), not a difficulty tier: `--mode quick` simply drops the L3 (long-limit) tasks.
 
@@ -249,7 +274,9 @@ generated per-task data (time, tokens, cost, transcripts) matters more than the 
 | `standard` (default) | B5, B6, B7, B9, B17, B19, B20, B21, F3, F4, F5, F6, F7 | One task per project. Mixed pass rates (B6, B7, B19, B21, F7) carry the success signal; steady multi-minute tasks (B5, B9, B17, F4, F5) carry the time/cost signal. Covers 2–27 min. | ~$12, ~1.9 h serial |
 | `smoke` | B1, B13, F1 | Always pass in under a minute; checks the harness works before a real run. | ~$0.20 |
 | `diagnosis` | B-DP-1, B-DP-2 | 0/3 for plain Claude Code; only informative for treatments aimed at diagnosis. Run alongside `standard`. | ~$1.30 |
-| `userloop` | F9, F10 | Feature requests with the decisive API detail moved from the prompt to `user.md`; meaningful only with `--user informative` (the prompt alone underdetermines the hidden tests). | not piloted |
+| `interview` | F41, F42, F43, F45, F49, F50, F52, F53, F54, F56, F58, F59, F65 | Frozen 2026-10-23 (`interview-v2`). The same kind of feature requests under the strict + full stand-in, which each task sets itself (`reticence = "strict"`, `tool_answers = "full"`), so the flags cannot change it. Tiers from the x5 confirmation (see Interview v2 candidates): easy F41, F42, F52, F53; easy-middle F43, F59; middle F45, F56, F65; hard F50; floor checks F49, F54, F58. Sonnet at x5: plain 37/65, superpowers 40/65, guide 59/65, catchall 60/65. Only F50 separates strong interviewers | ~$4.3 per arm per rep (plain) |
+| `interview-v1` | F13, F14, F15, F20, F26, F27, F29, F30, F31, F33 | User-in-the-loop feature requests whose decisive rules live in `user.md`; each task declares `user = "reticent"` and `ask_tool = "on"`; `run` refuses `--user conventional` for them and warns on other modes (the prompt alone underdetermines the hidden tests). Chosen 2026-10-21 from F9–F34: the tasks where plain Claude Code repeatedly missed rules an interview settles, one per project. Targeted, like `diagnosis`: only informative for treatments that change how the agent asks. Chosen after seeing pilot results, so effect sizes on these runs are inflated; confirmed by d6d8, 027d and b0c9. Replaced as `interview` on 2026-10-23 by the v2 set (below); kept so earlier runs can be repeated | ~$2.8 per arm per rep (plain, median sum); ~33 min serial |
+| `interview-smoke` | F12 | Always passes in about 50 s ($0.13) with a user answering (0/3 with nobody); checks the stand-in and ask-tool plumbing before an `interview` run: `--suite interview-smoke --user reticent --ask-tool on --mode lightning`. Kept out of `smoke`, which runs with nobody answering | ~$0.13 |
 
 ### Cost tiers and report order
 
@@ -277,6 +304,26 @@ decided the order; within a tier the order is not statistically stable.
 | 11 | B9 | high | 47.2k | $1.40 | 7/8 | |
 | 12 | F4 | high | 74.3k | $1.59 | 8/8 | |
 | 13 | F5 | high | 148.6k | $2.86 | 7/7 | always last |
+
+**`interview` suite** (decided 2026-10-21 from the plain arms of confirmation runs d6d8 and 027d: Sonnet 5.5, CLI
+2.1.306, reticent user, ask tool, `--limit-scale 3`; 10 trials per task). Every task is below the standard suite's
+low/medium border (F3, 18.9k), so all are `low`; positions continue after the standard suite. The median order and
+the mean bootstrap rank (2,000 resamples) agree; F14/F31 (2.5 vs 2.9) and F26/F13 (6.7 vs 7.2) are near-ties.
+
+| Order | Task | Tier | Median output tokens | Median cost | Median wall | Plain pass |
+|---|---|---|---|---|---|---|
+| 14 | F29 | low | 5.3k | $0.12 | 1.0 min | 1/10 |
+| 15 | F14 | low | 9.0k | $0.21 | 1.9 min | 0/10 |
+| 16 | F31 | low | 9.2k | $0.30 | 2.9 min | 4/10 |
+| 17 | F20 | low | 10.2k | $0.24 | 2.5 min | 0/10 |
+| 18 | F33 | low | 11.1k | $0.29 | 2.3 min | 3/10 |
+| 19 | F26 | low | 12.0k | $0.28 | 8.7 min | 1/10 |
+| 20 | F13 | low | 12.3k | $0.28 | 2.1 min | 9/10 |
+| 21 | F15 | low | 12.8k | $0.26 | 2.2 min | 4/10 |
+| 22 | F30 | low | 13.1k | $0.39 | 3.7 min | 4/10 |
+| 23 | F27 | low | 13.7k | $0.41 | 5.2 min | 0/10 |
+
+On Opus 5.5 (20261021-165649-b0c9, x3, same setup) plain passed 13/30 and interview-guide 26/30 (15 vs 2 differing pairs, sign p=0.0023): passes out of 3 per task, plain vs guide: F13 2 vs 3, F14 0 vs 3, F15 2 vs 3, F20 0 vs 3, F26 1 vs 3, F27 0 vs 1, F29 1 vs 3, F30 3 vs 1, F31 1 vs 3, F33 3 vs 3. Agent cost $27.91 plain, $32.37 guide.
 
 Tasks outside `standard` have no tier and are listed after the tiers, by id. Pass counts are from the
 `baseline.json` backfill (below), which leaves out these runs, each made before a later change to the task:
@@ -312,11 +359,11 @@ can use the shipped copy as an oracle.
 
 | # | Repo (license) | Idea | Hidden tests | Risks |
 |---|---|---|---|---|
-| D1 | tinycss2 (BSD-3, Kozea) — **built as B4** | About 12–15 injected bugs across `tokenizer`, `parser`, `serializer`, `nth` (An+B) and `color3/4/5`. The issue reads "after upgrading, many CSS Syntax / Color results differ from browsers". | css-parsing-tests (public domain): stylesheet, rule/declaration lists, An+B and the color_* suites | The repo vendors the corpus, so held-out files must be removed from `repo/`. Bugs that are too local would finish in 5–10 min. |
-| D2 | tomli (MIT) | About 12 injected bugs in `_parser.py`/`_re.py`: datetimes, string escapes, multiline trimming, table redefinition, inline-table immutability, number formats, invalid-input rejection. | toml-test (MIT), valid and invalid cases | Shipped test data gives a partial oracle. A well-known codebase. TOML 1.0 vs 1.1 ambiguity. |
+| D1 | **Built as F25.** tinycss2 (BSD-3, Kozea) — **built as B4** | About 12–15 injected bugs across `tokenizer`, `parser`, `serializer`, `nth` (An+B) and `color3/4/5`. The issue reads "after upgrading, many CSS Syntax / Color results differ from browsers". | css-parsing-tests (public domain): stylesheet, rule/declaration lists, An+B and the color_* suites | The repo vendors the corpus, so held-out files must be removed from `repo/`. Bugs that are too local would finish in 5–10 min. |
+| D2 | **Built as F20.** tomli (MIT) | About 12 injected bugs in `_parser.py`/`_re.py`: datetimes, string escapes, multiline trimming, table redefinition, inline-table immutability, number formats, invalid-input rejection. | toml-test (MIT), valid and invalid cases | Shipped test data gives a partial oracle. A well-known codebase. TOML 1.0 vs 1.1 ambiguity. |
 | D3 | markdown-it-py (MIT) | About 12–15 bugs in block rules (lists, blockquote, fences, HTML blocks) and inline rules (emphasis balancing, links, entities). | CommonMark spec examples (CC-BY-SA, needs attribution) | A port of a well-known JS algorithm. The shipped spec tests are an oracle. |
-| D4 | jsonschema (MIT) | Injected bugs in keyword and draft handling (`unevaluated*`, `$dynamicRef`, `multipleOf`, `uniqueItems` 1 vs true). | JSON-Schema-Test-Suite (MIT) | The suite may exceed 60 s. Native `rpds-py` dependency. Corpus very well known. |
-| D5 | PyYAML (MIT) | Mutated scanner, parser and composer. | yaml-test-suite (MIT) | Real conformance gaps are architectural, so it would need injected bugs only. |
+| D4 | **Built as F23.** jsonschema (MIT) | Injected bugs in keyword and draft handling (`unevaluated*`, `$dynamicRef`, `multipleOf`, `uniqueItems` 1 vs true). | JSON-Schema-Test-Suite (MIT) | The suite may exceed 60 s. Native `rpds-py` dependency. Corpus very well known. |
+| D5 | **Built as F19.** PyYAML (MIT) | Mutated scanner, parser and composer. | yaml-test-suite (MIT) | Real conformance gaps are architectural, so it would need injected bugs only. |
 
 ### Large-fix defect candidates (researched 2026-10-09)
 
@@ -327,11 +374,11 @@ from the fix PR. PR numbers, dates and sizes were checked with `gh api`; nothing
 
 | # | Repo (license) | Bug / fix | Merged | Fix size | Hidden tests | Risks |
 |---|---|---|---|---|---|---|
-| D6 | dateparser (BSD-3), **built as B5** | Not thread-safe (issues #441, #1291): concurrent `parse()` hits check-then-read races in the size-limited dictionary/locale caches → random `KeyError`. PR #1346 reworks caching and shared state across the language pipeline. Base `de7b986f`, fix `cd9bb13e`. | 2026-08-24 | 9 files, +383/−173 (≈ +255/−173 code) | new `tests/test_thread_safety.py` (+128): `setswitchinterval(1e-7)`, `CACHE_SIZE_LIMIT=1`, concurrent parse/search | Race tests are probabilistic (repeat in grading). The suite (~24k tests, ~27 s) needs extra deps and Linux (`time.tzset`). Issue is from 2018, fix is recent. |
+| D6 | **Built as F22.** dateparser (BSD-3), **built as B5** | Not thread-safe (issues #441, #1291): concurrent `parse()` hits check-then-read races in the size-limited dictionary/locale caches → random `KeyError`. PR #1346 reworks caching and shared state across the language pipeline. Base `de7b986f`, fix `cd9bb13e`. | 2026-08-24 | 9 files, +383/−173 (≈ +255/−173 code) | new `tests/test_thread_safety.py` (+128): `setswitchinterval(1e-7)`, `CACHE_SIZE_LIMIT=1`, concurrent parse/search | Race tests are probabilistic (repeat in grading). The suite (~24k tests, ~27 s) needs extra deps and Linux (`time.tzset`). Issue is from 2018, fix is recent. |
 | D7 | click (BSD-3) | Flag options: envvar / `default` / `flag_value` / `type` reconciliation wrong (#2952: flag always true when any envvar set). PR #2956. Base `5c1239b0`, fix `565f36d5`. | 2025-07-01 | 8 files, +421/−89 (≈ 160 code lines in core.py, types.py) | parametrized `tests/test_options.py` (+239) | Expected semantics are upstream's choices, so the prompt must state them. 2025 merge, so some contamination risk. |
 | D8 | icalendar (license NOASSERTION, check LICENSE) | Date-only PERIOD parses but `to_ical()` raises; needs date→midnight datetime conversion and timezone propagation (#1633). PR #1645. Base `58310758`, fix `30ec6eef`. | 2026-08-12 | 11 files, +352/−58 | `test_issue_1633.py` (+197) + .ics fixtures | Mostly one file. The "accept, not reject" decision must be stated in the prompt. |
-| D9 | sqlglot (MIT) | OFFSET/ORDER/TOP/FETCH attached to the wrong scope in set operations for ClickHouse/T-SQL. PR #8385. | 2026-09-21 | 7 files, ≈ 130 lines | dialect tests asserting exact SQL | Exact-string expectations leave the right answer under-determined. |
-| D10 | werkzeug (BSD-3) | `parse_options_header` ambiguities. PR #3231. | 2026-08-10 | ≈ 190 lines | ≈ 20 test lines | Part bug fix, part performance work, and thin tests. Weak. |
+| D9 | **Built as F24.** sqlglot (MIT) | OFFSET/ORDER/TOP/FETCH attached to the wrong scope in set operations for ClickHouse/T-SQL. PR #8385. | 2026-09-21 | 7 files, ≈ 130 lines | dialect tests asserting exact SQL | Exact-string expectations leave the right answer under-determined. |
+| D10 | **Built as F21.** werkzeug (BSD-3) | `parse_options_header` ambiguities. PR #3231. | 2026-08-10 | ≈ 190 lines | ≈ 20 test lines | Part bug fix, part performance work, and thin tests. Weak. |
 
 | D11 | python-markdown2 (MIT; API says NOASSERTION, LICENSE.txt says MIT) | Emphasis/strong mis-parsing (#632 `**A_1** through **A_2**` → crossed `<em>`; #645, #652, #653, #654). PR #665 rewrites emphasis to GFM delimiter-run (left/right-flanking) rules. Base `a30892f6`, fix `c87a78c0`. | 2025-12-17 | 1 file, +451/−50 | `gfm_emphasis` case (≈268 lines of GFM spec snippets) + `middle_word_em_escaped_char` | One file, about 400 lines (estimate 10–15 min). One large case file gives all-or-nothing feedback. The PR body describes the algorithm, so keep it out of the prompt. |
 
@@ -454,6 +501,121 @@ Backups:
 - The trial-image hash no longer normalises CRLF, so a CRLF→LF rebuild gets a fresh image instead of a
   stale one.
 
+### Tenth search: ambiguous features merged after the model cutoff (2026-10-19)
+
+For the `userloop` suite, after F9 (agent never asks) and F10 (contaminated). Criteria: merged on or after
+2026-07-01, several plausible designs with the merged one non-default on at least two test-visible points,
+pure Python, 50–600 changed lines. Two searches, one from merged PRs and one from debated issues. Merge
+dates and base SHAs were checked with `gh`. Nothing has been cloned, built or run yet.
+
+| # | Upstream | Merged | Size | Decisions an agent would likely get wrong | Risks |
+|---|---|---|---|---|---|
+| U1 | **Built as F11.** copier #2849 (issue #2763), base `38f9bb0` | 2026-10-06 | +236/-13 | A separate templatable `ask` key, not `hide` and not `_ask` inside `when`; `when: false` beats `--ask` and discards the answer; an `ask: false` question keeps its previous answer on update, else records its default; `--ask` takes globs. 14-row truth table in the tests | Heavy install (jinja2, questionary, plumbum, pydantic) and needs `git`; the prompt tests use pexpect, so hidden tests should call `run_copy`/`run_update` |
+| U2 | mashumaro #339 (issue #176), base `71cd4d9` | 2026-09-17 | +235/-52 | Multiple aliases per field: the first is canonical for dump and schema; on load they are tried in order and the first key present wins; precedence field option > annotation > config, with no merging; the field name is tried after the aliases | Follow-up fixes landed upstream; codegen-heavy library; test dependencies (orjson, msgpack) |
+| U3 | **Built as F12.** towncrier #740, base `b3a363e` | 2026-08-15 | +77/-14 | `wrap` takes an int instead of gaining a second option (maintainer's request); `True` means 79; `wrap <= 0` falls back to 79, not "off"; `True` is not the int 1 | Small, so few decisions; tests run under `trial` |
+| U4 | pytest-rerunfailures #365 (issue #230) | 2026-09-09 | +547/-26 | `condition` callables take the exception; string conditions see it as `error`; every failed phase counts, each evaluated once; a condition that raises gives a warning, even under `filterwarnings=error` | Large; the xdist and subtests parts may need cutting |
+| U5 | stamina #160 (issue #151), base `22e52e0` | 2026-10-19 | +281/-6, mostly docs | `set_/get_process_details` setter pair, not an argument on `set_on_retry_hooks` (the maintainer's first idea); runs once per retry for every hook; `None` clears | The API names can only come from the brief |
+| U6 | pdm #3875 (issue #3809) | 2026-09-03 | ~172 | `exclude-newer-override`: `false` disables and `0` is rejected (the issue proposed 0); CLI `PKG=DATE` beats pyproject; names normalised | Heavy fixtures; famous repo |
+| U7 | dateparser #1443 (issues #701, #868), base `260fe0c` | 2026-10-02 | +513/-19 | `STRICT_DATE_ORDER` became an opt-in enum `none`/`year`/`all`, not a bool; raises without an explicit `DATE_ORDER`; a rejection returns `None` with no day/month swap | Near the size limit; large reject set |
+| U8 | starlette #3431 (issue #2155), base `c41236c` | 2026-08-08 | +619/-9 | Counts bytes received, with `Content-Length` used only to fail fast; nested routes can raise or lower the limit; multipart files count | Too large unless scoped down |
+
+Weaker: bump-my-version #430 (`--to`; no debate in the thread), towncrier #735 (`--sub-issue`; mostly a name),
+parsel #351 (decided in review, not debated), rerunfailures #336 (guessable), hatch #2306 (heavy, needs the
+internet). Near-misses include pydantic-settings #949, RxPY #711, multidict #1288, black #5433, tox #4020,
+whenever #403 (side branch), jsonpickle #609 and loguru #1413.
+
+Fallback, synthetic features if none of these work out. These are unverified sketches:
+- schedule: blackout windows, where a blocked run is deferred rather than skipped.
+- parse: `{name?}` optional fields that are absent from `.named` rather than `None`.
+- cachetools: `TTLCache.touch()` that returns `False` for a missing key and resets the expiry from now.
+
+### Eleventh search: decision-dense features (2026-10-19)
+
+Pilot 8fcc showed F11 and F12 have no headroom: plain Claude Code's own 2–4 questions covered every decisive
+point (informative 6/6). A task that can separate a better interviewer needs many test-visible decisions,
+several of them second-order. Second-order means edge cases, error types, precedence, interaction with existing
+options, or update/round-trip behaviour that an agent wouldn't think to ask about. Counts are decisions/second-order,
+read from the PR tests (not run). All were merged after 2026-07-01.
+
+| # | Upstream, base | Merged | Size | Decisions | Notes |
+|---|---|---|---|---|---|
+| H1 | **Built as F13.** platformdirs #585 `place_*_file`, `46843f1` | 2026-09-26 | +222/-5 | 11 / 8 | Each created directory gets 0o700 one level at a time; existing directories are untouched; applies with or without `ensure_exists`; rejected names create nothing; no-home `RuntimeError`; runtime-dir `PermissionError` propagates. Error messages are pinned by regex, so the brief must carry them. Fast, pure Python, Linux modes |
+| H2 | **Built as F14.** RxPY #711 `zip_latest`, `b5dc66c` | 2026-10-16 | ~110 src | 12 / 8 | Completion semantics: a pending value contributes one final tuple; completes as soon as no further tuple is possible; empty source stops later subscriptions; zero sources `ValueError`. Black-box TestScheduler tests |
+| H3 | **Built as F15.** werkzeug #3243 strict int/float converters, `ef518e4` | 2026-08-19 | +217/-95 | 10 / 8 | Non-ASCII digits rejected; validation on build too; `fixed_digits` ignores the sign; overflow to inf gives 404; no scientific notation on build. Framed as tightening, not a new feature |
+| H4 | **Built as F17.** pdm #3875 `exclude-newer-override`, `4abfe39` | 2026-09-03 | ~60 src | 12 / 9 | The issue's `0` became `false`; CLI beats pyproject per package; overrides alone force update-all; uv argv pinned. Tests set the internal `core.state.exclude_newer_overrides`; heavy fixtures; famous repo |
+| H5 | **Built as F18.** pytest-rerunfailures #365, `78561a5` | 2026-09-09 | ~150 src | 13 / 11 | Densest, but 40–60+ min of tangled rerun-protocol work, so failures may come from coding rather than missed questions. Drop the xdist and private-attribute tests |
+| H6 | **Built as F16.** platformdirs #586 `find_*_file(s)`, `ba1cc1e` | 2026-09-26 | +212 | 8 / 6 | Overlaps H1 on name validation; don't use both in one comparison |
+| H7 | pytest #14824 plugin import exit codes, `59e7f3a` | 2026-08-30 | +268/-33 | 10 / 8 | Unit tests import internals (`PluginImportFailure`); keep only the acceptance tests |
+
+Rejected for this purpose: dateparser #1443 (about 100 edge-case strings no interview can cover), starlette #3431
+(implementation traps and pinned constants), stamina #160 and mashumaro #339 (second-order points are guessable).
+Near-misses: werkzeug #3288 (not fully read), pytest #15153, cattrs #788, syrupy #1222, filelock #803.
+
+
+### Twelfth search: more decision-dense features (2026-10-20)
+
+After the overnight runs, only F13–F15 separated an interviewing treatment from plain, so the effect rests on three
+tasks. Same criteria as the eleventh search, plus: no decisions that hinge on message wording, no private-internal
+tests, no protocol plumbing (F18's lesson). About 200 repos swept by merge date. Merge dates and first-parent base
+SHAs verified with `gh`; for several PRs `baseRefOid` is not the first parent, so use these. Nothing cloned or run.
+
+| # | Upstream, base | Merged | Size | Decisions | Notes |
+|---|---|---|---|---|---|
+| D1 | icalendar #1852 `vRecur.count`, `8e80304` | 2026-09-30 | +69 src | 12 / 7 | 0 is valid and stored; bool `TypeError`; negative raises `InvalidCalendar`, not plain `ValueError`; first of several values; empty list reads `None`; `del` when unset is a no-op, setting `None` deletes; unreadable stored values raise on read. The PR body says "ValueError if <1" but the code allows 0: brief follows the code. One message-pinned test to drop. Sibling #1861 `wkst` (`d68d728`): use one |
+| D2 | packaging #1377 `Requirement.__replace__`, `7464e38` | 2026-10-20 | +54 src | 10 / 7 | No-op replace returns an equal, distinct instance; validated by re-parsing (`InvalidRequirement`); specifier deep-copied; marker extras normalised; subclasses preserved; unknown keyword `TypeError`. `copy.replace` tests need Python 3.13 (skip on 3.12). Don't pair with D7 |
+| D3 | tldextract #374 `TLDEXTRACT_PUBLIC_SUFFIX_LIST_URLS`, `9f86422` | 2026-09-29 | +40 src | 9 / 6 | Newline-delimited, blanks skipped; empty string means no fetch; local file paths become `file://`; explicit argument wins, `()`/`None` still disables; read at construction, not import. Check the suite runs offline |
+| D4 | attrs #1592 generator `on_setattr` hooks, `d3a98cf` | 2026-08-01 | ~70 src | 9 / 6 | Yielded value is what gets set; not run in `__init__`; exception before yield keeps the old value, after yield keeps the new one; second yield `RuntimeError` with the generator closed; not allowed in `setters.pipe`. Exclude the private `test_compat` additions; one message pin |
+| D5 | bidict #393 mutation during `OrderedBidict` iteration, `77ade42` | 2026-08-23 | +61/-17 src | 8 / 6 | Every mutation kind raises in both directions; mutation through `.inverse` counts; mutating on the last item raises (unlike `OrderedDict`); value-only update allowed; an unadvanced iterator also raises. Framed as a fix, but tests are behavioural |
+| D6 | packaging #1313 `SpecifierSet.is_subset/is_superset/is_disjoint`, `189a76d` | 2026-07-21 | +64 src | 8 / 5 | Unsatisfiable set is a subset of and disjoint from everything; `""` is not a subset of `>=3.12`; differing `prereleases` (unset vs `False`) `ValueError`; `===` `ValueError`; wrong type `TypeError`. Messages matched: disclose or relax |
+| D7 | packaging #1457 `Specifier/SpecifierSet.__replace__`, `fc61337` | 2026-10-20 | +75 src | 9 / 6 | Unchanged replace returns `self` (the opposite of D2); `prereleases=None` restores auto-detection; validated; subclasses preserved. Python 3.13 for `copy.replace` |
+| D8 | pluggy #732 hookspec argument defaults, `6e836fd` | 2026-09-22 | ~18 src | 8 / 5 | Spec default fills an omitted argument, also for historic replay and `call_extra`; falsy defaults honoured; missing arg without default `PluginValidationError`; spec added after registration still works. Follow-up #738 (`f51e3a7`) flips the precedence: a precedence task on its own |
+| D9 | click #3677 `style()` colour validation, `8dd4d60` | 2026-07-08 | +27 src | 10 / 5 | `ValueError` not `TypeError`; `fg=0` honoured; bool rejected; 0..255; names case-sensitive; RGB exactly three ints, list accepted. Message "Unknown color" matched |
+| D10 | jsonpath-ng #289 RFC 9535 slices and `[*]`, `ccb9533` | 2026-10-16 | +22/-43 src | 10 / 5 | `[*]` on objects yields values, on scalars nothing; slices on non-arrays yield nothing; no phantom copies under `..`. An agent that knows RFC 9535 needs little interviewing |
+
+**Vetting (2026-10-20).** Each candidate was cloned and its tests run locally (Windows, Python 3.12, HTTP proxy
+blocked; not yet in the Linux container). "Fails at base" = the fix's test files on the base checkout. No API spend.
+
+| # | Verdict | Fails at base | Grading | Decisions (2nd-order) | Edits needed / notes |
+|---|---|---|---|---|---|
+| D5 | build | 14 of 16 | ~5 s | 7 (7) | None (exclude CHANGELOG). No prior discussion; a size-change check misses `move_to_end`/`forceput`, a per-bidict counter misses `.inv` |
+| D2 | build | 6 (+1 skips on 3.12) | ~3 s | 13 (11) | None; brief says it must also serve `copy.replace` on 3.13. `Version.__replace__` at base hints the sentinel and `TypeError` |
+| D10 | build | 58 of 347 | ~1 s | 12 (9) | None (exclude changelog, pyproject). The base docstring defends coercion, so the user must decide to break it; RFC 9535 makes the direction guessable |
+| D6 | build with edits | 37 | ~3 s | 9 (6) | Drop three `match=` strings. `===` rejection and `TypeError` are the unguessable points; issue #947 (2025) had other names |
+| D4 | build with edits | 8 of 8 | <1 s | 8 (6) | Drop private `test_compat.py` tests; loosen the yield-twice message. Issue #1437 (2025) settles the headline design |
+| D9 | build with edits | 38 of 100 | <1 s | 8 (6) | Drop `match="Unknown color"`. Risk: the user can state the invalid-value rule in one line |
+| D1 | build with edits | 18 of 19 | <1 s | 14 (9) | Loosen "COUNT must be an int"; drop the old parser-text test; grade only the recur directory (full suite fails on Windows, unchecked on Linux). Issue #1851 (post-cutoff) spells out many decisions |
+| D7 | build with edits | 7 (2 skip on 3.12) | ~3 s | 9 (7) | Identity/aliasing assertions ("returns `self`") must be stated by the user; don't pair with D2 |
+| D8 | build with edits, low | 8 | <1 s | 8 (5) | Drop `test_does_not_override_hookimpl_default` (pins behaviour the PR calls provisional). Requested since 2018, so guessable. #738 is not a good standalone task |
+| D3 | build with edits, low | 5 of 10 | <1 s | 9 (8) | Contaminated: issue #233 (2024 maintainer comments) gives the name, format and empty-string rule |
+
+Build order: D5, D2, D10, D6, D4, then D9 and D1. Skip D7 (overlaps D2), D8 and D3.
+
+Near-misses: packaging #1376, dj-database-url
+#288. Rejected: private-internal tests (pydantic-settings #952, responses #809, itemloaders #120, click #3681),
+plumbing (toolz #634, jsonpath-ng #292, icalendar #1672), fixes not features (json-patch, bidict #392/#401/#403,
+tomlkit #567, cattrs #765/#778, more-itertools #1248/#1253/#1260), too few decisions (more-itertools #1116,
+wcwidth #250, packaging #1334/#1346, cssselect #178, fsspec #2272).
+
+### Thirteenth search: surprising decisive rules (2026-10-20)
+
+After pilot 7c93, F19/F23/F24 saturated: their rules follow a familiar precedent. This search asked for >= 3 decisive
+rules not derivable from a precedent or spec. Each finalist was run in `python:3.12` Docker (fix passes; fix's tests
+on the base fail), with merge and first-parent SHAs checked by `gh`.
+
+| # | Upstream, base | Merged | Size | Decisions (surprising) | Fails at base | Grading | Edits / notes |
+|---|---|---|---|---|---|---|---|
+| S1 | **Built as F26.** pytest #14751 `addini(type=...)` type expressions, `ef052d0` | 2026-07-24 | +163/-25 | 10 (7) | 24 of 294 | 4.4 s | Unions coerce ini strings to the first member that accepts them but keep native TOML types; no implicit default for unions/`Literal`; mismatches raise `TypeError` at `getini`; `Literal` choices must be str. Relax 8 message pins and the `--help` format test |
+| S2 | **Built as F27.** cyclopts #1004 config `null` for non-nullable types, `6feee65` | 2026-10-12 | +59/-24 | 12 (8) | 21 of 71 | 3.5 s | `x:int=None` keeps None but `x:int=5` raises; unannotated and `Any` typed by their default; optional dict with keyed null raises. Relax one pin; exclude a pydantic-drift test |
+| S3 | **Built as F28.** httpx2 #1071 `sse(max_event_size=...)`, `b36e77b` | 2026-08-05 | +56/-27 | 10 (8) | 18 of 48 | 2.0 s | Default on at 1 MiB (the PR body says None), UTF-8 bytes, all field lines count but comments don't, pending line counted per chunk, reset per event. Relax 8 pins; drop one private-attribute test; monorepo install |
+| S4 | **Built as F30.** filelock #625 `on_acquired` hook, `0b9adaa` | 2026-07-13 | +150/-56 | 9 (6) | 15 of 341 | 17 s | Once per physical acquire; after truncation; a losing contender must not truncate; hook error releases and re-raises; `SoftFileLock` `ValueError`. Drop 2 private-patching tests, relax 6 pins |
+| S5 | **Built as F29.** python-json-pointer #84 `set(create=...)`, `57a8e8d` | 2026-10-19 | +67/-8 | 8 (6) | 5 of 67 | 2.5 s | Intermediates are dicts; list end via `-` or len; atomic on failure; tuples raise. No edits. Requested in 2013 (#41) |
+| S6 | voluptuous #538 `extend` with Schema, `6cf9450` | 2026-07-05 | +37/-3 | 8 (6) | 8 of 180 | 0.9 s | Below the size floor |
+| S7 | filelock #618 `context_error_policy`, `94a80aa` | 2026-07-13 | +110/-9 | 9 (6) | 14 of 251 | 20 s | Flaky at the fix (caplog leak); don't pair with S4 |
+| S8 | wheel #694 `pack --local-version`, `4a63caf` | 2026-07-19 | +58/-3 | 6 (3) | 5 of 9 | 0.8 s | Most guessable |
+
+Build: S1, S2, S3, S5, S4. Rejected: httpx2 #1165 (internal-name tests, curl/Go precedent), pydantic-settings #900,
+cyclopts #978/#859/#851 (too small), mobly #1061 and yarl #1899 (precedent), dateparser #1473 (data-heavy).
+
 ## Rejected
 
 | Idea | Why |
@@ -462,3 +624,204 @@ Backups:
 | FeatBench / FEA-Bench tasks | Upstream PRs, so solutions are likely in training data. Not calibrated by agent time, and repo test suites are often slow. |
 | Commit0 (re-implement stubbed libraries) | Length is easy to adjust, but the work is unrealistic, which invites the same "toy task" criticism. |
 | One subtle bug in a small library | Found in under a minute regardless of the symptom (B2/B3 tuning, 2026-10-07). |
+
+### Fourteenth search: surprising decisive rules (2026-10-21)
+
+Same criterion as the thirteenth search (>= 3 decisive rules not derivable from a precedent or spec), applied to a fresh set
+of libraries: about 490 repos swept for PRs merged on or after 2026-07-01 that touch both source and tests, then about 60
+read from the diff. Each finalist was run in `python:3.12` Docker (fix passes; the fix's tests on the base fail), with merge
+and first-parent SHAs checked by `gh`. Size is non-test, non-doc Python only. Nothing was built or run against an agent.
+
+| # | Upstream, base | Merged | Size | Decisions (surprising) | Fails at base | Grading | Edits / notes |
+|---|---|---|---|---|---|---|---|
+| T1 | scrapy #8225 `Request.id` / `Request.parent_id`, `b87415d` | 2026-10-04 | +108/-4 (about 60 real, rest docstring) | 11 (8) | 23 of 114 | 8.3 s | `copy()` and `replace()` give a new id and set `parent_id` to the *original's* id (so retries and redirects point at the failed or original request); `id` is read-only (`AttributeError`); an explicit `parent_id` (including `None` via `replace(parent_id=None)`) is never overwritten by the scraper; the scraper sets `parent_id` on whatever a callback or errback yields, from the response's request or the failed request, sync and async generators alike; `Response.follow` takes the response's request id, `None` if the response has no request; `to_dict`/`request_from_dict` round-trip both ids, and a dict without `id` gets a fresh one. No edits: no message pins, no private-attribute tests. `test_lineage` uses the localhost mockserver (works offline); install needs pytest-asyncio, pytest-twisted, testfixtures, pyopenssl. Drop the `docs/_ext` change. Id format is free (tests need only unique ints) |
+| T2 | w3lib #336 `max_scan=` on `get_base_url` / `get_meta_refresh`, `73bfc87` (first parent; merge has two) | 2026-09-22 | +89/-28 | 9 (6) | 38 of 185 | 5.6 s at fix (28 s at base while the Hypothesis test fails) | Keyword-only; the limit counts characters for `str` and bytes for `bytes`; a tag that starts before the limit is read to its end, even through a quoted `>`, but a stray `<` that opens no tag does not extend the scan, and reading on stops at the next `<`; a bytes cut inside a character decodes with replacement; `0` looks at nothing, negative raises `ValueError`, `None` is unbounded; an unterminated tag inside the limit still counts. Relax `match="max_scan"` to any `ValueError`; drop `test_cut_never_invents` or pin `hypothesis`. Python >= 3.10 (`match`). The base already has `_scannable` regex helpers, so the task is regex-heavy |
+| T3 | dnspython #1363 `$GENERATE` substitution follows BIND, `0ccb9cf` | 2026-10-18 | +73/-74 | 9 (6) | 4 of 25 | 1.4 s | Nibble formats `n`/`N` write *every* nibble of the value and the width only pads with zero nibbles (it counts dots, so `${10,3,n}` is `b.0`, and 427 with width 3 is `b.a.1`); width 0 is allowed (no empty label); `$$` is a literal `$`; `\$` stays `\$`; every `$` in a template is substituted, not just the one with a modifier; a malformed modifier (`${bogus}`, `${1,}`, `${1,2,q}`, missing `}`) or a negative value in nibble mode raises `dns.exception.SyntaxError`. No edits: tests check the exception type, not text. Risk: someone who knows BIND `genname()` needs fewer questions. Alternate from the same repo: #1300 `rfc2308_ttl` (not vetted, RFC-derivable) |
+| T4 | flask-caching #675 `is_stale=` on `cached` and `memoize`, `2f993e7` | 2026-08-22 | +69/-17 | 8 (5) | 7 of 118 (+1 failure, 1 error at both arms) | 2.2 s | Called only on a cache hit, never when `forced_update` already fired; gets the cached value first, then the call's own arguments only if the callable accepts more than one non-keyword-only positional; only a result `is True` counts (a truthy `1` does not); a stale hit is reported as a *miss* signal and no hit signal; applies to views and to `memoize`. Precedent partly in the base (`forced_update`), and issue #392 (2022) asks for something close, so contamination is mild. Install `flask[async]`, pytest-xprocess, redis; deselect `test_async_cached_view` and `test_cache_unlink` (environment failures at both fix and base) |
+| T5 | black #5259 preview: symmetric collection operations, `364941e` | 2026-10-10 | +101/-0 | 9 (7) | 3 data cases of 35 (preview subset) | 7.4 s | Applies only under `--preview`; exactly one delimiter in the line; the operator is any math operator or comparator, not just `+`; both operands are single-line collection displays (list, set, dict, comprehension, or a parenthesized tuple but not a generator); a magic trailing comma on either side keeps the old split; each operand must fit the line length at its indent, with end-of-line comments ignored; an operand with a newline in it disqualifies. Hidden tests are three `tests/data/cases/preview_symmetric_*.py` files run by `tests/test_format.py -k preview` (249 lines of cases), so the interview has to carry a lot. Build needs `SETUPTOOLS_SCM_PRETEND_VERSION`, pytest-xdist, parameterized, aiohttp. Hard: engine knowledge in `lines.py` and the real preview flag name is not tested. 18 review comments upstream |
+| T6 | click #3877 `Parameter.spec`, deprecate `human_readable_name`, `06b2a67` (first parent) | 2026-10-04 | +121/-12 (about half docstring) | 9 (5) | 20 of 971 | 3.1 s | `spec` is the longest-prefix declaration for an option and the metavar (or upper-cased name) for an argument; `human_readable_name` still works but warns and returns `spec`, so its value for options changes from the name to `--name`; error and deprecation messages now name an option by its spec; a subclass overriding `human_readable_name` warns at class-definition time; `get_help_spec` moves to `Parameter`, and for an argument returns the decorated metavar (`[FILENAME]...`). Relax the two `match=` pins ("human_readable_name", "Override 'spec' instead") and the deprecation-message text; run only `test_arguments.py`, `test_deprecations.py`, `test_options.py` (the pager tests fail in the container at both fix and base). Mostly a rename, so some rules are guessable |
+| T7 | sqlite-utils #773 `dedupe_keys` for duplicate result columns, `a00ed60` | 2026-07-06 | +41/-4 | 7 (4) | 12 of 311 | 16 s whole set (test_cli dominates) | Later duplicates get `_2`, `_3` (not `_1`); a suffix that would collide with any real column in the query is skipped (`id, id, id_2` gives `id, id_3, id_2`; a second `id_2` gives `id_2_2`); applies to `db.query`, `rows_where`, `search` and CLI JSON output, but CSV, TSV and table output keep the duplicate headers. Below the size floor. Hidden `test_utils.py` calls `utils.dedupe_keys`, so name it in the brief or drop those 7 cases. Select node ids to grade in a few seconds |
+| T8 | black #5435 preview: keep dict keys with operators together, `a7c2368` | 2026-10-01 | +66/-4 | 7 (6) | 2 of 24 (preview subset) | 6.0 s | Defers a `delimiter_split` to `right_hand_split` only when the line is a dict entry with a depth-0 colon in a dictsetmaker; no closing brace before the colon; the top delimiter priority is below logic operators; every top-priority delimiter sits before the colon; and the head of the right-hand split fits. 110-line data file. Same repo and mechanism as T5: use one |
+
+Build: T1, T2, T3, T4 (2026-10-21, as F31-F34). T5 deferred: formatter internals and 249 lines of data cases make the interview carry too much; T6 the lighter alternative.
+T7 and T8 are fallbacks.
+
+Rejected: icecream #238 `ic.timer` (tests are loose regexes, the unit thresholds are untested), pydantic-settings #940
+`env_file_depth` (mirrors `pyproject_toml_depth`, so guessable) and #1033 (pydantic-internal plumbing), PyGithub #3540
+`max_rate_limit_wait` (three tests, few rules), simplejson #387 (the Python change is one line; the rest is C), black #5386
+(Windows-only tests that patch internals), sqlite-utils #832 (pragma SQL pinned verbatim), pathspec #128/#139/#152/#163
+(git-ignore precedent), pint #2382 and #2355 (below the size floor, glyph pins), yarl #1930-#1971 (WHATWG/RFC precedent),
+sqlfluff dialect PRs (SQL grammar precedent), jsonschema #1300 (13 source lines), cattrs #775 (small).
+
+### Fifteenth search: many-decision interview tasks (2026-10-21)
+
+Goal: headroom above the `interview` suite, where interview-guide passes 47/50 and only F27 still separates strong
+treatments. Criterion: a feature with many independent decisions the tests pin (ideally 5+), several second-order, so
+even a good interviewer can miss one. About 445 repos swept for PRs merged on or after 2026-06-02, about 30 read, 10
+vetted locally (Windows, Python 3.12, one venv each, offline; the PR's tests fail at base and pass at the merge).
+"Decisions (2nd)" counts the pinned decisions and, in brackets, the second-order ones.
+
+| # | Upstream, merge | Merged | Decisions (2nd) | Fails at base | Grading | Notes |
+|---|---|---|---|---|---|---|
+| T1 | cmd2 #1694 `allow_unknown_entry` + Enum unions, `49a176a` | 2026-06-16 | 13 (10) | 27 of 552 | 5.6 s | Two features bundled; most rules live in their interaction: `_missing_` only as a fallback after value and name lookup and only with the flag, the flag reaches list elements and union members, a raising `_missing_` propagates alone but counts as declining inside a union, all-decline gives the merged "invalid choice", unions resolve in order, a Literal or non-Enum member is a `TypeError`, merged choices deduped keeping `display_meta`, `A \| B \| None` is `nargs='?'` without a default and `--flag` with `= None`. Drop tests on private internals; relax message pins. Large (~420 lines incl. docs) |
+| T2 | cmd2 #1693 titled mutex groups + eager validation, `ec22b82` | 2026-06-14 | 9 (8) | collection error | 5.6 s | Nearly every rule is which `ValueError` fires when (partial or spanning mutex, title on an already grouped mutex, repeated parameter, `required=True` in plain groups), all at decoration time, by parameter name so forward references decorate. Tests import `_validate_group_specs`; keep the decoration-time ones. Not with T1 |
+| T3 | dateparser #1415 `TIMEZONE_ABBREVIATIONS`, `bd73ab7` | 2026-10-21 | 8 (6) | 5 of 171 | 4.4 s | Mapping to `timedelta`, default `{}`; unknown abbreviation and non-`timedelta` offset are `SettingValidationError`; case-sensitive; applies to absolute, freshness ("in 1 hour IST") and "+05:30 IST" strings and through locale detection; `TIMEZONE` / `TO_TIMEZONE` ignore it. Relax two message regexes |
+| T4 | falcon #2731 `allow_multiple=` on `get_param*`, `2a47a7f` | 2026-09-28 | 8 (6) | 47 of 397 | 0.8 s | Default True on all ten helpers; False raises `HTTPInvalidParam`; identical repeats still count; with `auto_parse_qs_csv` a comma list counts as multiple; absent param unaffected; `store` not populated on error; a repeated deep-object key raises in `get_param_as_dict`, the pairs form does not; WSGI and ASGI alike. Relax the message pin |
+| T5 | poetry-core #945 `Marker.apply(environment)`, `60516b6` | 2026-06-06 | 7 (5) | 34 of 550 | ~30 s (use `-k test_apply`) | Returns a marker, not a bool; absent variables are kept (unlike `validate`); empty environment returns `self`; `extra` evaluated against a tuple, empty meaning `extra == 'a'` is Empty and `!=` is Any |
+| T6 | pdm #3865 `pdm run --env/--env-file/--working-dir`, `50ca509` | 2026-08-28 | 7 (5) | 8 of 100 | 32 s | Flags override the script's options, reach every task of a composite, work with no script, must precede the script name; a malformed `--env` is a usage error, exit 1; script paths resolve against `--working-dir`. Same repo as F17 |
+| T7 | idna #253 `decode(display=True)`, `1a5bf80` | 2026-06-02 | 6 (4) | 1 test, 7 asserts | 0.1 s | Fallback |
+| T8 | dj-database-url #324 string options, int round-trip, `62c1231` | 2026-09-27 | 5 (4) | 4 of 64 | 0.2 s | Fallback |
+| T9 | tox #4167 `substitute = true` for TOML posargs, `ba393c1` | 2026-10-17 | 5 (3) | 3 of 146 | 9 s | Fallback; one test fails at both ends on Windows |
+| T10 | inflect #275 `defnoun(case="preserve")`, `af75127` | 2026-10-20 | 4 (3) | 3 of 188 | 1.5 s | Fallback; few decisions |
+
+Build: T1, T3, T4 (2026-10-21, as F35-F37). T2 and T5 next if those leave headroom; T1 or T2, not both.
+
+Pilot (run 20261021-224113-db09, reticent user, x3): plain 3/9 (1/3 on each), interview-guide 9/9, p=0.031. Plain's misses are genuine decisions (a raising `_missing_` swallowed, merged choices not deduped, overrides applied to `TIMEZONE`, the pairs form honouring `allow_multiple`). The three discriminate like the rest of the suite but give no headroom above the guide, so T5 was built (as F38, `validate-task` [ok], 4.6 s grading) and the four are piloted under `--reticence strict`. Strict pilot (run 20261022-013120-c9c3, x3): plain 6/12, guide 10/12; F35 0/3 vs 2/3, F36 1/3 vs 3/3, F37 2/3 vs 3/3, F38 3/3 vs 2/3. F38 leaves plain no headroom. F35-F37 are candidates for a later `interview` revision; none of the four gives headroom above a good interviewer.
+
+Rejected after reading: urllib3 #5055 (few decisions, dummyserver), pyjwt #1216 (RFC 4648 precedent, private-method tests),
+cattrs #737 (internal refactor), face #27 (loose tests, private pins), pytest-order #246 (message pins), falcon #2715
+(guessable), pydash #328 (concurrency fix), readme_renderer #365 (HTML fixtures).
+
+### Interview v2 candidates: the same features under the strict + full stand-in (2026-10-22)
+
+A task's stand-in is part of the task, so these are new tasks: copies of the candidates with `user = "reticent"`,
+`ask_tool = "on"`, `reticence = "strict"` (the filter rule as revised 2026-10-22) and `tool_answers = "full"` in
+task.toml, suite `interview-v2-candidates`. Prompt, brief, reference and hidden tests are the base task's (hand edits
+included). All 23 `validate-task` [ok] on developmenthost1. A naming convention such as `F13-strict` is deferred
+(ROADMAP).
+
+| New | Base | New | Base | New | Base | New | Base |
+|---|---|---|---|---|---|---|---|
+| F39 | F11 | F45 | F20 | F51 | F28 | F57 | F34 |
+| F40 | F12 | F46 | F23 | F52 | F29 | F58 | F35 |
+| F41 | F13 | F47 | F24 | F53 | F30 | F59 | F36 |
+| F42 | F14 | F48 | F25 | F54 | F31 | F60 | F37 |
+| F43 | F15 | F49 | F26 | F55 | F32 | F61 | F38 |
+| F44 | F19 | F50 | F27 | F56 | F33 | | |
+
+Calibration (plain, interview-catchall, interview-guide, superpowers, x3) picks 12-15 of them in three tiers: easy (plain
+passes about 30-80%), middle (plain fails, the catch-all passes), hard (the catch-all or guide sometimes misses).
+
+Calibration (2026-10-22, x3, runs 20261022-115440-c3a7 and 20261022-115504-db21; F62-F64 from the sixteenth-search pilot):
+
+| Task | Base | plain | catchall | guide | superpowers |
+|---|---|---|---|---|---|
+| F39 | F11 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F40 | F12 | 3/3 | 2/3 | 3/3 | 3/3 |
+| F41 | F13 | 2/3 | 3/3 | 3/3 | 2/3 |
+| F42 | F14 | 2/3 | 3/3 | 3/3 | 1/3 |
+| F43 | F15 | 3/3 | 3/3 | 3/3 | 1/3 |
+| F44 | F19 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F45 | F20 | 0/3 | 3/3 | 3/3 | 1/3 |
+| F46 | F23 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F47 | F24 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F48 | F25 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F49 | F26 | 3/3 | 1/3 | 3/3 | 3/3 |
+| F50 | F27 | 0/3 | 1/3 | 1/3 | 0/3 |
+| F51 | F28 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F52 | F29 | 2/3 | 1/3 | 3/3 | 2/3 |
+| F53 | F30 | 2/3 | 3/3 | 3/3 | 3/3 |
+| F54 | F31 | 2/3 | 2/3 | 3/3 | 2/3 |
+| F55 | F32 | 3/3 | 3/3 | 2/3 | 3/3 |
+| F56 | F33 | 2/3 | 3/3 | 3/3 | 1/3 |
+| F57 | F34 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F58 | F35 | 3/3 | 3/3 | 3/3 | 2/3 |
+| F59 | F36 | 2/3 | 3/3 | 3/3 | 3/3 |
+| F60 | F37 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F61 | F38 | 3/3 | 2/3 | 3/3 | 3/3 |
+| F62 | V1 | 3/3 | 3/3 | 3/3 | 2/3 |
+| F63 | V2 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F64 | V4 | 3/3 | 2/3 | 3/3 | 3/3 |
+| Total | | 65/78 | 68/78 | 75/78 | 62/78 |
+
+Under the strict + full stand-in plain is no longer near the floor: one tool menu with full answers settles most tasks.
+Only F45 (plain 0/3, catch-all and guide 3/3) and F50 (every arm 0-1/3) separate clearly at x3.
+
+### Sixteenth search: follow-up-dependent interview tasks (2026-10-22)
+
+Goal: the hard end of `interview` v2. A two-sentence treatment that asks everything in one round plus "anything else?"
+matches the full guide, so these need decisions the tests pin that only become relevant after the user's answer to an
+earlier question (a branch with its own sub-decisions). About 400 repos swept by merge date, about 35 PRs read, 7 vetted
+locally (V4 in a `python:3.12` container). None has two independent deep branches; each has one with 5-8 sub-decisions.
+
+| # | Upstream, merge | Merged | Decisions (2nd) | Fails at base | Grading | Branch (first answer -> pinned sub-decisions) |
+|---|---|---|---|---|---|---|
+| V1 | watchdog #1325 polling observer survives unreadable dirs, `7d4d2b8` | 2026-10-20 | 8 (6) | 5 of 7 | 10 s | Survive? -> which errors mean "gone" (ENOENT/ENOTDIR deletion, other OSError transient) -> keep snapshot and retry, report changes made during the outage on recovery, one warning per outage, info on resume, subdirectory EIO the same, retry forever |
+| V2 | queuelib #86 `clear()`, `eaf554a` | 2026-08-23 | 9 (7) | 42 of 247 | 3.5 s | Which queues? (all six) -> disk FIFO leaves exactly `q00000` and stays usable, LIFO truncated; composites clear, close and drop inner queues, reset `curprio`; an inner queue without `clear()` is drained |
+| V3 | async-lru #782 `key=`, `bda9915` | 2026-08-09 | 9 (6) | 11 of 12 | 0.5 s | Custom key? -> same args incl. `self`; invalidate/contains use it; `typed` + `key` ValueError; non-callable TypeError; unhashable key TypeError before counters move. Relax three message pins |
+| V4 | gunicorn #3688 globs in `reload_extra_files`, `df3a0f7` | 2026-08-17 | 8 (6) | 5 of 61 | 5 s | Globs? -> expanded on every reload check (config keeps the pattern), no match a `RuntimeWarning` (missing plain path still `ValueError`), `**` recursive, `*` skips dotfiles, literal `*?[` read as a pattern, relative to launch dir. Linux only; narrow regression |
+
+Rejected: pytest-benchmark #318 (private-method tests), omegaconf #1376 (no branching), watchdog #1320 (100 s test),
+tqdm #1576 and #1265 (thin wrappers), cibuildwheel #2928, progressbar #327, aiofiles #235, setuptools_scm #1523 (too
+big), Flask #6133, environs #481 and #487, boltons #453, python-jsonpath #133 (too small).
+
+Build: V1, V2, V4 as F62-F64, defined with the v2 stand-in (`reticence = "strict"`, `tool_answers = "full"`).
+
+Pilot (x3, runs 20261022-124945-f430 and 20261022-125008-4ccc): plain 9/9, interview-guide 9/9, interview-catchall 8/9, superpowers 8/9. The sub-decisions are what a careful implementer does by default (retry and report on recovery, leave the first chunk file, expand globs lazily) or what one round of questions reaches, so the criterion does not produce hard tasks. F62-F64 are easy-tier candidates.
+
+### Seventeenth search: several non-default rules in distinct cases (2026-10-22)
+
+Goal: the hard end of `interview-v2`. Under the fair stand-in only F45 (F20) and F50 (F27) separate strong treatments;
+the sixteenth search showed branching alone does not make a task hard. Criterion: the tests pin several independent rules
+that a competent implementer would get wrong by default, each in its own case, so each is learned only by asking about that
+case. About 5,500 repos swept plus about 200 curated libraries, about 30 PRs read, 6 vetted in `python:3.12` containers.
+
+| # | Upstream, merge | Merged | Decisions (non-default) | Fails at base | Grading | Notes |
+|---|---|---|---|---|---|---|
+| X1 | xknx #1952 `Device.last_update` cause tracking, `ec1b7378` | 2026-10-13 | 9 (7) | 3 files at collection | 0.6 s | Incoming telegrams ignore the receiving task's context; the cause is cleared while callbacks run; cover travel keeps the starting telegram; debounced light colour takes the last telegram; callback signature unchanged. Brief names `DeviceUpdate`, `telegram_context`, `Device.last_update`, `Telegram.context` |
+| W1 | wtforms #939 lazy `choices` callables, `61a7614e` | 2026-10-22 | 10 (7) | 9 of 263 | 0.6 s | Called on first read, cached until `post_process`; not called when validating with no data; a callable reading its own choices sees the previous value; assignment replaces it and survives reprocessing; nested entries refresh; subclass `__init__` extending choices keeps working. Drop the private deprecation test |
+| S1 | subliminal #1362 `--name` as sed substitution, `30fad08a` | 2026-07-15 | 8 (5) | collection error | 3.8 s | `&` literal (unlike sed); `s.w.a.t.2017...` stays a static name; non-matching files scanned with `name=None`; flags other than g/i exit 2; any non-alphanumeric delimiter with `\` escapes. Tests import helper names; relax the message pin |
+| R1 | rtree #424 `Property.to_json/from_json`, `f7c9ebd4` | 2026-09-24 | 8 (6) | 11 of 52 | 0.4 s | Callback keys omitted; unknown keys (incl. `handle`) `ValueError`, non-object `TypeError`; 1024 limit in UTF-8 bytes, checked before parsing on bytes and str, exactly 1024 allowed, `to_json` enforces it too. Needs libspatialindex; relax two pins |
+| F1 | PySceneDetect #570 writers take a path or handle, `56ab41b8` | 2026-09-12 | 7 (3) | 10 of 44 | 0.6 s | Fallback |
+| E1 | wtforms #926 `enum_choices`, `21a1fefc` | 2026-06-12 | 8 (3) | 3 files at collection | 0.6 s | Fallback; precedent in `SelectChoice.from_enum`; one wtforms task only |
+
+Rejected: kombu #2705 (repo in catalog), BlackSheep #704 (Cython build), Radicale #2281 (protocol harness), mistune #499,
+tenacity #645, dateutil #1600, typer #1972, pymdown #2986, git-machete #1791, b2 #1157 (small or follows precedent).
+
+Build: X1, W1, S1, R1 as F65-F68 with the v2 stand-in.
+
+Pilot (x3, seed 361, runs 20261022-210849-933b plain vs guide and 20261022-210910-6133 catchall vs superpowers, no
+usage-limit stops):
+
+| Task | Base | plain | catchall | guide | superpowers |
+|---|---|---|---|---|---|
+| F65 | X1 | 0/3 | 3/3 | 2/3 | 0/3 |
+| F66 | W1 | 3/3 | 3/3 | 3/3 | 2/3 |
+| F67 | S1 | 3/3 | 3/3 | 3/3 | 3/3 |
+| F68 | R1 | 3/3 | 3/3 | 3/3 | 3/3 |
+
+F65 separates: plain and superpowers miss the context rules (incoming telegrams ignore the receiving task's context,
+cover travel and debounced colour keep the right telegram), and the guide missed `test_telegram_context` once. It joins
+`interview-v2` (middle-to-hard tier). F66's miss is one caching case; F67 and F68 are saturated: their rules, though not
+defaults, come out when the agent asks about the named API's error cases, which every arm does. The criterion yields one
+hard task in four.
+
+Confirmation of the 12 provisional tasks (x5, seed 351, runs 20261022-200817-6b1c plain vs guide and
+20261022-200842-3078 catchall vs superpowers, no usage-limit stops), with a proposed tier:
+
+| Task | Base | plain | catchall | guide | superpowers | Tier |
+|---|---|---|---|---|---|---|
+| F41 | F13 | 4/5 | 5/5 | 5/5 | 4/5 | easy |
+| F42 | F14 | 3/5 | 4/5 | 5/5 | 5/5 | easy |
+| F43 | F15 | 2/5 | 5/5 | 4/5 | 1/5 | easy-middle |
+| F45 | F20 | 1/5 | 5/5 | 4/5 | 1/5 | middle |
+| F49 | F26 | 5/5 | 5/5 | 4/5 | 3/5 | floor check |
+| F50 | F27 | 1/5 | 1/5 | 4/5 | 0/5 | hard |
+| F52 | F29 | 3/5 | 5/5 | 5/5 | 4/5 | easy |
+| F53 | F30 | 4/5 | 5/5 | 5/5 | 5/5 | easy |
+| F54 | F31 | 5/5 | 5/5 | 5/5 | 3/5 | floor check |
+| F56 | F33 | 1/5 | 5/5 | 5/5 | 5/5 | middle |
+| F58 | F35 | 5/5 | 5/5 | 3/5 | 3/5 | floor check |
+| F59 | F36 | 2/5 | 5/5 | 5/5 | 5/5 | easy-middle |
+| Total | | 36/60 | 55/60 | 54/60 | 39/60 | |
+
+Plain vs guide 22 vs 4 differing pairs (sign p=0.0005); catchall vs superpowers 17 vs 1 (p=0.0001). The four arms keep the
+calibration's order (catchall and guide level, superpowers near plain). Floor-check tasks are ones plain passes and an arm
+can still lose (superpowers' plan turn or the guide's extra questions talking it into a wrong rule); they detect harm,
+not gain. F50 is the only task that separates the guide from the catch-all (4/5 vs 1/5); with F65 (catchall 3/3, guide
+2/3 at x3) the hard tier is two tasks, which is the suite's weak end.
+
+F65 at x5 (seed 371, runs 20261023-031340-db2d and 20261023-031402-b303, no usage-limit stops): plain 1/5, catchall
+5/5, guide 5/5, superpowers 1/5. With the x3 pilot (8/8 for the catch-all, 7/8 for the guide) it is a middle-tier task,
+not hard. `interview-v2` stands at 13 tasks: easy F41, F42, F52, F53; easy-middle F43, F59; middle F45, F56, F65; hard
+F50; floor checks F49, F54, F58. Over the 13 at x5: plain 37/65, catchall 60/65, guide 59/65, superpowers 40/65.

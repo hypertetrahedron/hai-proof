@@ -1,0 +1,340 @@
+diff --git a/CHANGES.rst b/CHANGES.rst
+index d035455..4593026 100644
+--- a/CHANGES.rst
++++ b/CHANGES.rst
+@@ -14,11 +14,14 @@ Unreleased
+ - Default ``invalid_value_message`` and ``invalid_choice_message`` are
+   translated when the error is raised, not when the field is built. Forms can
+   be built again outside of a translation context.
+-- ``choices`` callables on fields nested in a :class:`~fields.FieldList` are
+-  now evaluated when entries are added via
+-  :meth:`~fields.FieldList.append_entry` or
+-  :meth:`~fields.FieldList.insert_entry`, which now run ``post_process`` on the
+-  new entry.
++- ``choices`` callables on :class:`~fields.SelectField` and
++  :class:`~datalist.DataList` run on the first read and their result is
++  cached. Calling :meth:`~form.BaseForm.post_process` again refreshes them.
++  This also applies to entries added with
++  :meth:`~fields.FieldList.append_entry` and
++  :meth:`~fields.FieldList.insert_entry`.
++- Passing a callable to ``SelectFieldBase._choices_from_input`` is
++  deprecated.
+ - Numeric, date, time and select fields report a validation error instead of
+   raising a :class:`TypeError` when the input is not a string.
+ - The labels of :class:`~fields.FieldList` entries point to the right field
+diff --git a/docs/fields.rst b/docs/fields.rst
+index 9517eec..aed1342 100644
+--- a/docs/fields.rst
++++ b/docs/fields.rst
+@@ -67,6 +67,7 @@ The Field base class
+     .. automethod:: process(formdata [, data])
+     .. automethod:: process_data
+     .. automethod:: process_formdata
++    .. automethod:: post_process
+     .. attribute:: data
+ 
+         Contains the resulting (sanitized) value of calling either of the
+@@ -329,8 +330,8 @@ Choice Fields
+                 SelectChoice('text', 'Plain Text'),
+             ])
+ 
+-    Note that the `choices` keyword is evaluated each time the form is
+-    instantiated, so callables passed as `choices` are re-evaluated per instance.
++    A callable passed as `choices` is resolved separately for each form
++    instance, the first time its choices are read.
+     For dynamic options, either pass a callable to `choices` or assign
+     `field.choices` after instantiation. Any submitted choices which are not in
+     the given choices list will cause validation on the field to fail. If this
+@@ -361,17 +362,22 @@ Choice Fields
+             user = User.query.get(id)
+             form = UserDetails(request.POST, obj=user)
+ 
+-    Note we passed a callable to `choices` rather than a static list; it is
+-    invoked each time the form is instantiated, producing fresh options per
+-    request. If the choices depend on data only available in the view, you can
+-    instead assign `form.group_id.choices` after instantiation. The `coerce`
+-    keyword arg to :class:`~wtforms.fields.SelectField` says that we use
+-    :func:`int()` to coerce form data. The default coerce is :func:`str()`.
++    Note we passed a callable to `choices` rather than a static list; it
++    produces fresh options per request. Its result is cached. Calling
++    :meth:`~wtforms.form.BaseForm.post_process` again refreshes it.
++
++    If the choices depend on data only available in the view, you can instead
++    assign `form.group_id.choices` after instantiation. A list assigned this
++    way replaces the callable.
++
++    The `coerce` keyword arg to :class:`~wtforms.fields.SelectField` says
++    that we use :func:`int()` to coerce form data. The default coerce is
++    :func:`str()`.
+ 
+     The callable may optionally accept ``(form, field)`` as positional
+-    arguments. When this signature is used, the callable is invoked after the
+-    whole form has been processed, so it can read ``field.data`` and the data
+-    of any other field on the form::
++    arguments. The callable is invoked when the choices are read, normally
++    after the whole form has been processed, so it can read ``field.data`` and
++    the data of any other field on the form::
+ 
+         def available_groups(form, field):
+             return [SelectChoice(g.id, g.name) for g in form.tenant.data.groups]
+@@ -610,8 +616,10 @@ Data Lists
+ 
+     ``choices`` is either a list of :class:`~wtforms.DataListChoice`
+     (or plain strings, in which case the string is used as both value
+-    and label), a shorthand ``{value: label}`` dict, or a callable
+-    invoked once the whole form has been processed. The callable may
++    and label), a shorthand ``{value: label}`` dict, or a callable. The
++    callable runs when the datalist is rendered, after the whole form has been
++    processed. Its result is cached until the next
++    :meth:`~wtforms.form.BaseForm.post_process`. The callable may
+     take no argument (``fn()``) for a static list, or ``(form, field)``
+     to adapt the suggestions to the form data, for example the current
+     field value. This is convenient for server-side filtering::
+diff --git a/docs/forms.rst b/docs/forms.rst
+index 67ab36d..62143ae 100644
+--- a/docs/forms.rst
++++ b/docs/forms.rst
+@@ -294,6 +294,8 @@ fields.
+         this to provide form data to the enclosed fields. Accessing the field's
+         data before calling process is not recommended.
+ 
++    .. automethod:: post_process
++
+     .. automethod:: validate
+ 
+     .. automethod:: __iter__
+diff --git a/src/wtforms/datalist.py b/src/wtforms/datalist.py
+index 7cc8b3c..f0893cc 100644
+--- a/src/wtforms/datalist.py
++++ b/src/wtforms/datalist.py
+@@ -3,8 +3,8 @@ from dataclasses import dataclass
+ from dataclasses import field
+ 
+ from wtforms import widgets
+-from wtforms._compat import get_signature
+ from wtforms.fields.choices import _enum_options
++from wtforms.fields.choices import _invoke_choices_callable
+ from wtforms.fields.choices import Choice
+ 
+ __all__ = ("DataList", "DataListChoice", "enum_datalist")
+@@ -92,6 +92,7 @@ class DataList:
+     def __init__(self, choices=None, *, render_kw=None, widget=None):
+         self._raw_choices = choices
+         self._choices = None if callable(choices) else choices
++        self._field = None
+         self.render_kw = render_kw or {}
+         if widget is not None:
+             self.widget = widget
+@@ -101,24 +102,23 @@ class DataList:
+         clone = DataList.__new__(DataList)
+         clone._raw_choices = self._raw_choices
+         clone._choices = None if callable(self._raw_choices) else self._raw_choices
++        clone._field = None
+         clone.render_kw = self.render_kw
+         clone.widget = self.widget
+         clone.id = id
+         return clone
+ 
+-    def _resolve(self, field):
+-        raw = self._raw_choices
+-        if not callable(raw):
+-            return
+-        try:
+-            sig = get_signature(raw)
+-            sig.bind(field._form, field)
+-        except TypeError:
+-            self._choices = raw()
+-            return
+-        self._choices = raw(field._form, field)
++    def _invalidate(self, field):
++        """Mark the choices for a lazy refresh on the next :meth:`iter_choices`."""
++        if callable(self._raw_choices):
++            self._field = field
+ 
+     def iter_choices(self, field=None):
++        if (bound := self._field) is not None:
++            self._field = None
++            self._choices = _invoke_choices_callable(
++                self._raw_choices, bound._form, bound
++            )
+         raw = self._choices
+         if raw is None:
+             return []
+diff --git a/src/wtforms/fields/choices.py b/src/wtforms/fields/choices.py
+index 172a7a8..a49b547 100644
+--- a/src/wtforms/fields/choices.py
++++ b/src/wtforms/fields/choices.py
+@@ -126,6 +126,19 @@ def _has_custom_str(enum_cls):
+     return enum_cls.__str__ not in stdlib
+ 
+ 
++def _invoke_choices_callable(cb, form, field):
++    """Call a ``choices`` callable with ``(form, field)``, or with no argument."""
++    try:
++        sig = get_signature(cb)
++    except (ValueError, TypeError):
++        return cb()
++    try:
++        sig.bind(form, field)
++    except TypeError:
++        return cb()
++    return cb(form, field)
++
++
+ def _enum_options(enum_cls, by, label, factory):
+     if by not in ("value", "name"):
+         raise ValueError(f"by must be 'value' or 'name', got {by!r}")
+@@ -276,6 +289,13 @@ class SelectFieldBase(Field):
+     def _choices_from_input(self, choices):
+         """Parse the user-supplied ``choices`` into a list of :class:`SelectChoice`."""
+         if callable(choices):
++            warnings.warn(
++                "Passing a callable to _choices_from_input() is deprecated; "
++                "resolve the callable before the call. Will be removed in "
++                "WTForms 3.4.",
++                DeprecationWarning,
++                stacklevel=2,
++            )
+             choices = self._invoke_choices_callback(choices)
+ 
+         if choices is None:
+@@ -344,15 +364,7 @@ class SelectFieldBase(Field):
+                 return
+ 
+     def _invoke_choices_callback(self, cb):
+-        try:
+-            sig = get_signature(cb)
+-        except (ValueError, TypeError):
+-            return cb()
+-        try:
+-            sig.bind(self._form, self)
+-        except TypeError:
+-            return cb()
+-        return cb(self._form, self)
++        return _invoke_choices_callable(cb, self._form, self)
+ 
+     class _Option(Field):
+         def _value(self):
+@@ -377,20 +389,41 @@ class SelectField(SelectFieldBase):
+         self.coerce = coerce
+         if callable(choices):
+             self._choices_callable = choices
+-            self.choices = None
++            self._choices_stale = True
++            self._choices = None
+         else:
+             self._choices_callable = None
++            self._choices_stale = False
+             if choices is None:
+-                self.choices = None
++                self._choices = None
+             else:
+                 self._warn_legacy_choices(choices)
+-                self.choices = (
++                self._choices = (
+                     dict(choices) if isinstance(choices, dict) else list(choices)
+                 )
+         self.validate_choice = validate_choice
+         self.invalid_value_message = invalid_value_message
+         self.invalid_choice_message = invalid_choice_message
+ 
++    @property
++    def choices(self):
++        """The field's choices, resolved from the callable on first read."""
++        if self._choices_stale:
++            self._choices_stale = False
++            self._choices = self._invoke_choices_callback(self._choices_callable)
++        return self._choices
++
++    @choices.setter
++    def choices(self, value):
++        if callable(value):
++            self._choices_callable = value
++            self._choices_stale = True
++            self._choices = None
++        else:
++            self._choices_callable = None
++            self._choices_stale = False
++            self._choices = value
++
+     def iter_choices(self):
+         choices = self._choices_from_input(self.choices) or []
+         return [
+@@ -426,7 +459,7 @@ class SelectField(SelectFieldBase):
+     def post_process(self, formdata=None):
+         super().post_process(formdata)
+         if self._choices_callable is not None:
+-            self.choices = self._invoke_choices_callback(self._choices_callable)
++            self._choices_stale = True
+ 
+     def process_data(self, value):
+         try:
+diff --git a/src/wtforms/fields/core.py b/src/wtforms/fields/core.py
+index 2305b9d..50e6664 100644
+--- a/src/wtforms/fields/core.py
++++ b/src/wtforms/fields/core.py
+@@ -355,14 +355,17 @@ class Field:
+ 
+         Override this when a field needs to read other fields' processed data,
+         for example to resolve dynamic choices that depend on the form state.
+-        The base implementation resolves any inline :class:`~wtforms.DataList`
++        The base implementation refreshes any inline :class:`~wtforms.DataList`
+         attached to the field.
+ 
++        It may run again after the form data changed. See
++        :meth:`~wtforms.form.BaseForm.post_process`.
++
+         :param formdata: The resolved formdata the enclosing form was bound
+             with, or ``None`` for non-formdata cycles.
+         """
+         if self._datalist is not None and not isinstance(self._datalist, str):
+-            self._datalist._resolve(self)
++            self._datalist._invalidate(self)
+ 
+     def process_data(self, value):
+         """
+diff --git a/src/wtforms/form.py b/src/wtforms/form.py
+index c44f579..b6b1cbe 100644
+--- a/src/wtforms/form.py
++++ b/src/wtforms/form.py
+@@ -136,21 +136,27 @@ class BaseForm:
+     def post_process(self, formdata=None):
+         """Hook called at the end of :meth:`process` on the root form.
+ 
+-        Runs the :meth:`~fields.Field.post_process` hook on every field, after
+-        all fields have been processed. Override this on a form subclass to add
+-        cross-field finalization logic; call ``super().post_process(formdata)``
+-        to keep per-field hooks running.
+-
+-        :param formdata: The resolved formdata the form was bound with
+-            (already passed through :meth:`~meta.DefaultMeta.wrap_formdata`),
+-            or ``None`` for non-formdata cycles. Forwarded to every nested
++        Runs the :meth:`~wtforms.fields.Field.post_process` hook on every
++        field, after all fields have been processed. Override this on a form
++        subclass to add cross-field finalization logic; call
++        ``super().post_process(formdata)`` to keep per-field hooks running.
++
++        :param formdata: The resolved formdata the form was bound with (already
++            passed through :meth:`~wtforms.meta.DefaultMeta.wrap_formdata`), or
++            ``None`` for non-formdata cycles. Forwarded to every nested
+             ``post_process``.
+ 
+-        ``post_process`` is only triggered automatically on the root form. Forms
+-        nested inside a :class:`~fields.FormField` (or via :class:`~fields.FieldList`
+-        entries) propagate the call through :meth:`fields.FormField.post_process`
+-        and :meth:`fields.FieldList.post_process`, so every nested field's
+-        ``post_process`` runs exactly once per processing cycle.
++        :meth:`process` only triggers ``post_process`` on the root form. Forms
++        nested inside a :class:`~wtforms.fields.FormField` (or via
++        :class:`~wtforms.fields.FieldList` entries) propagate the call through
++        ``FormField.post_process`` and ``FieldList.post_process``, so
++        :meth:`process` runs every nested field's ``post_process`` once.
++
++        After changing field data, call ``post_process(formdata)`` again with
++        the same ``formdata``, so that derived state such as ``choices``
++        callables reflects the new data. Overrides must therefore be
++        idempotent: derive state from ``data``, do not reload ``data`` from
++        ``formdata``.
+         """
+         for field in self._fields.values():
+             field.post_process(formdata)

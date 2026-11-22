@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hai-proof</title>
+<meta name="description" content="A/B testing for Claude Code harness modifications: plain Claude Code against a treatment, on real coding tasks, in paired containers.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="site"><div class="bar">
+  <a class="brand" href="index.html">hai-proof</a>
+  <nav>
+    <a href="index.html" aria-current="page">Overview</a>
+    <a href="design.html">Design</a>
+    <a href="pipeline.html">A run</a>
+    <a href="library.html">Task library</a>
+    <a href="skills.html">Skills</a>
+    <a href="https://github.com/hypertetrahedron/hai-proof">GitHub</a>
+  </nav>
+</div></header>
+<main>
+<h1>hai-proof</h1>
+<p class="lede"><b>H</b>arness for <b>AI</b> <b>P</b>lugin <b>R</b>igorous <b>O</b>utcome and <b>O</b>verhead
+<b>F</b>ramework. It checks whether a change to Claude Code's harness (a CLAUDE.md, skills, hooks, subagents, MCP
+servers, a plugin) actually changes what the agent gets done, how long it takes and what it costs.</p>
+
+<p>People add skills, hooks and plugins to Claude Code because they make it "feel better". hai-proof measures that.
+It runs plain Claude Code (the <b>control</b>) and Claude Code with one modification bundle (the
+<b>treatment</b>) through the same coding tasks, in pairs of containers started at the same moment, and reports:</p>
+<ol>
+  <li><b>Success</b>: do hidden tests, which the agent never sees, pass afterwards?</li>
+  <li><b>Wall-clock time</b>, measured inside the container.</li>
+  <li><b>Tokens and cost</b> for the whole agent tree, subagents included.</li>
+</ol>
+<p>It is a smoke test built to catch <em>large</em> differences cheaply, not a leaderboard. The working hypothesis
+the treatment has to beat is that both arms solve the tasks and the treatment costs more.</p>
+
+<figure class="diagram">
+  <img src="diagrams/architecture.svg" alt="The controller on your machine drives Docker on an execution host. Each arm's trial container sits on its own internal network whose only exit is an allowlist proxy to the Anthropic API.">
+  <figcaption>The controller (your machine) drives Docker on an execution host, locally or over SSH. Source:
+  <a href="diagrams/architecture.drawio">architecture.drawio</a></figcaption>
+</figure>
+
+<h2>Read on</h2>
+<div class="cards">
+  <a class="card" href="design.html"><h3>Design</h3><p>Principles, arms and what is held equal between them,
+  images and isolation, treatments, the user stand-in, metrics and statistics.</p></a>
+  <a class="card" href="pipeline.html"><h3>A run, step by step</h3><p>From the command line to report.html:
+  scheduling pairs, one trial's lifecycle, when an agent call ends, grading and scoring.</p></a>
+  <a class="card" href="library.html"><h3>The task library</h3><p>91 tasks from 53 open-source projects: how a
+  task is built, the standard and interview suites, tiers and calibration.</p></a>
+  <a class="card" href="skills.html"><h3>Skills</h3><p>The three project skills that build tasks from your
+  repos, package your setup as a treatment, and run and read an evaluation.</p></a>
+</div>
+
+<h2>Quick start</h2>
+<pre><code>uv sync
+cp hai-proof.example.toml hai-proof.toml          # set model and default_host
+cp .env.example .env                              # one of ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN
+
+uv run hai-proof hosts check &lt;alias&gt;              # preflight the Docker host
+for t in tasks/*/; do uv run hai-proof build-task "$t"; done
+uv run hai-proof validate-task --host &lt;alias&gt;     # no API spend
+
+uv run hai-proof run --host &lt;alias&gt; --treatment &lt;name&gt; --mode lightning --dry-run
+uv run hai-proof run --host &lt;alias&gt; --treatment &lt;name&gt; --mode lightning</code></pre>
+<p>Or open the repository in Claude Code and ask in plain words ("package my setup as a treatment", "evaluate it
+against plain Claude Code"); the <a href="skills.html">project skills</a> take it from there. Real runs spend API
+credit or subscription usage, so always dry-run first.</p>
+
+<h2>Reference documents</h2>
+<p>These pages are an overview. The detailed references live in the repository:</p>
+<ul>
+  <li><a href="https://github.com/hypertetrahedron/hai-proof/blob/main/README.md">README.md</a>: the user guide,
+  every command and flag.</li>
+  <li><a href="https://github.com/hypertetrahedron/hai-proof/blob/main/DESIGN.md">DESIGN.md</a>: the specification,
+  with the reasons behind each choice.</li>
+  <li><a href="https://github.com/hypertetrahedron/hai-proof/blob/main/docs/how-arms-run.md">docs/how-arms-run.md</a>:
+  a run, written from the code.</li>
+  <li><a href="https://github.com/hypertetrahedron/hai-proof/blob/main/docs/suites.md">docs/suites.md</a>: every
+  task in the standard and interview suites.</li>
+  <li><a href="https://github.com/hypertetrahedron/hai-proof/blob/main/docs/task-authoring.md">docs/task-authoring.md</a>
+  and <a href="https://github.com/hypertetrahedron/hai-proof/blob/main/docs/task-catalog.md">docs/task-catalog.md</a>:
+  how to write a task, and the history of every task tried.</li>
+  <li><a href="https://github.com/hypertetrahedron/hai-proof/blob/main/ROADMAP.md">ROADMAP.md</a>: status.</li>
+</ul>
+</main>
+<footer class="site"><div>hai-proof · MIT licence · diagrams are draw.io files in
+<code>docs/diagrams/</code>, editable in draw.io and exported to SVG.</div></footer>
+</body>
+</html>

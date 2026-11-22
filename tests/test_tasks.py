@@ -355,3 +355,69 @@ def test_task_dockerfile(tmp_path):
     (d / "task.Dockerfile").write_text("FROM golang:1.22\n")
     with pytest.raises(ConfigError, match="FROM or USER"):
         load_task(d)
+
+
+def test_user_and_ask_tool(tmp_path):
+    head = 'kind="feature"\nlevel=2\n'
+    t = _parse(_task(tmp_path, f'id="A"\n{head}user="reticent"\nask_tool="on"\n', name="a", repo=False),
+               check_dirs=False)
+    assert (t.user, t.ask_tool) == ("reticent", "on")
+    t2 = _parse(_task(tmp_path, f'id="B"\n{head}', name="b", repo=False), check_dirs=False)
+    assert (t2.user, t2.ask_tool) == ("", "")
+    for i, bad in enumerate(['user="chatty"', 'ask_tool="yes"']):
+        with pytest.raises(ConfigError, match="user|ask_tool"):
+            _parse(_task(tmp_path, f'id="C{i}"\n{head}{bad}\n', name=f"c{i}", repo=False), check_dirs=False)
+
+
+def test_user_setup_not_in_content_hash(tmp_path):
+    d = _task(tmp_path, 'id="A"\nkind="feature"\nlevel=2\n', name="a")
+    h = load_task(d).content_hash()
+    (d / "task.toml").write_text('id="A"\nkind="feature"\nlevel=2\nuser="reticent"\nask_tool="on"\n')
+    assert load_task(d).content_hash() == h
+
+
+def test_check_user_setup(tmp_path):
+    from types import SimpleNamespace as NS
+
+    from hai_proof.tasks import check_user_setup
+
+    head = 'kind="feature"\nlevel=2\n'
+    a = _parse(_task(tmp_path, f'id="A"\n{head}user="reticent"\nask_tool="on"\n', name="a", repo=False),
+               check_dirs=False)
+    b = _parse(_task(tmp_path, f'id="B"\n{head}', name="b", repo=False), check_dirs=False)
+    ok = NS(label="A", user="reticent", ask_tool="on")
+    assert check_user_setup([a, b], [ok]) == []
+    assert check_user_setup([b], [NS(label="A", user="conventional", ask_tool="off")]) == []
+    with pytest.raises(ConfigError, match="pass --user reticent"):
+        check_user_setup([a, b], [ok, NS(label="B", user="conventional", ask_tool="on")])
+    w = check_user_setup([a], [NS(label="B", user="uninformative", ask_tool="off")])
+    assert len(w) == 2 and "--user uninformative" in w[0] and "--ask-tool off" in w[1] and "declare on" in w[1]
+
+
+def test_task_stand_in_settings(tmp_path):
+    from types import SimpleNamespace as NS
+
+    from hai_proof.models import RunConfig
+    from hai_proof.tasks import check_user_setup
+
+    head = 'kind="feature"\nlevel=2\nuser="reticent"\nask_tool="on"\n'
+    plain = _parse(_task(tmp_path, f'id="A"\n{head}', name="a", repo=False), check_dirs=False)
+    strict = _parse(_task(tmp_path, f'id="B"\n{head}reticence="strict"\ntool_answers="full"\n', name="b", repo=False),
+                    check_dirs=False)
+    assert (plain.reticence, plain.tool_answers) == ("", "")
+    assert (strict.reticence, strict.tool_answers) == ("strict", "full")
+    # the declared stand-in is part of the task: it changes the hash, while an unset one leaves older hashes alone
+    assert strict.content_hash() != plain.content_hash()
+    run = NS(tool_answers="brief", reticence="standard")
+    assert RunConfig.stand_in_settings(run, strict) == ("full", "strict")
+    assert RunConfig.stand_in_settings(run, plain) == ("brief", "standard")
+    arm = NS(label="A", user="reticent", ask_tool="on")
+    assert check_user_setup([plain, strict], [arm]) == []
+    assert check_user_setup([plain, strict], [arm], reticence="strict", tool_answers="full") == []
+    with pytest.raises(ConfigError, match="--reticence standard, but B define"):
+        check_user_setup([plain, strict], [arm], reticence="standard")
+    with pytest.raises(ConfigError, match="tool_answers must be one of"):
+        _parse(_task(tmp_path, f'id="C"\n{head}tool_answers="long"\n', name="c", repo=False), check_dirs=False)
+    with pytest.raises(ConfigError, match='need user = "reticent"'):
+        _parse(_task(tmp_path, 'id="D"\nkind="feature"\nlevel=2\nreticence="strict"\n', name="d", repo=False),
+               check_dirs=False)

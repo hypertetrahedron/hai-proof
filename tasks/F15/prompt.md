@@ -1,0 +1,3 @@
+I maintain Werkzeug. Before 3.2 I want to clean up the `int` and `float` URL converters in `werkzeug/routing/converters.py`. They have accumulated some unintended behaviour, both when matching URLs and when building them, and a recent fix for scientific notation in float URLs went too far and rejects legitimate values.
+
+The fix should be conservative: correct the behaviour that is clearly unintended without breaking URLs that work today. I have firm opinions about what counts as a bug here and what must stay as it is, so go through the design with me before you change anything. Feel free to restructure the converter classes if that makes them simpler. Update the docstrings, and add tests to the existing routing tests.

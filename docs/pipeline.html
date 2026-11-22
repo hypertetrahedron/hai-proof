@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A hai-proof run</title>
+<meta name="description" content="The pipeline of a hai-proof run: setup, scheduling pairs, one trial's lifecycle, when an agent call ends, grading and the report.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="site"><div class="bar">
+  <a class="brand" href="index.html">hai-proof</a>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="design.html">Design</a>
+    <a href="pipeline.html" aria-current="page">A run</a>
+    <a href="library.html">Task library</a>
+    <a href="skills.html">Skills</a>
+    <a href="https://github.com/hypertetrahedron/hai-proof">GitHub</a>
+  </nav>
+</div></header>
+<main>
+<h1>A run, step by step</h1>
+<p class="lede">What happens between <code>hai-proof run</code> and <code>report.html</code>. The walk-through
+written from the code, with every flag, is
+<a href="https://github.com/hypertetrahedron/hai-proof/blob/main/docs/how-arms-run.md">docs/how-arms-run.md</a>.</p>
+
+<h2 id="plan">Plan first</h2>
+<pre><code>uv run hai-proof run --treatment X --suite standard --mode full --limit-scale 3 \
+    --max-spend 500 --cli-version 2.1.309 --dry-run</code></pre>
+<p>A dry run prints the arms, the tasks, the number of agent, probe and warm-up runs, and the spend ceiling (the sum
+of every call's <code>--max-budget-usd</code> cap). <code>--suite</code> picks tasks (default <code>standard</code>),
+<code>--mode lightning|quick|full</code> sets 1, 3 or 5 repetitions (quick also drops level-3 tasks), and
+<code>--limit-scale</code> multiplies every task's time, turn and budget limits in both arms, for treatments that are
+expected to be slower than plain.</p>
+
+<h2 id="phases">The phases of a run</h2>
+<figure class="diagram">
+  <img src="diagrams/run-pipeline.svg" alt="Flowchart: once-per-run setup steps, then a loop over scored pairs with a spend guard, resource gate, paired trials and retries, then analyses, teardown, statistics and the report.">
+  <figcaption>Source: <a href="diagrams/run-pipeline.drawio">run-pipeline.drawio</a></figcaption>
+</figure>
+<h3>Once per run</h3>
+<ol>
+  <li><b>Lock and record.</b> <code>results/&lt;run-id&gt;/controller.lock</code>, then <code>run.json</code>: shape,
+  model, effort, CLI version, seed, limits, each arm's treatment and hash, each task's hash, user and ask-tool modes,
+  and the harness version.</li>
+  <li><b>Build images</b> (base, arm, trial), tagged by content hash, so they are reused across runs.</li>
+  <li><b>Check credentials</b> with one free API call; a rejected key stops the run before any spend.</li>
+  <li><b>Check tool absence</b>: no arm's image may contain a tool another arm declares.</li>
+  <li><b>Egress</b>: an internal network and allowlist proxy per arm.</li>
+  <li><b>Warm-up pair</b>: one unscored pair on the easiest task, to absorb image pulls and first cache writes.</li>
+  <li><b>Context-tax probe</b>: five "Reply with the single word OK." sessions per arm, measuring the treatment's
+  fixed cost per session.</li>
+</ol>
+<h3>Scored pairs</h3>
+<ul>
+  <li>Each repetition shuffles the task order with the run's seed and runs every task once; repetitions run in
+  blocks, so drift spreads across tasks.</li>
+  <li>Within a (task, rep) group the two arms start together on two threads, 50 ms apart, in shuffled order.</li>
+  <li>Before each group: the spend guard (spend so far plus the dearest pair so far must stay under
+  <code>--max-spend</code>) and the resource gate (free memory on controller and host, leaked containers removed, a
+  snapshot to <code>resources.jsonl</code>). Short memory waits up to 15 minutes, then stops the run cleanly.</li>
+  <li><b>Transient failures discard the whole pair</b>: a rate limit, overload or infrastructure error in either
+  trial reruns both as <code>-retryN</code> (at most 2). A pair with one retried member isn't comparable.</li>
+  <li><b>Usage limits</b> (a subscription's 5-hour window): the pair is discarded, the controller sleeps until the
+  reported reset plus 2 minutes and reruns it as <code>-ulwaitN</code>.</li>
+  <li><code>--resume &lt;results-dir&gt;</code> continues a run whose controller died, skipping finished groups.</li>
+</ul>
+
+<h2 id="trial">One trial</h2>
+<figure class="diagram">
+  <img src="diagrams/trial-lifecycle.svg" alt="Four columns: set up (start container, apply treatment, mark start state, build prompt), agent (wrapper, polling, turn loop, background wait), collect and check (collect, read transcript, checks, diff), grade offline and record.">
+  <figcaption>Source: <a href="diagrams/trial-lifecycle.drawio">trial-lifecycle.drawio</a></figcaption>
+</figure>
+<p>Every agent call is the same command line in every arm:</p>
+<pre><code>claude -p &lt;prompt&gt; --model &lt;model&gt; [--effort &lt;effort&gt;] --permission-mode bypassPermissions \
+  --max-turns &lt;n&gt; --max-budget-usd &lt;usd&gt; --exclude-dynamic-system-prompt-sections \
+  --output-format stream-json --verbose</code></pre>
+<p>Permissions are bypassed only inside the container, which is the sandbox. The controller writes the call's spec
+to the container and starts <code>hai_proof_wrap.py</code> detached; it polls for a <code>done</code> marker every 5
+seconds and kills the call if it runs 180 seconds past its limit (graded as a timed-out failure, never retried).</p>
+
+<h3 id="call-end">When an agent call ends</h3>
+<p>Claude Code can start background work: subagents that keep working after the main agent's turn ends, and shells
+such as dev servers. A call that ended at the first result would grade work a delegate hadn't finished, so the
+wrapper tracks background tasks from the stream's system events and decides:</p>
+<figure class="diagram">
+  <img src="diagrams/call-end.svg" alt="Flowchart: at each result event, if a background subagent is running the call stays open for the next result; if only background shells are running it waits up to 10 minutes; otherwise the call ends.">
+  <figcaption>Source: <a href="diagrams/call-end.drawio">call-end.drawio</a></figcaption>
+</figure>
+<p>Claude Code's own print-mode ceiling (10 minutes after the last turn, then it kills background tasks) is turned
+off, and the call's time limit bounds the wait instead. <code>timing.json</code> records how many results a call
+produced, how often and how long it waited for subagents, and whether a shell wait was cut.</p>
+
+<h3 id="checks">Collecting and checking</h3>
+<ul>
+  <li>The wrapper's files and the container's <code>~/.claude</code> (session and subagent transcripts, file history,
+  todos) are copied out, credentials dropped and secrets scrubbed, and rendered as <code>session.html</code>.</li>
+  <li><b>Isolation</b>: the init event must match the arm; a mismatch marks the trial <code>excluded</code>.</li>
+  <li><b>Leakage</b>: a request to the upstream repo or the fix's commit SHA in the transcript marks it
+  <code>excluded</code>.</li>
+  <li><b>Dependency use</b>: whether the agent called the treatment's declared tools.</li>
+  <li><b>Diff</b>: <code>session.patch</code> against the start-state ref, taken before hidden tests arrive, and
+  broken down by category.</li>
+</ul>
+
+<h3 id="grading">Grading, offline</h3>
+<p>The container is disconnected from its network and any remaining <code>claude</code> process is killed. Then the
+hidden tests are copied onto the workspace and the grader runs two steps, each with a 600-second limit and fresh
+bytecode:</p>
+<ul>
+  <li><b>Acceptance</b>: the task's hidden tests (pytest node ids, or an <code>acceptance_cmd</code> for other
+  runners).</li>
+  <li><b>Regression</b>: the project's own suite, with the tests the agent wrote included on purpose.</li>
+</ul>
+<p>A trial succeeds when both pass. Optional analyses (<code>--analysis NAME</code>) then run a neutral
+<code>--safe-mode</code> session on a copy of the workspace; they never change a result and their cost is reported
+separately.</p>
+
+<h2 id="report">After the last pair</h2>
+<ul>
+  <li>Arm-scope analyses, if attached; teardown of this run's containers, proxies and networks; a final resource
+  snapshot (anything left is a leak).</li>
+  <li><code>summary.json</code> and <code>report.html</code>: pass@1 and pass@k per arm, B vs A with bootstrap
+  intervals and a sign test, cost/token/wall ratios with intervals and Wilcoxon p, per-task tables grouped by cost
+  tier, a forest plot, success disagreements, behaviour (tool calls, subagents, skills), the isolation audit, the
+  change breakdown, the context-tax probe and the user-loop section.</li>
+  <li>Plain-arm trials with nobody in the loop are folded into each task's <code>baseline.json</code>.</li>
+</ul>
+<p>Only <code>ok</code> trials are scored. <code>discarded</code>, <code>excluded</code> and <code>error</code> trials
+stay in <code>trials.jsonl</code> and their directories for inspection. <code>hai-proof report</code> regenerates the
+report, <code>hai-proof regrade</code> re-grades saved patches with no API spend, and <code>hai-proof sessions</code>
+compares session timelines across trials.</p>
+
+<h3>The results directory</h3>
+<pre><code>results/&lt;run-id&gt;/
+  run.json  trials.jsonl  resources.jsonl  summary.json  report.html
+  trials/&lt;arm&gt;/&lt;task&gt;/rep&lt;N&gt;[-retryN|-ulwaitN]/
+    trial.json  session.patch  diff_breakdown.json  grade.json
+    agent/      transcript.jsonl  timing.json  stderr.log  (turns/NN/ in multi-turn arms)
+    claude_home/  claude_data.json  session.html
+    user_loop.json  (user modes and the ask tool)</code></pre>
+</main>
+<footer class="site"><div>hai-proof · the code is the reference: <code>src/hai_proof/runner.py</code>,
+<code>trial.py</code>, <code>userloop.py</code>, <code>image/base/hai_proof_wrap.py</code>.</div></footer>
+</body>
+</html>

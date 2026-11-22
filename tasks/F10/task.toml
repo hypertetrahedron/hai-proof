@@ -2,7 +2,6 @@ id = "F10"
 kind = "feature"
 level = 2
 origin = "upstream-fix"
-suites = ["userloop"]
 # Underspecified feature with a user in the loop (docs/task-catalog.md). Upstream: sdispater/tomlkit
 # issue #288 "Support Decimal serialization?"; PR #296 "feat: allow users to register custom encoders"
 # (squash-merged 2023-06-28, fix a3cb8a2). The maintainer had proposed a different API in PR #294

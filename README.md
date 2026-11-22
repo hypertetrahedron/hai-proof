@@ -5,6 +5,8 @@
 A/B smoke test for Claude Code harness modifications (skills, hooks, CLAUDE.md, MCP servers, plugins).
 Runs plain Claude Code and a modified Claude Code through the same coding tasks in paired containers
 and reports success, wall-clock time, tokens and cost. Design: [DESIGN.md](DESIGN.md). Status: [ROADMAP.md](ROADMAP.md).
+An illustrated overview (design, the pipeline of a run, the task library, the skills) is in `docs/` as a GitHub
+Pages site; open [docs/index.html](docs/index.html).
 
 ## Requirements
 
@@ -62,9 +64,9 @@ languages install their toolchain in an optional `task.Dockerfile` and grade wit
 | `--arm-a X --arm-b Y` | A/B between two configurations; `--arm-a plain --arm-b plain` is the A/A calibration |
 | `--treatment X --no-control` | single arm, pass@1/pass@k and absolute metrics, no ratios |
 | `--mode lightning \| quick \| full` | 1 / 3 / 5 repetitions (quick drops level-3 tasks); `--reps N` overrides |
-| `--suite standard \| smoke \| diagnosis \| all` | which tasks run (default `standard`, 13 tasks; see [docs/task-catalog.md](docs/task-catalog.md#suites)); `--tasks A,B` picks ids instead |
+| `--suite standard \| smoke \| diagnosis \| interview \| all` | which tasks run (default `standard`, 13 tasks; `interview` needs `--user reticent --ask-tool on`, checked first with `--suite interview-smoke`; per-task details in [docs/suites.md](docs/suites.md), history in [docs/task-catalog.md](docs/task-catalog.md#suites)); `--tasks A,B` picks ids instead |
 | `--analysis NAME` | post-run analysis per trial or per arm (see `analyses/`) |
-| `--user conventional \| uninformative \| informative` | who answers the agent between turns. The default `conventional` is the single-session test. The two stand-in modes run each trial as several `claude -p` calls on one session, with a user stand-in that replies to questions: always "use your best judgement" (`uninformative`), or from the task's `user.md` (`informative`). `--user-a` / `--user-b` set one arm. Treatment `[workflow] turns` script multi-step workflows such as plan → apply (DESIGN §3.8) |
+| `--user conventional \| uninformative \| informative \| reticent` | who answers the agent between turns. The default `conventional` is the single-session test. The stand-in modes run each trial as several `claude -p` calls on one session, with a user stand-in that replies to questions: always "use your best judgement" (`uninformative`), or from the task's `user.md` (`informative`; `reticent` uses the same brief but answers only what the agent asks, never volunteering unasked points). `--user-a` / `--user-b` set one arm. Treatment `[workflow] turns` script multi-step workflows such as plan → apply (DESIGN §3.8) |
 | `--ask-tool off \| on \| hidden` | offer the agent AskUserQuestion, which `claude -p` alone never does. `on` runs each call in the SDK's stream-json stdio mode and answers the tool's questions like `--user` does (from `user.md` when informative, otherwise "use your best judgement"). `hidden` is the same mode without the tool, the control for `on`. `--ask-tool-a` / `--ask-tool-b` set one arm (DESIGN §3.8) |
 | treatment `prompt_variant = "<name>"` | same harness in both arms; B gets each task's `prompts/<name>.md` (prompt-quality experiments, see [docs/prompt-degradation.md](docs/prompt-degradation.md)) |
 
@@ -81,6 +83,22 @@ Before every pair the runner checks resources and logs a snapshot to `resources.
 
 While memory is short it waits, polling for up to 15 minutes, and then stops the run cleanly with teardown and
 a report. A final snapshot after teardown shows anything still left behind.
+
+### Several runs at once
+
+Several people or agents can drive hai-proof at the same time, from one checkout or several, against one
+execution host. Each run has its own id, results directory, containers and networks; images are tagged by
+content, so two runs building the same image get the same result and nothing deletes images. Lock files
+(`results/<run-id>/controller.lock`, `tasks/<ID>/.hai-proof.lock`) keep two controllers off the same run and
+serialise `build-task` and `baseline.json` updates. A lock whose process has died on the same machine is taken
+over; one held from another machine has to be deleted by hand. Things that remain shared:
+- **CPU on the host:** runs on one host compete for it. Both arms of a pair still start together, so the
+  A/B comparison stays fair, but wall times are slower than on an idle host and are not comparable with them.
+  `--limit-scale` helps if trials hit their time limits.
+- **The account usage limit:** runs on one subscription use up the same 5-hour window, and `--max-spend` is
+  per run.
+- **Docker networks:** with `egress = "proxy"` each run creates two networks. Docker's default address pools
+  hold about 30, so plan for about 15 runs at once per host.
 
 ## Commands
 
@@ -106,7 +124,9 @@ tasks/                task library (B* bugs, B-DP-* degraded-prompt bugs, F* fea
                       cost tiers; baseline.json holds plain-arm aggregates; repo/ snapshots are generated, not committed
 examples/             example task and treatment (openspec-beads) to copy from
 analyses/             post-run analysis definitions
-docs/                 task-authoring guide and calibration notes
+docs/                 the GitHub Pages site (index.html, design, pipeline, library, skills; diagrams/ holds the
+                      draw.io sources and their SVGs), suites.md (the standard and interview tasks),
+                      how-arms-run.md (a run step by step), task-authoring guide, task catalog and calibration notes
 tests/                pytest suite (stream-json fixtures under tests/fixtures/)
 ```
 
@@ -115,15 +135,16 @@ generated task snapshots.
 
 ## Status
 
-Runner, SSH execution hosts, the 6-task suite, the context-tax probe and the HTML report are verified on
-real runs. Treatment dependencies, post-run analyses and quick/full modes are implemented and unit-tested
-but not yet exercised end-to-end with a real treatment. See [ROADMAP.md](ROADMAP.md).
+The runner, SSH execution hosts, the `standard` and `interview` suites, user-in-the-loop modes, the ask tool,
+the context-tax probe and the HTML report are verified on real runs, with treatments ranging from a single
+CLAUDE.md to large plugins and CLI-driven workflows. The LLM post-run analyses are implemented and unit-tested
+but deferred (the deterministic `diff_breakdown` runs in every trial). See [ROADMAP.md](ROADMAP.md).
 
 ## Development
 
 ```sh
 uv sync
-uv run pytest -q          # 235 tests; no Docker or API access needed
+uv run pytest -q          # 330+ tests; no Docker or API access needed
 ```
 
 ## License

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .models import ASK_TOOL_MODES, USER_MODES
+from .models import ASK_TOOL_MODES, BRIEF_MODES, USER_MODES
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -104,7 +104,8 @@ def _run_args(sp: argparse.ArgumentParser) -> None:
     ul.add_argument("--user", choices=USER_MODES, default="conventional",
                     help="who answers the agent between turns, both arms: conventional = nobody (one session, the "
                          "classic test); uninformative = a stand-in that always says 'use your best judgement'; "
-                         "informative = a stand-in that answers from each task's user.md")
+                         "informative = a stand-in that answers from each task's user.md; reticent = the same brief, but "
+                         "it only answers what the agent asks and never volunteers unasked points")
     ul.add_argument("--user-a", choices=USER_MODES, help="override --user for arm A")
     ul.add_argument("--user-b", choices=USER_MODES, help="override --user for arm B")
     ul.add_argument("--ask-tool", choices=ASK_TOOL_MODES, default="off",
@@ -114,6 +115,14 @@ def _run_args(sp: argparse.ArgumentParser) -> None:
     ul.add_argument("--ask-tool-a", choices=ASK_TOOL_MODES, help="override --ask-tool for arm A")
     ul.add_argument("--ask-tool-b", choices=ASK_TOOL_MODES, help="override --ask-tool for arm B")
     ul.add_argument("--stand-in-model", help="model of the user stand-in (default from hai-proof.toml)")
+    ul.add_argument("--tool-answers", choices=["brief", "full"],
+                    help="the reticent stand-in's answers to ask-tool questions: brief = the option plus one sentence "
+                         "(default); full = as much of the brief on that point as a plain-text reply would give. A task that "
+                         "sets tool_answers in task.toml uses its own")
+    ul.add_argument("--reticence", choices=["standard", "strict"],
+                    help="the reticent stand-in: standard (default), or strict = a tighter plan-approval rule and a "
+                         "second pass that deletes reply points the agent's message did not raise. A task that sets "
+                         "reticence in task.toml uses its own")
     ul.add_argument("--max-user-replies", type=int, default=5, metavar="N",
                     help="stand-in replies per trial (default 5); then the script moves on or the trial ends")
     sp.add_argument("--mode", choices=["lightning", "quick", "full"], default="full")
@@ -333,12 +342,13 @@ def _dispatch(args: argparse.Namespace) -> int:
             return 2
         if input("proceed? [y/N] ").strip().lower() not in {"y", "yes"}:
             return 1
+    from .locks import LockHeld
     from .resources import ResourceError
     from .runner import AuthError, ResumeMismatch
 
     try:
         out = Runner(run, ex, auth).execute()
-    except (AuthError, ResourceError, ResumeMismatch) as e:
+    except (AuthError, ResourceError, ResumeMismatch, LockHeld) as e:
         print(f"error: {e}", file=sys.stderr)
         return 3
     print(f"results: {out}")
@@ -360,7 +370,7 @@ def _build_run_config(args: argparse.Namespace, cfg, root: Path):
     from .config import ConfigError, MODES, resolve_host, select_tasks_for_mode, select_tasks_for_suite
     from .models import PLAIN, ArmSpec, Limits, RunConfig
     from .runner import new_run_id
-    from .tasks import load_suite
+    from .tasks import check_user_setup, load_suite
     from .treatments import resolve_treatment
 
     tdirs = cfg.treatment_dirs()
@@ -414,11 +424,14 @@ def _build_run_config(args: argparse.Namespace, cfg, root: Path):
         if missing:
             raise ConfigError(f"arm {arm.label} ({arm.treatment.name}) uses prompt variant '{v}', "
                               f"which these tasks lack (prompts/{v}.md): {', '.join(missing)}")
-    if any(a.user == "informative" for a in arms):
+    if any(a.user in BRIEF_MODES for a in arms):
         missing = [t.id for t in tasks if not t.user_brief]
         if missing:
-            raise ConfigError("the informative stand-in answers from each task's user.md, which these tasks lack: "
+            raise ConfigError("the informative and reticent stand-ins answer from each task's user.md, "
+                              "which these tasks lack: "
                               + ", ".join(missing))
+    for w in check_user_setup(tasks, arms, tool_answers=args.tool_answers, reticence=args.reticence):
+        print(f"warning: {w}", file=sys.stderr)
     reps = args.reps if args.reps else MODES[args.mode]["reps"]
     mode = "custom" if args.reps else args.mode
 
@@ -442,7 +455,7 @@ def _build_run_config(args: argparse.Namespace, cfg, root: Path):
         results_dir=results_dir, harness=harness_info(root), max_spend_usd=args.max_spend,
         resume=bool(getattr(args, "resume", None)),
         stand_in_model=args.stand_in_model or cfg.stand_in_model, max_user_replies=args.max_user_replies,
-        limit_scale=args.limit_scale,
+        tool_answers=args.tool_answers or "brief", reticence=args.reticence or "standard", limit_scale=args.limit_scale,
     )
 
 

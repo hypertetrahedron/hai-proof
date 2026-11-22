@@ -1,0 +1,47 @@
+id = "F57"
+kind = "feature"
+level = 2
+origin = "upstream-fix"
+# F34 under the strict + full reticent stand-in (2026-10-22): same feature, prompt, brief and tests;
+# a different stand-in makes it a different task (ROADMAP: interview v2). Candidate for the v2 tiers.
+user = "reticent"
+ask_tool = "on"
+reticence = "strict"
+tool_answers = "full"
+suites = ["interview-v2-candidates"]
+# Decision-dense feature with a user in the loop (docs/task-catalog.md, fourteenth search T4). Upstream:
+# pallets-eco/flask-caching PR #675 "Add is_stale. Fixes #392" (merged 2026-08-22 as bab22fb, after the model
+# cutoff). The prompt asks for a way to drop a cached value that has gone out of date, decided from the cached
+# value itself, on cached and memoize; user.md holds the decisions: the name is_stale, it is called only on a
+# cache hit and never when forced_update already fired, it receives the cached value first and the call's own
+# arguments only if it accepts more than one non-keyword-only positional, only a result that is True counts,
+# a stale hit is reported as a miss signal and not a hit signal, it applies to views and to memoize.
+# Contamination note: forced_update is precedent in the base and issue #392 (2022) asks for something close.
+timeout_s = 2400
+budget_usd = 5.0
+max_turns = 60
+install = "uv pip install --python /opt/venv/bin/python -e . pytest pytest-asyncio pytest-xprocess redis 'flask[async]' asgiref"
+# Hidden tests are the fix's versions with these changes (re-apply after `build-task --force`):
+#  1. tests/test_init.py is removed from hidden_tests/: the fix's change to it (memcached server settings for the
+#     SASL cache classes) is unrelated to is_stale.
+#  2. tests/test_cache.py::test_cache_unlink is deselected (acceptance_args -k expression; a --deselect would also
+#     drop test_cache_unlink_if_not by prefix). It needs a live redis server (fixture redis_server, which pytest-xprocess
+#     cannot start because the grader runs acceptance with `-p no:cacheprovider`) and errors at both fix and base.
+#     With that one test excluded, no acceptance test needs a live redis or memcached server; the other server fixtures
+#     skip when no server executable is present, and test_async_cached_view passes with flask[async] installed.
+#  3. Regression drops `-p no:cacheprovider` (pytest-xprocess needs the cache plugin) and deselects
+#     tests/test_init.py::test_init_nullcache[MemcachedCache], which fails at both fix and base in the container
+#     ("no memcache module found": pylibmc needs the libmemcached system library).
+# Hidden tests are otherwise unchanged.
+acceptance_args = ["-k", "not test_cache_unlink or test_cache_unlink_if_not"]
+acceptance = ["tests/test_cache.py", "tests/test_memoize.py", "tests/test_view.py", "tests/test_signals.py"]
+regression = "python -m pytest -q tests --deselect 'tests/test_init.py::test_init_nullcache[MemcachedCache]'"
+
+[source]
+kind = "git"
+url  = "https://github.com/pallets-eco/flask-caching.git"
+# first parent of the merge commit
+base = "2f993e7d59febc875ec10d96f83ef058ac7a26af"
+# PR #675
+fix  = "bab22fbfd3ce1ffd66d935b96e271808b47708e6"
+exclude = ["CHANGES.rst", "docs/usage.rst", "docs/backends.rst", ".github/workflows/tests.yaml"]

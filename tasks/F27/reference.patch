@@ -1,0 +1,175 @@
+diff --git a/cyclopts/_convert.py b/cyclopts/_convert.py
+index 2398312..7ac6bf1 100644
+--- a/cyclopts/_convert.py
++++ b/cyclopts/_convert.py
+@@ -52,6 +52,9 @@ F = TypeVar("F", bound=Flag)
+ 
+ # Mapping from bare concrete types to their default parameterized versions.
+ # Used when type parameters are not specified (e.g., bare `list` becomes `list[str]`).
++# Types a config/JSON ``null`` converts into as ``None``.
++_NULLABLE_TYPES: tuple[Any, ...] = (NoneType, Any)
++
+ _implicit_iterable_type_mapping: dict[type, type] = {
+     frozenset: frozenset[str],
+     list: list[str],
+@@ -798,6 +801,9 @@ def _convert(
+         else:
+             out = converter(type_, token.value)
+     else:
++        if isinstance(token, Token) and token.implicit_value is None and type_ not in _NULLABLE_TYPES:
++            # e.g. a config file's ``null`` for an ``int`` or a dataclass.
++            raise CoercionError(token=token.evolve(value="null"), target_type=type_)
+         field_infos = get_field_infos(type_)
+         # Hope that if there is no field_info, that it takes `*args` and would be happy with a single ``str`` input.
+         # This is common for many types, such as libraries that try to mimic pathlib.Path interface.
+@@ -967,6 +973,15 @@ def _convert_empty_container(
+     raise CoercionError(token=token.evolve(value="{}" if isinstance(value, dict) else "[]"), target_type=resolved)
+ 
+ 
++def _lone_token(tokens: Sequence[str] | Sequence["Token"] | NestedCliArgs) -> "Token | None":
++    """The only token of an unkeyed token sequence, e.g. from a config file's ``x = null`` or ``x = []``."""
++    from cyclopts.argument import Token
++
++    if not isinstance(tokens, dict) and len(tokens) == 1 and isinstance(tokens[0], Token):
++        return tokens[0]
++    return None
++
++
+ def _convert_entry(
+     type_: Any,
+     tokens: Sequence[str] | Sequence["Token"] | NestedCliArgs,
+@@ -989,14 +1004,9 @@ def _convert_entry(
+     convert_priv = partial(_convert, converter=converter, name_transform=name_transform, name=name)
+     convert_tuple = partial(_convert_tuple, converter=converter, name_transform=name_transform, name=name)
+ 
+-    if (
+-        not isinstance(tokens, dict)
+-        and len(tokens) == 1
+-        and isinstance(tokens[0], Token)
+-        and isinstance(tokens[0].implicit_value, dict | list)
+-        and not tokens[0].implicit_value
+-    ):
+-        return _convert_empty_container(type_, tokens[0], convert_priv, convert_tuple, name)
++    lone = _lone_token(tokens)
++    if lone and isinstance(lone.implicit_value, dict | list) and not lone.implicit_value:
++        return _convert_empty_container(type_, lone, convert_priv, convert_tuple, name)
+ 
+     # ``_convert`` applies a type's own ``Parameter`` metadata (converter/validator), but
+     # ``resolve`` discards it. Stash the metadata so it can be re-attached to the
+@@ -1006,6 +1016,9 @@ def _convert_entry(
+     type_ = resolve(type_, optional=False)
+ 
+     if type_ is Any:
++        if lone and lone.implicit_value is None:
++            # ``Any`` admits a config ``null``; anything else converts like ``str``.
++            return convert_priv(Annotated[(Any, *annotations_)] if annotations_ else Any, lone)
+         type_ = str
+ 
+     type_ = _implicit_iterable_type_mapping.get(type_, type_)
+diff --git a/cyclopts/argument/_argument.py b/cyclopts/argument/_argument.py
+index 5839482..2061435 100644
+--- a/cyclopts/argument/_argument.py
++++ b/cyclopts/argument/_argument.py
+@@ -73,6 +73,15 @@ _CHOICES_UNSUPPORTED = (
+ )
+ 
+ 
++def _admits_none(hint: Any) -> bool:
++    hint = resolve(hint, optional=False)
++    if is_union(hint):
++        return any(member is Any or _admits_none(member) for member in get_args(hint))
++    if get_origin(hint) is Literal:
++        return None in get_args(hint)
++    return is_nonetype(hint)
++
++
+ @define(kw_only=True)
+ class Argument:
+     """Encapsulates functionality and additional contextual information for parsing a parameter.
+@@ -368,7 +377,7 @@ class Argument:
+             return self.parameter.show_default
+ 
+     @property
+-    def _explicit_none(self) -> bool:
++    def _lone_null(self) -> bool:
+         """A lone keyless ``None`` token (a JSON/config ``null``) with no populated children."""
+         return (
+             len(self.tokens) == 1
+@@ -377,6 +386,17 @@ class Argument:
+             and not any(child.has_tokens for child in self.children)
+         )
+ 
++    @property
++    def _explicit_none(self) -> bool:
++        """A lone ``null`` whose annotation allows ``None``, or whose default is ``None`` (``x: int = None``)."""
++        return self._lone_null and (self._allows_none or self.field_info.default is None)
++
++    @property
++    def _allows_none(self) -> bool:
++        if self.field_info.is_any:  # ``self.hint`` reads these as ``str``.
++            return True
++        return _admits_none(self.field_info.annotation)
++
+     @property
+     def _use_pydantic_type_adapter(self) -> bool:
+         return bool(
+@@ -786,7 +806,13 @@ class Argument:
+         elif self.parameter.count:
+             out = sum(token.implicit_value for token in self.tokens if token.implicit_value is not UNSET)
+         elif self._explicit_none:
++            # The whole value is ``None``, so no child (e.g. a required field of ``Foo | None``) converts alone.
++            for child in self.children_recursive:
++                child._marked = True
+             return None
++        elif self._lone_null and self.children:
++            # A ``null`` for a non-nullable class; its fields would otherwise each report missing.
++            raise CoercionError(token=self.tokens[0].evolve(value="null"), argument=self, target_type=self.hint)
+         elif not self.children:
+             positional: list[Token] = []
+             keyword = {}
+@@ -799,18 +825,6 @@ class Argument:
+                     assert len(expanded_tokens) == 1
+                     return token.implicit_value
+ 
+-                # Handle negative_none flag: implicit_value=None for Optional types
+-                # Use self.hint (not self.resolved_hint) to preserve Optional/Union
+-                if token.implicit_value is None:
+-                    hint = self.hint
+-                    if is_union(hint):
+-                        if any(is_nonetype(arg) or arg is None for arg in get_args(hint)):
+-                            assert len(expanded_tokens) == 1
+-                            return None
+-                    elif is_nonetype(hint) or hint is None:
+-                        assert len(expanded_tokens) == 1
+-                        return None
+-
+                 if token.keys:
+                     lookup = keyword
+                     for key in token.keys[:-1]:
+diff --git a/cyclopts/field_info.py b/cyclopts/field_info.py
+index f92403d..0bb3959 100644
+--- a/cyclopts/field_info.py
++++ b/cyclopts/field_info.py
+@@ -95,11 +95,19 @@ class FieldInfo:
+         """Annotation with cyclopts type-inferring."""
+         hint = self.annotation
+         if hint is inspect.Parameter.empty or resolve(hint) is Any:
+-            hint = _replace_annotated_type(
+-                hint, str if self.default is inspect.Parameter.empty or self.default is None else type(self.default)
+-            )
++            hint = _replace_annotated_type(hint, str if self.is_any else type(self.default))
+         return hint
+ 
++    @property
++    def is_any(self) -> bool:
++        """Whether this takes any value: annotated ``Any`` (or not at all) with no default to infer a type from.
++
++        :attr:`hint` reads such a parameter as ``str``.
++        """
++        return (self.annotation is inspect.Parameter.empty or resolve(self.annotation) is Any) and (
++            self.default is inspect.Parameter.empty or self.default is None
++        )
++
+     @property
+     def name(self):
+         """The **first** provided name."""

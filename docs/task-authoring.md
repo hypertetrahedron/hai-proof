@@ -47,6 +47,11 @@ max_turns = 40            # L1 40 · L2 60 · L3 80
 #   uses "standard" (or every task if none is tagged). "all" is reserved.
 # cost_tier = "low"       # optional: low | medium | high, the report group (docs/task-catalog.md#cost-tiers-and-report-order)
 # report_order = 1        # optional: fixed position in reports; set once from plain-arm data, never re-ranked per run
+# user = "reticent"       # optional, tasks with user.md: the user in the loop the task is meant for; `run` refuses
+#   --user conventional (nobody answers) and warns on any other mismatch
+# ask_tool = "on"         # optional: the --ask-tool setting the task is meant for; a mismatch warns
+# reticence = "strict"    # optional, user = "reticent" only: the stand-in this task is defined with; part of the task
+# tool_answers = "full"   # optional, likewise; a contradicting --reticence / --tool-answers is refused
 install = "uv pip install --python /opt/venv/bin/python -e . pytest"   # runs in /work at image build
 acceptance = ["tests/hai_proof/test_b1.py"]
 # acceptance_args = ["--dburi", "sqlite+aiosqlite:///:memory:"]       # optional extra pytest args (B21)
@@ -144,11 +149,14 @@ Claude Code) trial of the task. Do not edit it by hand; commit it with the task.
 
 - `hai-proof run` folds the run's plain-arm trials in when it finishes. `hai-proof baseline update [results-dirs]`
   does it for existing runs (default: all of them); re-running is safe, as samples are keyed by run id and rep.
-  `hai-proof baseline show` prints the entries for the current task content.
+  `hai-proof baseline show` prints the entries for the current task content. Runs that finish at the same time
+  take turns through `tasks/<ID>/.hai-proof.lock`, so no samples are lost; `build-task` holds the same lock.
 - One entry per **model / CLI version / effort / task hash**. The task hash (`TaskSpec.content_hash`, also recorded
   in `run.json`) covers everything that can change a trial: the manifest's limits, install, acceptance and
   regression, the prompts, `inject.patch`, `reference.patch`, `hidden_tests/`, `grade.sh`, `source.lock.json`, and
-  `repo/` for tasks without `[source]`. It leaves out `suites`, `cost_tier`, `report_order` and `baseline.json`.
+  `repo/` for tasks without `[source]`. It leaves out `suites`, `cost_tier`, `report_order`, `user`, `ask_tool`, `baseline.json` and lock or temporary files (`.hai-proof*`); `reticence` and
+  `tool_answers` count when set. The same feature under another stand-in is another task with its own id
+  (2026-10-22: new ids such as F39; a naming convention like `F13-strict` is deferred, see ROADMAP).
   Changing a task therefore starts a new entry instead of mixing versions.
 - Each entry keeps every sample and a `summary` recomputed from them. A sample holds the run id, rep, date,
   harness code hash, status, pass, timed_out, end reason, and these metrics:

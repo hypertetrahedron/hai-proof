@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hai-proof task library</title>
+<meta name="description" content="The hai-proof task library: how tasks are built and calibrated, the standard and interview suites, and the smaller suites.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="site"><div class="bar">
+  <a class="brand" href="index.html">hai-proof</a>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="design.html">Design</a>
+    <a href="pipeline.html">A run</a>
+    <a href="library.html" aria-current="page">Task library</a>
+    <a href="skills.html">Skills</a>
+    <a href="https://github.com/hypertetrahedron/hai-proof">GitHub</a>
+  </nav>
+</div></header>
+<main>
+<h1>The task library</h1>
+<p class="lede">91 coding tasks from 53 open-source Python projects, grouped into suites. Every task is pinned by
+commit SHA, so anyone can rebuild it exactly and rerun a published result.</p>
+
+<h2 id="task">What a task is</h2>
+<p>A task is one coding job that both arms attempt: a bug to diagnose and fix (<code>B*</code>) or a feature to
+build (<code>F*</code>). The agent gets a prompt written the way a developer would write it, and is graded
+afterwards by hidden tests it never sees.</p>
+<ul>
+  <li><b>Upstream fix</b> (81 tasks): the task starts at the parent of a real fix commit in a public repository. The
+  fix's test changes become the hidden tests and the rest becomes the reference solution. The prompt is rewritten
+  from the original issue, without hints the reporter couldn't have had.</li>
+  <li><b>Injected bug</b> (5): a small, plausible mistake written by the task author on a released version; it can't
+  be in any training set.</li>
+  <li><b>Authored feature</b> (5): a feature written for hai-proof, with hand-written tests.</li>
+</ul>
+<p>A bug task tests diagnosis: its difficulty comes from a symptom far from the cause, a vague report or a need to
+reproduce, not from a large fix. Long implementation work belongs in a feature task. The <b>level</b> (1–3) sets
+the time, turn and budget limits; the <b>cost tier</b> (low, medium, high), from median output tokens, orders the
+report.</p>
+
+<figure class="diagram">
+  <img src="diagrams/task-build.svg" alt="The files of a task feed build-task, which produces the generated repo snapshot; validate-task checks it without API spend; a pilot of plain Claude Code sets the level and limits; real runs add baseline samples.">
+  <figcaption>Source: <a href="diagrams/task-build.drawio">task-build.drawio</a></figcaption>
+</figure>
+<ul>
+  <li><code>build-task</code> clones the repository at the base commit, deletes its git history, makes one fresh
+  commit (so the fix can't be found in history), and derives the hidden tests and reference patch from the fix.</li>
+  <li><code>validate-task</code> proves the task is well formed with no API spend: the hidden tests fail at the start
+  state, the reference solution passes both grading steps, and grading takes under a minute.</li>
+  <li>A <b>pilot</b> of plain Claude Code (three runs) should pass at least two. A task nobody solves measures luck,
+  not the treatment.</li>
+  <li>Test dependencies are pinned to the versions a task was validated with where new releases broke it (F7, F30,
+  F31, F53, F54), so a rebuilt image can't change the grading between arms or runs.</li>
+</ul>
+<p>Contamination is accepted knowingly: the model may have seen a public repository, but both arms share the same
+model and the same memory, and memorisation compresses differences rather than inventing them.</p>
+
+<h2 id="suites">Suites</h2>
+<figure class="diagram">
+  <img src="diagrams/suites.svg" alt="Map of the suites: standard (13 tasks in three cost tiers), interview (13 tasks in tiers from easy to hard), five small suites, and 32 tasks kept outside any suite.">
+  <figcaption>Source: <a href="diagrams/suites.drawio">suites.drawio</a></figcaption>
+</figure>
+
+<h3 id="standard">standard: the default</h3>
+<p>Thirteen tasks, one per project, chosen to show <em>large</em> effects with nobody in the loop. Tasks with mixed
+plain pass rates (B6, B7, B19, B21, F7) carry the success signal; steady multi-minute tasks (B5, B9, B17, F4, F5)
+carry the time and cost signal. One rep takes about $12 and 1.9 hours per arm on Sonnet.</p>
+<div class="table-wrap"><table>
+  <tr><th>Task</th><th>Project</th><th>Kind · level</th><th>Tier</th><th>Plain pass</th><th>Median wall</th></tr>
+  <tr><td>B17</td><td>pytest-xdist: <code>--dist=loadgroup</code> hangs after a worker crash</td><td>bug · L2</td><td>low</td><td>8/8</td><td>442 s</td></tr>
+  <tr><td>B20</td><td>astropy: indexed <code>MaskedColumn</code> slicing leaks memory</td><td>bug · L1</td><td>low</td><td>11/11</td><td>126 s</td></tr>
+  <tr><td>B7</td><td>dask/distributed: retire/rebalance hangs with nothing logged</td><td>bug · L2</td><td>low</td><td>4/10</td><td>174 s</td></tr>
+  <tr><td>B19</td><td>tornado: sockets leak after connect timeouts</td><td>bug · L2</td><td>low</td><td>4/8</td><td>532 s</td></tr>
+  <tr><td>B21</td><td>SQLAlchemy: cancelled async close leaks connections</td><td>bug · L2</td><td>low</td><td>6/11</td><td>276 s</td></tr>
+  <tr><td>F3</td><td>rich: line, row and child limits</td><td>feature · L3</td><td>low</td><td>8/8</td><td>161 s</td></tr>
+  <tr><td>B5</td><td>dateparser: not thread-safe</td><td>bug · L3</td><td>medium</td><td>11/11</td><td>485 s</td></tr>
+  <tr><td>F6</td><td>lark: <code>Lark.scan()</code></td><td>feature · L3</td><td>medium</td><td>8/8</td><td>230 s</td></tr>
+  <tr><td>B6</td><td>python-jsonpath-rfc9535: a refactor broke compliance</td><td>bug · L2</td><td>medium</td><td>3/8</td><td>212 s</td></tr>
+  <tr><td>F7</td><td>sqlglot: the Python executor evaluates subqueries</td><td>feature · L3</td><td>high</td><td>5/8</td><td>1072 s</td></tr>
+  <tr><td>B9</td><td>websockets: closed connections freed only by the cyclic GC</td><td>bug · L3</td><td>high</td><td>7/8</td><td>829 s</td></tr>
+  <tr><td>F4</td><td>Jinja2: a <code>match</code> statement</td><td>feature · L3</td><td>high</td><td>8/8</td><td>520 s</td></tr>
+  <tr><td>F5</td><td>jsonpath-ng: a strict RFC 9535 module</td><td>feature · L3</td><td>high</td><td>7/7</td><td>1617 s</td></tr>
+</table></div>
+<p>Plain pass counts are from the calibration backfill on <code>claude-sonnet-5-5</code>; the full per-task details
+(cause, grading, limits) are in <a href="https://github.com/hypertetrahedron/hai-proof/blob/main/docs/suites.md">docs/suites.md</a>.</p>
+
+<h3 id="interview">interview: does the agent ask the right questions?</h3>
+<p>Thirteen feature requests whose prompts deliberately leave the decisive behaviour open. The rules live in each
+task's <code>user.md</code>, which only the user stand-in sees, and the hidden tests pin them. An agent that doesn't
+ask, or doesn't ask about the right points, guesses and usually fails. The tasks declare their own setup: a
+<code>reticent</code> stand-in with strict filtering and full answers to the ask tool, so a run needs
+<code>--user reticent --ask-tool on</code>, and nobody-answering runs are refused.</p>
+<p>Over the 13 tasks at five reps on Sonnet 5.5, plain passed 37/65, a short "ask in plain text, then ask
+whether anything else matters" CLAUDE.md (interview-catchall) 60/65, a longer interviewing guide 59/65 and the
+superpowers plugin 40/65. The suite separates "interviews" from "doesn't" by wide margins; only F50 separates two
+good interviewers.</p>
+<figure class="diagram">
+  <img src="diagrams/interview-flowchart.svg" alt="Decision flowchart: interviewing helps only when the request leaves decisions open, someone answers, the answers carry the rules, the user holds back what isn't asked, and the agent's default guess is wrong.">
+  <figcaption>When interviewing pays off, as the interview suite found it. Source:
+  <a href="diagrams/interview-flowchart.drawio">interview-flowchart.drawio</a></figcaption>
+</figure>
+
+<h3 id="other">Smaller suites</h3>
+<div class="table-wrap"><table>
+  <tr><th>Suite</th><th>Tasks</th><th>Use</th></tr>
+  <tr><td><code>smoke</code></td><td>B1, B13, F1</td><td>a cheap check that a treatment loads and acts before a real run</td></tr>
+  <tr><td><code>diagnosis</code></td><td>B-DP-1, B-DP-2</td><td>bugs reported with degraded prompts, for prompt-quality experiments</td></tr>
+  <tr><td><code>interview-smoke</code></td><td>F12</td><td>checks the stand-in and ask-tool plumbing on a host, one task</td></tr>
+  <tr><td><code>interview-v1</code></td><td>10 tasks</td><td>the first interview set, superseded on 2026-10-23 and kept for earlier runs</td></tr>
+  <tr><td><code>interview-v2-candidates</code></td><td>30 tasks</td><td>the pool the current interview set was chosen from</td></tr>
+</table></div>
+<p>Thirty-two tasks belong to no suite: piloted tasks that turned out too easy, too hard, too slow or too flaky.
+They stay so their history and baselines remain reproducible; the
+<a href="https://github.com/hypertetrahedron/hai-proof/blob/main/docs/task-catalog.md">task catalog</a> records why
+each was built, kept or dropped.</p>
+
+<h2 id="own">Your own tasks</h2>
+<p>Tasks from your own repositories, including private ones, go in the gitignored <code>private/tasks/</code> and
+are found automatically; tag them with your own suite name and run them with <code>--suite &lt;name&gt;</code>.
+Projects in other languages install their toolchain in a <code>task.Dockerfile</code> and grade with an
+<code>acceptance_cmd</code>. The <a href="skills.html#task">hai-proof-task skill</a> does this for you, and
+<a href="https://github.com/hypertetrahedron/hai-proof/blob/main/docs/task-authoring.md">docs/task-authoring.md</a>
+is the schema.</p>
+</main>
+<footer class="site"><div>hai-proof · task counts as of 2026-11-22.</div></footer>
+</body>
+</html>

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hai-proof design</title>
+<meta name="description" content="The overall design of hai-proof: principles, arms, isolation, treatments, the user stand-in, metrics and statistics.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="site"><div class="bar">
+  <a class="brand" href="index.html">hai-proof</a>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="design.html" aria-current="page">Design</a>
+    <a href="pipeline.html">A run</a>
+    <a href="library.html">Task library</a>
+    <a href="skills.html">Skills</a>
+    <a href="https://github.com/hypertetrahedron/hai-proof">GitHub</a>
+  </nav>
+</div></header>
+<main>
+<h1>Design</h1>
+<p class="lede">How hai-proof makes a comparison fair, what a treatment can and cannot change, and how results
+are scored. The full specification, with section numbers, is
+<a href="https://github.com/hypertetrahedron/hai-proof/blob/main/DESIGN.md">DESIGN.md</a>.</p>
+
+<h2 id="principles">Principles</h2>
+<ul>
+  <li><b>The treatment is the only difference between the arms.</b> The CLI binary, model, effort, flags, task,
+  image, resources and credentials are the same. "Plain" means a fresh, empty config directory, not
+  <code>--bare</code> or <code>--safe-mode</code>, which change behaviour beyond removing customisations.</li>
+  <li><b>Install treatments the way developers do.</b> A bundle is copied into the places Claude Code already
+  reads (<code>~/.claude/</code>, the repo's <code>CLAUDE.md</code>, <code>.claude/</code>, <code>.mcp.json</code>),
+  not translated into flags.</li>
+  <li><b>Verify isolation; don't assume it.</b> Every trial's <code>system/init</code> event is checked: plain must
+  load no plugin or MCP server, and a treatment must load what it declares.</li>
+  <li><b>Hidden tests, graded outside the agent.</b> The agent never sees the tests that decide success. They are
+  copied in after it exits, with the network cut.</li>
+  <li><b>Paired and interleaved.</b> Both arms of a pair run the same task at the same time on the same host, so
+  API latency drift and time-of-day effects cancel.</li>
+  <li><b>Few tasks, repeated.</b> Run-to-run variance is large (a geometric SD of about ×1.34 in tokens for the
+  same task), so a dozen tasks run five times beat a hundred run once.</li>
+</ul>
+
+<h2 id="hosts">Controller and execution host</h2>
+<p>The machine you run hai-proof on, often a laptop with no container engine, is the <b>controller</b>. It plans
+the run, schedules pairs, parses transcripts and writes the report. It is pure Python standard library. The
+<b>execution host</b> runs the containers: the local Docker, or any host in <code>~/.ssh/config</code> reachable with
+key or agent auth.</p>
+<figure class="diagram">
+  <img src="diagrams/architecture.svg" alt="Controller and execution host diagram">
+  <figcaption>Source: <a href="diagrams/architecture.drawio">architecture.drawio</a></figcaption>
+</figure>
+<ul>
+  <li><b>One transport.</b> Every container operation goes through an <code>Executor</code>: <code>docker …</code>
+  locally, or <code>ssh &lt;alias&gt; docker …</code> with <code>BatchMode=yes</code>. Files move as tar streams; there
+  are no bind mounts, so the same steps work on either.</li>
+  <li><b>Timing next to the process.</b> An in-container wrapper records monotonic start and end times and stops
+  the agent at its limit. Trials run detached, so a dropped SSH link loses nothing and never adds latency to a
+  measurement.</li>
+  <li><b>Credentials.</b> An API key or a subscription OAuth token reaches a container only on stdin
+  (<code>--env-file /dev/stdin</code>), never on a command line or in an image layer. Saved transcripts and Claude
+  Code records are scrubbed of every known secret.</li>
+  <li><b>Egress allowlist.</b> Each arm gets an internal Docker network with no route out, plus a proxy sidecar
+  that passes only <code>api.anthropic.com</code> and the treatment's declared hosts. The agent cannot fetch the
+  upstream fix of the bug it is working on; a transcript that mentions the fix's repo URL or commit is excluded
+  anyway.</li>
+  <li><b>Several runs at once.</b> Runs carry their id in every container and network name; images are tagged by
+  content hash and shared; lock files keep two controllers off one run, one task rebuild or one baseline file.</li>
+</ul>
+
+<h2 id="arms">Arms and run shapes</h2>
+<p>An <b>arm</b> is a label bound to a configuration: <code>plain</code> or a treatment directory. A run has one or
+two arms; arm A is the reference for every ratio.</p>
+<div class="table-wrap"><table>
+  <tr><th>Shape</th><th>Command</th><th>Arm A</th><th>Arm B</th><th>Reports</th></tr>
+  <tr><td>Comparative (default)</td><td><code>--treatment X</code></td><td>plain</td><td>X</td><td>B − A pass rates, B ÷ A ratios</td></tr>
+  <tr><td>A/B</td><td><code>--arm-a X --arm-b Y</code></td><td>X</td><td>Y</td><td>the same, saying nothing about plain</td></tr>
+  <tr><td>A/A calibration</td><td><code>--arm-a plain --arm-b plain</code></td><td>plain</td><td>plain</td><td>the noise floor; should show no difference</td></tr>
+  <tr><td>Single arm</td><td><code>--treatment X --no-control</code></td><td>—</td><td>X</td><td>absolute metrics only</td></tr>
+</table></div>
+<figure class="diagram">
+  <img src="diagrams/arms.svg" alt="Diagram of what is held equal and the only places a treatment can differ: an image layer, files copied in at trial start, setup commands, and the prompt or scripted turns.">
+  <figcaption>The orange layers are the only places the arms can differ. Source:
+  <a href="diagrams/arms.drawio">arms.drawio</a></figcaption>
+</figure>
+<p>Subagents run on the pinned model too (<code>CLAUDE_CODE_SUBAGENT_MODEL</code>), so a treatment cannot quietly
+change the model by delegating. Each arm may also set its own user mode or ask-tool mode (below), but a
+comparison should change one thing at a time.</p>
+
+<h3 id="images">Images</h3>
+<ul>
+  <li><b>base</b>: <code>python:3.12-slim-bookworm</code> with git, gcc, Node 22, uv and
+  <code>@anthropic-ai/claude-code</code> at a pinned version (resolved once per run), a non-root <code>agent</code>
+  user, auto-update, telemetry and auto-memory off, and the two in-container scripts (wrapper and grader).</li>
+  <li><b>arm</b>: the base itself for plain; for a treatment, the base plus each <code>[[requires]]</code> install
+  and check, and its Dockerfile fragment. Tools are installed at build time, never during a trial.</li>
+  <li><b>trial</b>, one per (arm, task): the arm image plus the task's own toolchain steps, its repository at the
+  pinned commit, and its install command. Hidden tests are never in an image.</li>
+</ul>
+
+<h2 id="treatments">Treatments</h2>
+<p>A treatment is a directory under <code>treatments/</code> (or your gitignored <code>private/treatments/</code>):</p>
+<div class="table-wrap"><table>
+  <tr><th>Part</th><th>What it does</th></tr>
+  <tr><td><code>user/</code></td><td>copied into the agent's <code>~/.claude</code>: CLAUDE.md, skills, agents, commands, hooks, settings, vendored plugins</td></tr>
+  <tr><td><code>project/</code></td><td>overlaid onto the repository before the start-state commit: CLAUDE.md, <code>.claude/</code>, <code>.mcp.json</code></td></tr>
+  <tr><td><code>Dockerfile</code></td><td>optional extra image layer (no <code>FROM</code>), arm B only</td></tr>
+  <tr><td><code>[[requires]]</code></td><td>external CLIs with pinned install and check lines; the run checks they're absent from other arms and reports whether the agent used them</td></tr>
+  <tr><td><code>[setup]</code></td><td>commands run in the workspace before the clock starts (e.g. <code>openspec init</code>); <code>artifacts</code> they write aren't counted as code changes</td></tr>
+  <tr><td><code>prompt_prefix</code>, <code>prompt_variant</code></td><td>text put before every task prompt, or a per-task alternative prompt file (prompt-quality experiments)</td></tr>
+  <tr><td><code>[workflow] turns</code></td><td>scripted user messages, e.g. <code>["/opsx:propose {task_prompt}", "/opsx:apply"]</code></td></tr>
+  <tr><td><code>[env]</code>, <code>[network] allow</code></td><td>extra environment and extra egress hosts</td></tr>
+  <tr><td><code>[expect]</code></td><td>plugins, MCP servers and skills that must load; trials where they don't are excluded</td></tr>
+</table></div>
+<p>Plugins are vendored at an exact version into a local marketplace inside <code>user/</code>; a trial never
+fetches anything. The repository ships treatments for a plugin with one subagent (code-simplifier), large plugin
+toolkits (spartan, superpowers, ponytail), a CLI-driven workflow (openspec) and two short CLAUDE.md files that
+teach interviewing (interview-guide, interview-catchall).</p>
+
+<h2 id="user-loop">User in the loop</h2>
+<p>A plain <code>claude -p</code> run has nobody to answer: a question ends the session and the work is graded as
+it stands. Many real workflows stop to ask, and some treatments exist precisely to ask better questions. hai-proof
+can put a <b>user stand-in</b> between turns, per arm:</p>
+<div class="table-wrap"><table>
+  <tr><th>Mode</th><th>When the agent is waiting</th></tr>
+  <tr><td><code>conventional</code> (default)</td><td>nobody answers; scripted turns are sent in order</td></tr>
+  <tr><td><code>uninformative</code></td><td>always "I don't have anything to add. Use your best judgement and continue."</td></tr>
+  <tr><td><code>informative</code></td><td>answers from the task's <code>user.md</code> brief, correcting plans against the whole brief</td></tr>
+  <tr><td><code>reticent</code></td><td>the same brief, but answers only what the agent asks or states and never volunteers the rest</td></tr>
+</table></div>
+<figure class="diagram">
+  <img src="diagrams/user-loop.svg" alt="Flowchart of the turn loop: after each agent call, stop on an abnormal end; otherwise the stand-in classifies the last message as waiting or done and either replies or sends the next scripted turn.">
+  <figcaption>Source: <a href="diagrams/user-loop.drawio">user-loop.drawio</a></figcaption>
+</figure>
+<ul>
+  <li>The stand-in is a separate <code>claude -p --safe-mode</code> call with no tools, in its own container. The
+  agent's container never holds the brief, and the WAITING/DONE decision never sees it.</li>
+  <li>It answers only from the brief, never about the code's correctness, and never moves the workflow forward.
+  Replies per trial are capped (<code>--max-user-replies</code>). Its cost is reported but never added to an arm.</li>
+  <li><b>The ask tool.</b> <code>claude -p</code> alone never offers AskUserQuestion, which interactive Claude Code
+  has. <code>--ask-tool on</code> runs each call in the Agent SDK's stream-json stdio mode, which does; the
+  wrapper relays each question through a file mailbox to the controller and the stand-in.
+  <code>--ask-tool hidden</code> is the same mode without the tool, its control.</li>
+  <li>Reticent tasks can fix their own stand-in settings (<code>reticence = "strict"</code>, which filters replies
+  that raise points the agent didn't; <code>tool_answers = "full"</code>). They are part of the task's hash.</li>
+</ul>
+
+<h2 id="metrics">Metrics</h2>
+<div class="table-wrap"><table>
+  <tr><th>Metric</th><th>Source</th></tr>
+  <tr><td><code>success</code></td><td>hidden acceptance tests pass <em>and</em> the project's own suite still passes</td></tr>
+  <tr><td><code>wall_s</code></td><td>the in-container wrapper, monotonic, process start to exit</td></tr>
+  <tr><td><code>cost_usd</code>, tokens by type</td><td>the result event, summed over <code>modelUsage</code> so subagents count; from Claude Code's session records if a time limit cut the session</td></tr>
+  <tr><td>turns, tool calls, subagent calls, skills fired</td><td>the stream-json transcript</td></tr>
+  <tr><td><code>diff_breakdown</code></td><td>changed lines by category: product code, tests, docs, planning, config, treatment artifacts</td></tr>
+  <tr><td><code>init_snapshot</code></td><td>tools, plugins, MCP servers and model from the init event, for the isolation check</td></tr>
+  <tr><td>context tax</td><td>a probe session per arm ("Reply with the single word OK."): the treatment's fixed overhead per session</td></tr>
+</table></div>
+
+<h2 id="statistics">Statistics</h2>
+<ul>
+  <li><b>pass@1</b> per arm: the share of a task's runs that pass, averaged over tasks (each task weighted equally).
+  <b>pass@k</b> (k = reps) uses the unbiased estimate 1 − C(n−c, k)/C(n, k).</li>
+  <li><b>B vs A pass rate</b>: the difference in points with a 95% two-level bootstrap interval (tasks resampled,
+  then each task's runs), the number of tasks each arm wins, and an exact sign-test p.</li>
+  <li><b>Cost, tokens, wall time</b>: the geometric-mean ratio B ÷ A of paired runs, with a cluster-bootstrap 95%
+  interval and a Wilcoxon signed-rank p over per-task median log ratios.</li>
+  <li><b>Calibration.</b> An A/A run on the standard suite (Sonnet, five reps) is what "no difference" is measured
+  against: this suite detects about a 15-point pass@1 gap, or a cost or time ratio outside roughly ×0.85–×1.2. A new
+  suite needs its own A/A run.</li>
+  <li><b>Disagreements stay visible.</b> Per-task pass counts are never averaged away; tasks where the arms differ
+  get their own section with links to both transcripts.</li>
+  <li><b>Baselines.</b> Plain-arm trials with nobody in the loop are added to each task's
+  <code>baseline.json</code>, keyed by model, CLI version, effort, limit scale and task hash, for expected values
+  over time.</li>
+</ul>
+
+<h2 id="threats">Threats to validity</h2>
+<div class="table-wrap"><table>
+  <tr><th>Threat</th><th>Mitigation</th></tr>
+  <tr><td>Plain picks up someone's <code>~/.claude</code> or connectors</td><td>empty HOME and config dir in a container; the init-event check; the A/A run</td></tr>
+  <tr><td>Model or CLI drift during a run</td><td>model and CLI pinned and recorded; non-essential traffic off</td></tr>
+  <tr><td>Prompt-cache warmth favours one arm</td><td>concurrent pairs, a warm-up pair, cache tokens reported separately</td></tr>
+  <tr><td>Test leakage or fetching the upstream fix</td><td>hidden tests copied in only after the agent exits; no fix in git history; egress allowlist; transcript scan</td></tr>
+  <tr><td>Rate limits hit one arm</td><td>the whole pair is discarded and rerun</td></tr>
+  <tr><td>A treatment that never fires is called useless</td><td><code>dependency_used</code>, skills and subagent counts show whether it acted at all</td></tr>
+  <tr><td>Graded on unfinished work</td><td>user-in-the-loop modes for workflows that ask; calls wait for background subagents to finish</td></tr>
+  <tr><td>Public repos are in training data</td><td>affects both arms equally; post-cutoff fixes and injected bugs preferred</td></tr>
+  <tr><td>Results others can't reproduce</td><td>tasks pinned by commit SHA and dependency versions; reports record CLI, model, image and treatment hashes</td></tr>
+</table></div>
+</main>
+<footer class="site"><div>hai-proof · <a href="https://github.com/hypertetrahedron/hai-proof/blob/main/DESIGN.md">DESIGN.md</a>
+is the authoritative specification.</div></footer>
+</body>
+</html>

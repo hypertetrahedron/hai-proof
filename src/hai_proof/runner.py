@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import images
+from . import images, locks
 from .analyses import run_arm_analyses
 from .executor import Executor
 from .models import AnalysisResult, ArmSpec, RunConfig, TaskSpec, TrialResult, ask_tool_mode, to_json
@@ -61,8 +61,17 @@ def make_plan(run: RunConfig) -> Plan:
             "user in the loop: " + ", ".join(
                 f"{a.label}={a.user}{({'on': ' + ask tool', 'hidden': ' + ask tool hidden'}).get(a.ask_tool, '')}, "
                 f"{len(a.treatment.workflow) or 1} scripted turn(s)" for a in loop_arms)
-            + (f"; stand-in {run.stand_in_model}, up to {run.max_user_replies} replies per trial (its cost is "
-               "small and not in the ceiling)" if any(a.user != "conventional" for a in loop_arms) else ""))
+            + (f"; stand-in {run.stand_in_model}, up to {run.max_user_replies} replies per trial"
+               + (f", {run.tool_answers} tool answers" if run.tool_answers != "brief" else "")
+               + (f", {run.reticence} reticence" if run.reticence != "standard" else "")
+               + " (its cost is small and not in the ceiling)" if any(a.user != "conventional" for a in loop_arms) else ""))
+        own: dict[tuple[str, str], list[str]] = {}
+        for t in run.tasks:
+            if t.tool_answers or t.reticence:
+                own.setdefault(run.stand_in_settings(t), []).append(t.id)
+        if own and any(a.user == "reticent" for a in loop_arms):
+            lines.append("stand-in set by the task: " + "; ".join(
+                f"{', '.join(ids)} = {ta} tool answers, {rt} reticence" for (ta, rt), ids in own.items()))
     return Plan(agent_runs, probe_runs, warmup, sessions, ceiling, lines)
 
 
@@ -115,8 +124,23 @@ class Runner:
     # ------------------------------------------------------------------ public
 
     def execute(self) -> Path:
-        run = self.run
+        """Run under the run dir's controller.lock: a second controller on the same run (a resume while the
+        first is alive, or a new run that drew the same id) is refused before it touches anything."""
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        lock = self.run_dir / "controller.lock"
+        holder = locks.try_acquire(lock)
+        if holder is not None:
+            raise locks.LockHeld(f"run {self.run.run_id} is in use by {locks.describe(holder)}; "
+                                 f"if that controller is gone, delete {lock}")
+        try:
+            if not self.run.resume and (self.run_dir / "run.json").exists():
+                raise locks.LockHeld(f"{self.run_dir} already holds a run; use --resume to continue it")
+            return self._execute()
+        finally:
+            locks.release(lock)
+
+    def _execute(self) -> Path:
+        run = self.run
         self.meta = self._initial_meta()
         if run.resume:
             self._resume()

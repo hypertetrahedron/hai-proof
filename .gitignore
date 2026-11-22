@@ -14,6 +14,8 @@ dist/
 # Task repo snapshots are rebuilt from the pinned SHA by `hai-proof build-task`
 tasks/*/repo/
 tasks/*/source.lock.json
+# Lock files of controllers running at the same time (src/hai_proof/locks.py)
+.hai-proof*
 
 # Per-user config (execution host aliases, local overrides); template is hai-proof.example.toml
 hai-proof.toml

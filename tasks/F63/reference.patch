@@ -1,0 +1,181 @@
+diff --git a/README.rst b/README.rst
+index 1522ebb..c390f78 100644
+--- a/README.rst
++++ b/README.rst
+@@ -133,6 +133,19 @@ And use it::
+     >>> rr.pop()
+     b'd'
+ 
++Clearing a queue
++================
++
++``clear()`` removes every item from a queue, freeing the disk space that they
++used, and leaves the queue open and usable::
++
++    >>> q.clear()
++    >>> len(q)
++    0
++
++``PriorityQueue`` and ``RoundRobinQueue`` also close their internal queues, the
++same way that ``pop()`` does when one of them becomes empty.
++
+ Disk persistence
+ ================
+ 
+diff --git a/queuelib/pqueue.py b/queuelib/pqueue.py
+index 5a6b074..b344e65 100644
+--- a/queuelib/pqueue.py
++++ b/queuelib/pqueue.py
+@@ -2,6 +2,8 @@ from __future__ import annotations
+ 
+ from typing import TYPE_CHECKING, Any
+ 
++from queuelib.queue import _clear
++
+ if TYPE_CHECKING:
+     from collections.abc import Callable, Iterable
+ 
+@@ -18,6 +20,9 @@ class PriorityQueue:
+         * close()
+         * __len__()
+ 
++    Internal queues may also implement clear(); those that do not are emptied
++    by popping.
++
+     The constructor receives a qfactory argument, which is a callable used to
+     instantiate a new (internal) queue when a new priority is allocated. The
+     qfactory function is called with the priority number as first and only
+@@ -66,6 +71,13 @@ class PriorityQueue:
+             return None
+         return self.queues[self.curprio].peek()
+ 
++    def clear(self) -> None:
++        for q in self.queues.values():
++            _clear(q)
++            q.close()
++        self.queues.clear()
++        self.curprio = None
++
+     def close(self) -> list[int]:
+         active = []
+         for p, q in self.queues.items():
+diff --git a/queuelib/queue.py b/queuelib/queue.py
+index d727589..e3f9f7e 100644
+--- a/queuelib/queue.py
++++ b/queuelib/queue.py
+@@ -11,6 +11,17 @@ from pathlib import Path
+ from typing import Any, BinaryIO, Literal, cast
+ 
+ 
++def _clear(queue: Any) -> None:
++    """Remove every item from *queue*, popping them one by one if it does not
++    implement ``clear()``."""
++    clear = getattr(queue, "clear", None)
++    if clear is not None:
++        clear()
++        return
++    while queue.pop() is not None:
++        pass
++
++
+ class _BaseQueueMeta(type):
+     """
+     Metaclass to check queue classes against the necessary interface
+@@ -72,6 +83,9 @@ class FifoMemoryQueue:
+     def peek(self) -> Any | None:
+         return self.q[0] if self.q else None
+ 
++    def clear(self) -> None:
++        self.q.clear()
++
+     def close(self) -> None:
+         pass
+ 
+@@ -159,6 +173,17 @@ class FifoDiskQueue:
+         os.lseek(tfd, tfd_initial_pos, os.SEEK_SET)
+         return data
+ 
++    def clear(self) -> None:
++        self.headf.close()
++        self.tailf.close()
++        for chunk in Path(self.path).glob("q*"):
++            chunk.unlink()
++        self.info["size"] = 0
++        self.info["tail"] = [0, 0, 0]
++        self.info["head"] = [0, 0]
++        self.headf = self._openchunk(0, "ab+")
++        self.tailf = self._openchunk(0)
++
+     def close(self) -> None:
+         self.headf.close()
+         self.tailf.close()
+@@ -243,6 +268,12 @@ class LifoDiskQueue:
+         self.f.seek(-size - self.SIZE_SIZE, os.SEEK_END)
+         return self.f.read(size)
+ 
++    def clear(self) -> None:
++        self.f.seek(0)
++        self.f.write(struct.pack(self.SIZE_FORMAT, 0))
++        self.f.truncate()
++        self.size = 0
++
+     def close(self) -> None:
+         if self.size:
+             self.f.seek(0)
+@@ -261,6 +292,7 @@ class FifoSQLiteQueue:
+     _sql_push = "INSERT INTO queue (item) VALUES (?)"
+     _sql_pop = "SELECT id, item FROM queue ORDER BY id LIMIT 1"
+     _sql_del = "DELETE FROM queue WHERE id = ?"
++    _sql_clear = "DELETE FROM queue"
+ 
+     def __init__(self, path: str | os.PathLike[str]) -> None:
+         self._path = Path(path).resolve()
+@@ -288,6 +320,10 @@ class FifoSQLiteQueue:
+                 return cast("bytes", item)
+         return None
+ 
++    def clear(self) -> None:
++        with self._db as conn:
++            conn.execute(self._sql_clear)
++
+     def close(self) -> None:
+         size = len(self)
+         self._db.close()
+diff --git a/queuelib/rrqueue.py b/queuelib/rrqueue.py
+index f4774f3..c34e0b8 100644
+--- a/queuelib/rrqueue.py
++++ b/queuelib/rrqueue.py
+@@ -3,6 +3,8 @@ from __future__ import annotations
+ from collections import deque
+ from typing import TYPE_CHECKING, Any
+ 
++from queuelib.queue import _clear
++
+ if TYPE_CHECKING:
+     from collections.abc import Callable, Hashable, Iterable
+ 
+@@ -17,6 +19,10 @@ class RoundRobinQueue:
+         * peek()
+         * close()
+         * __len__()
++
++    Internal queues may also implement clear(); those that do not are emptied
++    by popping.
++
+     The constructor receives a qfactory argument, which is a callable used to
+     instantiate a new (internal) queue when a new key is allocated. The
+     qfactory function is called with the key number as first and only argument.
+@@ -53,6 +59,13 @@ class RoundRobinQueue:
+             return None
+         return self.queues[key].peek()
+ 
++    def clear(self) -> None:
++        for q in self.queues.values():
++            _clear(q)
++            q.close()
++        self.queues.clear()
++        self.key_queue.clear()
++
+     def pop(self) -> Any | None:
+         # pop until we find a valid object, closing necessary queues
+         while True:

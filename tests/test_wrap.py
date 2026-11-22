@@ -139,3 +139,85 @@ def test_stdio_session_ends_the_call_at_the_first_result(tmp_path, monkeypatch):
     assert [x["result"] for x in lines] == ["done"]
     t = json.loads((out / "timing.json").read_text())
     assert t["stopped_after_result"] is True and t["timed_out"] is False and t["wall_s"] < 15
+
+
+DELEGATING_CLAUDE = r'''
+import json, os, sys, time
+def emit(o):
+    sys.stdout.write(json.dumps(o) + "\n"); sys.stdout.flush()
+if STDIO:
+    sys.stdin.readline()
+emit({"type": "system", "subtype": "ceiling", "value": os.environ.get("CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS")})
+emit({"type": "system", "subtype": "task_started", "task_id": "a1", "task_type": "local_agent"})
+emit({"type": "system", "subtype": "task_started", "task_id": "s9", "task_type": "local_bash", "owned_by_subagent": True})
+emit({"type": "system", "subtype": "background_tasks_changed",
+      "tasks": [{"task_id": "a1", "task_type": "local_agent"}]})
+emit({"type": "result", "subtype": "success", "result": "the delegate is working, I'll review when it reports back"})
+time.sleep(1.5)  # the subagent finishes; the CLI wakes the agent for another turn
+emit({"type": "system", "subtype": "task_notification", "task_id": "a1", "status": "completed"})
+emit({"type": "system", "subtype": "background_tasks_changed", "tasks": []})
+emit({"type": "result", "subtype": "success", "result": "reviewed and verified"})
+if STDIO:
+    assert sys.stdin.readline() == ""  # stdin closes only after the final result
+'''
+
+
+def _results(out):
+    lines = [json.loads(x) for x in (out / "transcript.jsonl").read_text().splitlines()]
+    return lines, [x["result"] for x in lines if x.get("type") == "result"]
+
+
+def test_stdio_call_waits_for_a_background_subagent(tmp_path, monkeypatch):
+    monkeypatch.setattr(wrap, "RESULT_GRACE_S", 2)
+    rc, out = _run(tmp_path, [sys.executable, "-c", "STDIO = True\n" + DELEGATING_CLAUDE],
+                   stdio={"ask_dir": str(tmp_path / "ask")})
+    lines, results = _results(out)
+    assert results == ["the delegate is working, I'll review when it reports back", "reviewed and verified"]
+    t = json.loads((out / "timing.json").read_text())
+    assert t["exit_code"] == 0 and t["results"] == 2 and t["bg_agent_waits"] == 1 and t["bg_wait_s"] >= 1
+    assert t["stopped_after_result"] is False and t["shell_wait_cut"] is False
+
+
+def test_print_call_waits_for_a_background_subagent_with_no_cli_ceiling(tmp_path):
+    rc, out = _run(tmp_path, [sys.executable, "-c", "STDIO = False\n" + DELEGATING_CLAUDE])
+    lines, results = _results(out)
+    assert lines[0]["value"] == "0"  # the CLI's own 10-minute ceiling is off; the wrapper decides
+    assert results[-1] == "reviewed and verified"
+    t = json.loads((out / "timing.json").read_text())
+    assert t["exit_code"] == 0 and t["results"] == 2 and t["bg_agent_waits"] == 1
+
+
+SHELL_ONLY_CLAUDE = r'''
+import json, sys, time
+def emit(o):
+    sys.stdout.write(json.dumps(o) + "\n"); sys.stdout.flush()
+sys.stdin.readline()
+emit({"type": "system", "subtype": "background_tasks_changed", "tasks": [{"task_id": "b1", "task_type": "local_bash"}]})
+emit({"type": "result", "subtype": "success", "result": "server is up"})
+time.sleep(60)  # a forgotten dev server
+'''
+
+
+def test_background_shells_alone_get_a_bounded_wait(tmp_path, monkeypatch):
+    monkeypatch.setattr(wrap, "SHELL_WAIT_S", 0.5)
+    monkeypatch.setattr(wrap, "RESULT_GRACE_S", 0.5)
+    _, out = _run(tmp_path, [sys.executable, "-c", SHELL_ONLY_CLAUDE], stdio={"ask_dir": str(tmp_path / "ask")})
+    t = json.loads((out / "timing.json").read_text())
+    assert t["shell_wait_cut"] is True and t["timed_out"] is False and t["wall_s"] < 15
+    assert t["bg_agent_waits"] == 0
+
+
+def test_background_task_tracking():
+    bt = wrap.BackgroundTasks()
+    bt.update({"type": "system", "subtype": "task_started", "task_id": "x", "task_type": "local_bash",
+               "owned_by_subagent": True})
+    assert not bt.any()
+    bt.update({"type": "system", "subtype": "task_started", "task_id": "a", "task_type": "local_agent"})
+    assert bt.agents()
+    bt.update({"type": "system", "subtype": "task_updated", "task_id": "a", "patch": {"status": "killed"}})
+    assert not bt.any()
+    bt.update({"type": "system", "subtype": "background_tasks_changed",
+               "tasks": [{"task_id": "b", "task_type": "local_bash"}]})
+    assert bt.any() and not bt.agents()
+    bt.update({"type": "system", "subtype": "task_notification", "task_id": "b", "status": "completed"})
+    assert not bt.any()

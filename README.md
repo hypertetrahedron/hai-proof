@@ -5,8 +5,8 @@
 A/B smoke test for Claude Code harness modifications (skills, hooks, CLAUDE.md, MCP servers, plugins).
 Runs plain Claude Code and a modified Claude Code through the same coding tasks in paired containers
 and reports success, wall-clock time, tokens and cost. Design: [DESIGN.md](DESIGN.md). Status: [ROADMAP.md](ROADMAP.md).
-An illustrated overview (design, the pipeline of a run, the task library, the skills) is in `docs/` as a GitHub
-Pages site; open [docs/index.html](docs/index.html).
+An illustrated overview (design, the pipeline of a run, the task library, the skills) is published at
+<https://hypertetrahedron.github.io/hai-proof/> (source in `docs/`).
 
 ## Requirements
 
